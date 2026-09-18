@@ -1124,6 +1124,13 @@ export default function Register({
   const isValidEmail = (value: string) =>
     /^[^\s@]+@gmail\.com$/i.test(value.trim());
 
+  // First/Last name: letters and spaces only — no digits or special characters.
+  const NAME_REGEX = /^[A-Za-z\s]+$/;
+
+  const sanitizeNameInput = (value: string) => value.replace(/[^A-Za-z\s]/g, '');
+
+  const isValidName = (value: string) => NAME_REGEX.test(value.trim());
+
   const showToast = (
     message: string,
     type: ToastType = 'success',
@@ -1164,6 +1171,15 @@ export default function Register({
       !confirmPassword.trim()
     ) {
       showFeedback('error', 'Missing Fields', 'Please complete all fields.');
+      return;
+    }
+
+    if (!isValidName(firstName) || !isValidName(lastName)) {
+      showFeedback(
+        'error',
+        'Invalid Name',
+        'First and last name can only contain letters and spaces (no numbers or special characters).'
+      );
       return;
     }
 
@@ -1327,7 +1343,7 @@ export default function Register({
               placeholder="John"
               placeholderTextColor="#9E9E9E"
               value={firstName}
-              onChangeText={setFirstName}
+              onChangeText={(t) => setFirstName(sanitizeNameInput(t))}
               editable={!isLoading}
               onFocus={() => setIsFirstNameFocused(true)}
               onBlur={() => setIsFirstNameFocused(false)}
@@ -1345,7 +1361,7 @@ export default function Register({
               placeholder="Doe"
               placeholderTextColor="#9E9E9E"
               value={lastName}
-              onChangeText={setLastName}
+              onChangeText={(t) => setLastName(sanitizeNameInput(t))}
               editable={!isLoading}
               onFocus={() => setIsLastNameFocused(true)}
               onBlur={() => setIsLastNameFocused(false)}
@@ -1456,7 +1472,7 @@ export default function Register({
             placeholder="John"
             placeholderTextColor="#9E9E9E"
             value={firstName}
-            onChangeText={setFirstName}
+            onChangeText={(t) => setFirstName(sanitizeNameInput(t))}
             editable={!isLoading}
             onFocus={() => setIsFirstNameFocused(true)}
             onBlur={() => setIsFirstNameFocused(false)}
@@ -1472,7 +1488,7 @@ export default function Register({
             placeholder="Doe"
             placeholderTextColor="#9E9E9E"
             value={lastName}
-            onChangeText={setLastName}
+            onChangeText={(t) => setLastName(sanitizeNameInput(t))}
             editable={!isLoading}
             onFocus={() => setIsLastNameFocused(true)}
             onBlur={() => setIsLastNameFocused(false)}

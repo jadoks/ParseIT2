@@ -81,6 +81,43 @@ const API_BASE_URL = getApiBaseUrl();
 // enforced for real on the server regardless of this check.
 const MAX_TRAINING_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
+// Training files are parsed for their text content, so only accept formats
+// the backend knows how to extract text from. Keep this list in sync with
+// server.js's own format check and with Chatbot.tsx's copy of this list.
+const ALLOWED_TRAINING_FILE_EXTENSIONS = [
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".txt",
+  ".csv",
+  ".xls",
+  ".xlsx",
+];
+
+const ALLOWED_TRAINING_FILE_MIME_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "text/csv",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
+
+const ALLOWED_TRAINING_FILE_LABEL = "PDF, DOC, DOCX, TXT, CSV, XLS, XLSX";
+
+function getFileExtension(name: string): string {
+  const match = /\.[^./\\]+$/.exec(name || "");
+  return match ? match[0].toLowerCase() : "";
+}
+
+function isAllowedTrainingFileType(name: string, mimeType?: string | null): boolean {
+  const extension = getFileExtension(name);
+  if (extension && ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension)) return true;
+  if (mimeType && ALLOWED_TRAINING_FILE_MIME_TYPES.includes(mimeType)) return true;
+  return false;
+}
+
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 0) return "unknown size";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
@@ -329,7 +366,7 @@ export default function ModifyChatbotModal({
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
-        type: "*/*",
+        type: ALLOWED_TRAINING_FILE_MIME_TYPES,
       });
 
       if (result.canceled || !result.assets?.length) {
@@ -337,6 +374,15 @@ export default function ModifyChatbotModal({
       }
 
       const file = result.assets[0];
+
+      if (!isAllowedTrainingFileType(file.name, file.mimeType)) {
+        showToast(
+          `Unsupported file format. Allowed formats: ${ALLOWED_TRAINING_FILE_LABEL}.`,
+          "error"
+        );
+        setReplacingFileId(null);
+        return;
+      }
 
       if (typeof file.size === "number" && file.size > MAX_TRAINING_FILE_SIZE_BYTES) {
         showToast(
@@ -688,6 +734,10 @@ export default function ModifyChatbotModal({
 
                       <View style={styles.fieldBlock}>
                         <Text style={styles.fieldLabel}>Attached File</Text>
+                        <Text style={styles.fieldHelperText}>
+                          Accepted formats: {ALLOWED_TRAINING_FILE_LABEL}. Max size:{" "}
+                          {formatFileSize(MAX_TRAINING_FILE_SIZE_BYTES)}.
+                        </Text>
                         {item.file ? (
                           <View style={styles.previewBox}>
                             <Text style={styles.previewText}>{item.file.name || "Unnamed file"}</Text>
@@ -1112,6 +1162,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#5F3B3B",
     marginBottom: 8,
+  },
+  fieldHelperText: {
+    fontSize: 12.5,
+    fontWeight: "500",
+    color: "#8A6F6F",
+    marginBottom: 10,
+    lineHeight: 17,
   },
   inputField: {
     minHeight: 54,

@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -436,17 +436,23 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
 
 // ── Web-only: force a visible vertical scrollbar ───────────────────────────
 // RN's `showsVerticalScrollIndicator` only controls the native OS-drawn
-// indicator on iOS/Android; on React Native Web it's a no-op. The earlier
-// approach here tried to work around that by injecting a <style> tag and
-// tagging the ScrollView with a `className` — but RNW doesn't reliably
-// forward/merge an incoming `className` prop into the rendered div, so that
-// rule never actually attached (same symptom either way: no visible
-// scrollbar). Setting `overflowY` directly through the `style` prop instead
-// goes through RNW's normal style pipeline, which — like every other style
-// in this file — is guaranteed to reach the DOM. `scroll` (rather than
-// `auto`) also keeps the track visible even when content doesn't currently
-// overflow, instead of only appearing once it does.
-const webScrollStyle: any = Platform.OS === 'web' ? { overflowY: 'scroll' } : null;
+// indicator on iOS/Android; on React Native Web it's a no-op.
+//
+// Two earlier approaches here didn't stick:
+//  1. Injecting a <style> tag + tagging the ScrollView with a `className` —
+//     RNW doesn't reliably forward/merge an incoming `className` prop into
+//     the rendered div, so that rule never actually attached.
+//  2. Passing `overflowY: 'scroll'` through the `style` prop — RNW's
+//     ScrollView computes its own `overflow` value internally (based on its
+//     `horizontal`/`scrollEnabled` props) and that computed value can win
+//     over the same key coming from the `style` prop, regardless of style
+//     array order.
+//
+// This grabs the actual underlying DOM node via a ref (see
+// `dashboardScrollRef` below) and sets `overflowY` on it imperatively after
+// mount, bypassing RNW's internal style computation entirely — the same
+// technique used to reach past a library's own render logic when its public
+// props don't expose the control you need.
 
 const Dashboard2 = ({
   announcements = [],
@@ -459,6 +465,19 @@ const Dashboard2 = ({
   isLoading = false,
   showVerticalIndicator = true,
 }: DashboardProps) => {
+  // Underlying DOM node of the main ScrollView (web only) — see the
+  // "force a visible vertical scrollbar" note above.
+  const dashboardScrollRef = useRef<any>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !showVerticalIndicator) return;
+    const node =
+      typeof dashboardScrollRef.current?.getScrollableNode === 'function'
+        ? dashboardScrollRef.current.getScrollableNode()
+        : dashboardScrollRef.current;
+    if (node?.style) {
+      node.style.overflowY = 'scroll';
+    }
+  }, [showVerticalIndicator]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAllClasses, setShowAllClasses] = useState(false);
   const { width } = useWindowDimensions();
@@ -1349,7 +1368,8 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
 
       {/* Main Dashboard Content */}
       <ScrollView
-        style={[styles.container, showVerticalIndicator ? webScrollStyle : null]}
+        ref={dashboardScrollRef}
+        style={styles.container}
         contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]}
         showsVerticalScrollIndicator={showVerticalIndicator}
         showsHorizontalScrollIndicator={false}

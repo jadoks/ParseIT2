@@ -26,6 +26,13 @@ type ToastType = "success" | "error" | "info";
 const isValidGmail = (value: string) =>
   /^[^\s@]+@gmail\.com$/i.test(value.trim());
 
+// First/Last name: letters and spaces only — no digits or special characters.
+const NAME_REGEX = /^[A-Za-z\s]+$/;
+
+const sanitizeNameInput = (value: string) => value.replace(/[^A-Za-z\s]/g, "");
+
+const isValidName = (value: string) => NAME_REGEX.test(value.trim());
+
 function formatDate(date: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
@@ -540,6 +547,16 @@ export default function AddTeacherModal({
   };
 
   const handleSubmit = async () => {
+    if (!isValidName(firstName)) {
+      showToast("First name can only contain letters and spaces (no numbers or special characters).", "error");
+      return;
+    }
+
+    if (!isValidName(lastName)) {
+      showToast("Last name can only contain letters and spaces (no numbers or special characters).", "error");
+      return;
+    }
+
     const birthdayError = getBirthdayError(birthday);
     if (birthdayError) {
       showToast(birthdayError, "error");
@@ -644,7 +661,7 @@ export default function AddTeacherModal({
                   <FormInput
                     icon="person-outline"
                     value={firstName}
-                    onChangeText={setFirstName}
+                    onChangeText={(text) => setFirstName(sanitizeNameInput(text))}
                     placeholder="Enter first name"
                   />
                 </View>
@@ -656,7 +673,7 @@ export default function AddTeacherModal({
                   <FormInput
                     icon="people-outline"
                     value={lastName}
-                    onChangeText={setLastName}
+                    onChangeText={(text) => setLastName(sanitizeNameInput(text))}
                     placeholder="Enter last name"
                   />
                 </View>
@@ -1047,4 +1064,4 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 8,
   },
-}); 
+});

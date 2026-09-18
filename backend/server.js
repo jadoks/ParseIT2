@@ -1362,6 +1362,57 @@ async function createReadSignedUrlIfExists(storagePath) {
   // ModifyChatbotModal.tsx.
   const MAX_TRAINING_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
+  // Keep in sync with ALLOWED_TRAINING_FILE_EXTENSIONS /
+  // ALLOWED_TRAINING_FILE_MIME_TYPES in Chatbot.tsx and
+  // ModifyChatbotModal.tsx. This is the real enforcement — the frontend
+  // check (and its file-picker filter) is just a UX nicety that a direct
+  // API call could bypass.
+  const ALLOWED_TRAINING_FILE_EXTENSIONS = [
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".txt",
+    ".csv",
+    ".xls",
+    ".xlsx",
+  ];
+
+  const ALLOWED_TRAINING_FILE_MIME_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+
+  const ALLOWED_TRAINING_FILE_LABEL = "PDF, DOC, DOCX, TXT, CSV, XLS, XLSX";
+
+  function getFileExtensionFromName(fileName) {
+    const match = /\.[^./\\]+$/.exec(String(fileName || ""));
+    return match ? match[0].toLowerCase() : "";
+  }
+
+  function assertTrainingFileFormatAllowed(fileName, mimeType) {
+    const extension = getFileExtensionFromName(fileName);
+    const normalizedMimeType = String(mimeType || "").toLowerCase();
+
+    const extensionAllowed =
+      extension && ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension);
+    const mimeTypeAllowed =
+      normalizedMimeType &&
+      ALLOWED_TRAINING_FILE_MIME_TYPES.includes(normalizedMimeType);
+
+    if (!extensionAllowed && !mimeTypeAllowed) {
+      const error = new Error(
+        `Unsupported file format. Allowed formats: ${ALLOWED_TRAINING_FILE_LABEL}.`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   function assertTrainingFileWithinSizeLimit(fileBase64) {
     if (!fileBase64) return;
     const cleanedBase64 = fileBase64.includes(",")
@@ -1393,6 +1444,14 @@ async function createReadSignedUrlIfExists(storagePath) {
     if (!fileBase64) {
       throw new Error("File data is required.");
     }
+
+    // Hard server-side format check — mirrors ALLOWED_TRAINING_FILE_EXTENSIONS/
+    // ALLOWED_TRAINING_FILE_MIME_TYPES in Chatbot.tsx and
+    // ModifyChatbotModal.tsx. The frontend's file-picker filter and check
+    // are just a UX nicety; this is what actually stops an unsupported file
+    // (or a direct API call bypassing the app) from being written to
+    // storage.
+    assertTrainingFileFormatAllowed(fileName, fileMimeType);
 
     // Hard server-side cap — mirrors MAX_TRAINING_FILE_SIZE_BYTES in
     // Chatbot.tsx and ModifyChatbotModal.tsx. The frontend check is just a

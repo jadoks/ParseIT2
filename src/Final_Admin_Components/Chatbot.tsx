@@ -73,6 +73,43 @@ const API_BASE_URL = getApiBaseUrl();
 // enforces the real limit regardless of this check.
 const MAX_TRAINING_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
+// Training files are parsed for their text content, so only accept formats
+// the backend knows how to extract text from. Keep this list in sync with
+// server.js's own format check.
+const ALLOWED_TRAINING_FILE_EXTENSIONS = [
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".txt",
+  ".csv",
+  ".xls",
+  ".xlsx",
+];
+
+const ALLOWED_TRAINING_FILE_MIME_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "text/csv",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
+
+const ALLOWED_TRAINING_FILE_LABEL = "PDF, DOC, DOCX, TXT, CSV, XLS, XLSX";
+
+function getFileExtension(name: string): string {
+  const match = /\.[^./\\]+$/.exec(name || "");
+  return match ? match[0].toLowerCase() : "";
+}
+
+function isAllowedTrainingFileType(name: string, mimeType?: string | null): boolean {
+  const extension = getFileExtension(name);
+  if (extension && ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension)) return true;
+  if (mimeType && ALLOWED_TRAINING_FILE_MIME_TYPES.includes(mimeType)) return true;
+  return false;
+}
+
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 0) return "unknown size";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
@@ -214,7 +251,7 @@ export default function Chatbot({
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
-        type: "*/*",
+        type: ALLOWED_TRAINING_FILE_MIME_TYPES,
       });
 
       if (result.canceled || !result.assets?.length) {
@@ -222,6 +259,14 @@ export default function Chatbot({
       }
 
       const file = result.assets[0];
+
+      if (!isAllowedTrainingFileType(file.name, file.mimeType)) {
+        showToast(
+          `Unsupported file format. Allowed formats: ${ALLOWED_TRAINING_FILE_LABEL}.`,
+          "error"
+        );
+        return;
+      }
 
       if (typeof file.size === "number" && file.size > MAX_TRAINING_FILE_SIZE_BYTES) {
         showToast(
@@ -485,6 +530,10 @@ export default function Chatbot({
                   <Text style={styles.fieldHelperText}>
                     AI will read the file's content and automatically generate the
                     chatbot response(s) and triggers — no manual typing needed.
+                  </Text>
+                  <Text style={styles.fieldHelperText}>
+                    Accepted formats: {ALLOWED_TRAINING_FILE_LABEL}. Max size:{" "}
+                    {formatFileSize(MAX_TRAINING_FILE_SIZE_BYTES)}.
                   </Text>
                   <TouchableOpacity
                     style={styles.uploadButton}
