@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   pageSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#666' },
   joinClassButton: { backgroundColor: '#D32F2F', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   joinClassButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 15 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 15 },
   gridMobile: { justifyContent: 'center' },
   gridTablet: { justifyContent: 'center' },
   gridDesktop: { justifyContent: 'flex-start' },

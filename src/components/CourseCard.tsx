@@ -624,6 +624,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     borderBottomWidth: 4,
+    // ✅ NEW: explicit stretch (RNW default can be inconsistent) so every
+    // card in a grid row takes on the height of its tallest sibling.
+    alignSelf: 'stretch',
   },
   cardLeaving: {
     opacity: 0.5,
@@ -672,6 +675,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 8,
+    // ✅ NEW: flex: 1 lets cardBody absorb any extra height once `card`
+    // stretches to match a taller sibling in the row, so cardFooter (the
+    // triple-dot button) always ends up at the same position across a row
+    // of cards — instead of floating right under whatever content this
+    // particular card happens to have. The bottom border doesn't need this:
+    // it's a borderBottomWidth on `card` itself, so it's always flush with
+    // the card's true (stretched) bottom edge regardless.
+    flex: 1,
   },
   metaBlock: {
     marginBottom: 10,

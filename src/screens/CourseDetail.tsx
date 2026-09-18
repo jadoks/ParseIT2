@@ -2641,7 +2641,7 @@ const fetchModules = useCallback(async (silent = false) => {
                           </View>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
+                              <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#111' }}>
                                 {/* ✅ NEW: show the teacher's custom display title when
                                     set (edited via "Edit Module Title"), falling back
                                     to the original title otherwise. Picked up

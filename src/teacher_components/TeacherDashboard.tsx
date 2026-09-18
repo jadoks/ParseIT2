@@ -1604,7 +1604,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   
-  courseGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 21, width: '100%' },
+  courseGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'stretch', gap: 21, width: '100%' },
 
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.08)' },
   menuBox: { width: 220, backgroundColor: '#fff', borderRadius: 16, paddingVertical: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 },

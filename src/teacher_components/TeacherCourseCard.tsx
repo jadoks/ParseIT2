@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { FONT_BODY } from '../theme/typography';
+import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 import {
   getCachedBannerUrl,
   setCachedBannerUrl,
@@ -330,6 +330,10 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
     marginBottom: 8,
+    // ✅ NEW: explicit stretch (RNW default can be inconsistent) so every
+    // card in a courseGrid row takes on the height of its tallest sibling,
+    // instead of only being as tall as its own content.
+    alignSelf: 'stretch',
   },
   bannerWrapper: {
     height: 140,
@@ -361,7 +365,7 @@ const styles = StyleSheet.create({
     padding: 16,
     justifyContent: 'flex-end',
   },
-  bannerName: { fontFamily: FONT_BODY, color: '#fff', fontSize: 18, fontWeight: '700' },
+  bannerName: { fontFamily: FONT_TITLE, color: '#fff', fontSize: 18, fontWeight: WEIGHT_TITLE },
   bannerCode: { fontFamily: FONT_BODY,
     color: 'rgba(19, 17, 17, 0.92)',
     fontSize: 13,
@@ -383,7 +387,18 @@ const styles = StyleSheet.create({
   classMetaText: { fontFamily: FONT_BODY, flex: 1, color: '#7A1F1F', fontSize: 12, fontWeight: '700' },
   classCodeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   copyButton: { marginLeft: 8, padding: 4 },
-  cardContent: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  cardContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+    // ✅ NEW: without this, cardContent only grows to fit its own text/pills,
+    // so once `card` stretches to match a taller sibling, the extra height
+    // was left as blank space *below* cardFooter instead of pushing the
+    // dots/bottomBorder down to the card's actual bottom edge. flex: 1 makes
+    // this section (not the footer) absorb the slack, so the footer always
+    // sits flush with the bottom — aligned across every card in the row.
+    flex: 1,
+  },
   instructorLabel: { fontFamily: FONT_BODY,
     fontSize: 11,
     color: '#9AA0A6',
