@@ -1154,7 +1154,7 @@ const TeacherCourseDetail2 = ({
   const [generatedStructure, setGeneratedStructure] = useState<any>(null);
   const [isGeneratingStructure, setIsGeneratingStructure] = useState(false);
   const [showStructurePreviewModal, setShowStructurePreviewModal] = useState(false);
-  const [expandedModules, setExpandedModules] = useState<Record<number, boolean>>({});
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
@@ -2004,10 +2004,27 @@ useEffect(() => {
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Failed to delete module.');
-          setModules((prev) => prev.filter((m) => m.id !== mod.id));
+          // ✅ Remove the deleted module AND shift every module numbered
+          // after it down by 1, so numbering stays contiguous with no gaps
+          // (e.g. deleting Module 2 turns Module 3 into Module 2). The
+          // server does the same renumbering in Firestore in the same
+          // batch as the delete, so this optimistic update and the next
+          // background poll will agree.
+          const deletedNumber = Number(mod.moduleNumber);
+          setModules((prev) =>
+            prev
+              .filter((m) => m.id !== mod.id)
+              .map((m) => {
+                const num = Number(m.moduleNumber);
+                if (Number.isFinite(deletedNumber) && Number.isFinite(num) && num > deletedNumber) {
+                  return { ...m, moduleNumber: num - 1 };
+                }
+                return m;
+              })
+          );
           setExpandedModules((prev) => {
             const next = { ...prev };
-            delete next[mod.moduleNumber];
+            delete next[mod.id];
             return next;
           });
           toast.show('success', 'Deleted', 'Module and its lessons were deleted.');
@@ -6507,14 +6524,14 @@ the button looked completely dead.
             ) : (
               <>
                 {modules.map((mod: any) => {
-                  const isExpanded = expandedModules[mod.moduleNumber] || false;
+                  const isExpanded = expandedModules[mod.id] || false;
                   const totalHours = mod.estimatedHours ||
                     (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
                   return (
                     <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
                       <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}>
                         <TouchableOpacity
-                          onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                          onPress={() => setExpandedModules(p => ({ ...p, [mod.id]: !isExpanded }))}
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
@@ -6532,14 +6549,18 @@ the button looked completely dead.
                             syllabus-generated module ("Generate Module") or a
                             manually-created one. These are siblings of (not
                             nested inside) the expand/collapse toggle above so
-                            tapping them never also toggles the accordion. */}
+                            tapping them never also toggles the accordion.
+                            Icons sit in a neutral gray "default" state
+                            (matching the reference edit icon: a box outline
+                            with a pencil) rather than the loud blue/red used
+                            in the top action pills. */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           <TouchableOpacity
                             onPress={() => handleOpenEditModuleTitle(mod)}
                             style={{ padding: 8 }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Ionicons name="pencil-outline" size={18} color="#1976D2" />
+                            <Ionicons name="create-outline" size={18} color="#9E9E9E" />
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => handleDeleteModule(mod)}
@@ -6548,13 +6569,13 @@ the button looked completely dead.
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
                             {deletingModuleId === mod.id ? (
-                              <ActivityIndicator size="small" color="#D32F2F" />
+                              <ActivityIndicator size="small" color="#9E9E9E" />
                             ) : (
-                              <Ionicons name="trash-outline" size={18} color="#D32F2F" />
+                              <Ionicons name="trash-outline" size={18} color="#9E9E9E" />
                             )}
                           </TouchableOpacity>
                           <TouchableOpacity
-                            onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                            onPress={() => setExpandedModules(p => ({ ...p, [mod.id]: !isExpanded }))}
                             style={{ padding: 4 }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >

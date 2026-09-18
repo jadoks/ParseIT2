@@ -17520,7 +17520,15 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   // ✅ NEW: Deletes a module AND every lesson filed under it (courseLessons
   // where moduleId == this module's id), including each lesson's uploaded
   // file in Storage. Works the same for a syllabus-generated module and a
-  // manually-created one.
+  // manually-created one. After deleting, every module that came AFTER the
+  // deleted one has its moduleNumber shifted down by 1 so numbering stays
+  // contiguous (e.g. deleting Module 2 turns Module 3 into Module 2, Module
+  // 4 into Module 3, etc. — no gaps). This is safe to do because nothing in
+  // Lesson Generation keys off moduleNumber for matching: syllabus-module
+  // matching is by TITLE alone (see the comment in
+  // /course-syllabus/generate-next-lessons), and "Generate Another Module"
+  // decides what's left to generate by comparing TITLES too. moduleNumber is
+  // purely a display/ordering field.
   app.delete("/course-modules/:moduleId", requireAuth, async (req, res) => {
     try {
       const { moduleId } = req.params;
@@ -17530,6 +17538,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const moduleSnap = await moduleRef.get();
       if (!moduleSnap.exists) return res.status(404).json({ error: "Module not found." });
       const moduleData = moduleSnap.data();
+      const deletedModuleNumber = Number(moduleData.moduleNumber);
 
       // Find every lesson filed under this module so we can delete both
       // their Firestore docs and any files they have in Storage.
@@ -17548,9 +17557,35 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         }
       }));
 
+      // Find every module numbered AFTER the one being deleted, so we can
+      // shift them down by 1 in the same batch. Fetched with a single
+      // equality filter (classId) and filtered/compared in JS rather than
+      // adding a moduleNumber ">" range filter, so this never needs a new
+      // Firestore composite index — same defensive pattern used elsewhere
+      // in this file.
+      let laterModuleDocs = [];
+      if (Number.isFinite(deletedModuleNumber)) {
+        const siblingModulesSnap = await db.collection("courseModules")
+          .where("classId", "==", moduleData.classId)
+          .get();
+        laterModuleDocs = siblingModulesSnap.docs.filter((doc) => {
+          const num = Number(doc.data().moduleNumber);
+          return Number.isFinite(num) && num > deletedModuleNumber;
+        });
+      }
+
       const batch = db.batch();
       lessonsSnap.docs.forEach((lessonDoc) => batch.delete(lessonDoc.ref));
       batch.delete(moduleRef);
+      laterModuleDocs.forEach((doc) => {
+        const currentNum = Number(doc.data().moduleNumber);
+        if (Number.isFinite(currentNum)) {
+          batch.update(doc.ref, {
+            moduleNumber: currentNum - 1,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      });
       await batch.commit();
 
       // Module (and its lessons) deleted — students' cached course structure is stale now.
@@ -17559,7 +17594,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       res.json({
         success: true,
         message: "Module and its lessons deleted successfully.",
-        deletedLessonCount: lessonsSnap.docs.length
+        deletedLessonCount: lessonsSnap.docs.length,
+        renumberedCount: laterModuleDocs.length
       });
     } catch (error) {
       console.error("Delete module error:", error);

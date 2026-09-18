@@ -911,7 +911,7 @@ const CourseDetail = ({
   // ── Modules state
   const [modules, setModules] = useState<any[]>([]);
   const [isLoadingModules, setIsLoadingModules] = useState(false);
-  const [expandedModules, setExpandedModules] = useState<Record<number, boolean>>({});
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 
   // ── Syllabus state
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
@@ -2615,7 +2615,13 @@ const fetchModules = useCallback(async (silent = false) => {
             ) : modules.length > 0 ? (
               <View>
                 {modules.map((mod) => {
-                  const isExpanded = expandedModules[mod.moduleNumber] || false;
+                  // ✅ Keyed by mod.id (not moduleNumber) — a teacher
+                  // deleting a module renumbers every later module (see
+                  // TeacherCourseDetail2), so a number-keyed expand state
+                  // would point at the wrong row on the next poll. Keying
+                  // by id keeps "which module is expanded" stable across
+                  // a renumber.
+                  const isExpanded = expandedModules[mod.id] || false;
                   return (
                     <View key={mod.id} style={{
                       backgroundColor: '#FFF',
@@ -2626,7 +2632,7 @@ const fetchModules = useCallback(async (silent = false) => {
                       overflow: 'hidden'
                     }}>
                       <TouchableOpacity
-                        onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                        onPress={() => setExpandedModules(p => ({ ...p, [mod.id]: !isExpanded }))}
                         style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
