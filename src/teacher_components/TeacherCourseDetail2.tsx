@@ -271,6 +271,21 @@ const MAX_LESSON_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
 const MAX_TEMPLATE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per header/footer template image
 const ALLOWED_TEMPLATE_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
+// Course Syllabus upload (feeds "Generate Module" / "Generate Module 1") —
+// the AI parses this file's content into the module/topic structure, so
+// only accept formats it can actually read text or images from.
+const MAX_SYLLABUS_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
+const ALLOWED_SYLLABUS_FILE_EXTENSIONS = [
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp',
+];
+const ALLOWED_SYLLABUS_FILE_MIME_TYPES = [
+  'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain', 'text/csv', 'image/png', 'image/jpeg', 'image/webp',
+];
+const ALLOWED_SYLLABUS_FILE_LABEL = 'PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, CSV, PNG, JPG, WEBP';
+
 const formatFileSizeMB = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 // 12-hour "YYYY-MM-DD hh:mm AM/PM" formatter for a resolved Date, used by
@@ -2210,12 +2225,7 @@ useEffect(() => {
   const handlePickSyllabus = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-          'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'text/plain', 'text/csv', 'image/png', 'image/jpeg', 'image/webp'
-        ],
+        type: ALLOWED_SYLLABUS_FILE_MIME_TYPES,
         copyToCacheDirectory: true,
         base64: Platform.OS === 'web',
       });
@@ -2224,15 +2234,19 @@ useEffect(() => {
         return;
       }
       const asset = result.assets[0];
-      if (asset.size && asset.size > 20 * 1024 * 1024) {
-        toast.show('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
+      if (asset.size && asset.size > MAX_SYLLABUS_FILE_SIZE_BYTES) {
+        toast.show('error', 'File Too Large', `File exceeds maximum size of ${formatFileSizeMB(MAX_SYLLABUS_FILE_SIZE_BYTES)}.`);
         setIsEditingSyllabus(false);
         return;
       }
+      // Check both extension and MIME type — some platforms (notably web)
+      // report an empty or generic mimeType, so either signal matching is
+      // enough; only reject when neither does.
       const ext = asset.name?.split('.').pop()?.toLowerCase();
-      const allowedExts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
-      if (!ext || !allowedExts.includes(ext)) {
-        toast.show('error', 'Unsupported File', 'Please upload a supported file type (PDF, DOCX, PPTX, etc.).');
+      const extAllowed = !!ext && ALLOWED_SYLLABUS_FILE_EXTENSIONS.includes(ext);
+      const mimeAllowed = !!asset.mimeType && ALLOWED_SYLLABUS_FILE_MIME_TYPES.includes(asset.mimeType);
+      if (!extAllowed && !mimeAllowed) {
+        toast.show('error', 'Unsupported File', `Please upload a supported file type (${ALLOWED_SYLLABUS_FILE_LABEL}).`);
         setIsEditingSyllabus(false);
         return;
       }
@@ -6460,6 +6474,9 @@ the button looked completely dead.
                     {isUploadingSyllabus ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />}
                     <Text style={{ color: '#FFF', fontWeight: '700' }}>Upload Course Syllabus</Text>
                   </TouchableOpacity>
+                  <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
+                    Accepted formats: {ALLOWED_SYLLABUS_FILE_LABEL}. Max size: {formatFileSizeMB(MAX_SYLLABUS_FILE_SIZE_BYTES)}.
+                  </Text>
                 </View>
               ) : (
                 <View style={{ backgroundColor: '#F9F9F9', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
