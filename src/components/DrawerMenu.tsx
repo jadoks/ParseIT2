@@ -872,10 +872,7 @@ const DrawerMenu = ({
       // user can still choose "All files" and pick something outside the
       // allowed formats. Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.
       if (!isAllowedGradeFileAsset(asset.mimeType, asset.name)) {
-        Alert.alert(
-          'Unsupported File Type',
-          'Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.'
-        );
+        showToast('Unsupported file type. Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.', 'error');
         return;
       }
 
