@@ -92,10 +92,6 @@ function DashboardCard({
     <View style={[styles.card, { width: cardWidth }]}>
       <View style={styles.cardTop}>
         <View style={styles.iconBox}>{icon}</View>
-
-        <TouchableOpacity style={styles.moreButton} activeOpacity={0.85}>
-          <Ionicons name="ellipsis-horizontal" size={18} color="#B8A6A6" />
-        </TouchableOpacity>
       </View>
 
       <Text style={styles.cardTitle}>{title}</Text>
@@ -823,15 +819,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 18,
     backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  moreButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "#FFF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
