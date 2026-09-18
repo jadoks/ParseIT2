@@ -1398,13 +1398,18 @@ async function createReadSignedUrlIfExists(storagePath) {
     const extension = getFileExtensionFromName(fileName);
     const normalizedMimeType = String(mimeType || "").toLowerCase();
 
-    const extensionAllowed =
-      extension && ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension);
-    const mimeTypeAllowed =
-      normalizedMimeType &&
-      ALLOWED_TRAINING_FILE_MIME_TYPES.includes(normalizedMimeType);
+    // Extension is authoritative when present. Some platforms/browsers
+    // report a generic MIME type (commonly "text/plain") for extensions
+    // they don't recognize — including code files like .js/.tsx — so
+    // trusting MIME type whenever it happens to match would let those
+    // slip past a disallowed extension. MIME type is only consulted as a
+    // fallback when there's no extension to go on at all.
+    const allowed = extension
+      ? ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension)
+      : !!normalizedMimeType &&
+        ALLOWED_TRAINING_FILE_MIME_TYPES.includes(normalizedMimeType);
 
-    if (!extensionAllowed && !mimeTypeAllowed) {
+    if (!allowed) {
       const error = new Error(
         `Unsupported file format. Allowed formats: ${ALLOWED_TRAINING_FILE_LABEL}.`
       );

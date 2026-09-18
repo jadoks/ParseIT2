@@ -105,9 +105,14 @@ function getFileExtension(name: string): string {
 
 function isAllowedTrainingFileType(name: string, mimeType?: string | null): boolean {
   const extension = getFileExtension(name);
-  if (extension && ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension)) return true;
-  if (mimeType && ALLOWED_TRAINING_FILE_MIME_TYPES.includes(mimeType)) return true;
-  return false;
+  // Extension is authoritative when present. Some platforms/browsers report
+  // a generic MIME type (commonly "text/plain") for extensions they don't
+  // recognize — including code files like .js/.tsx — so trusting MIME type
+  // whenever it happens to match would let those slip past a disallowed
+  // extension. MIME type is only consulted as a fallback when there's no
+  // extension to go on at all.
+  if (extension) return ALLOWED_TRAINING_FILE_EXTENSIONS.includes(extension);
+  return !!mimeType && ALLOWED_TRAINING_FILE_MIME_TYPES.includes(mimeType);
 }
 
 function formatFileSize(bytes: number) {

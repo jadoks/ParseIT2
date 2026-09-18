@@ -2239,13 +2239,17 @@ useEffect(() => {
         setIsEditingSyllabus(false);
         return;
       }
-      // Check both extension and MIME type — some platforms (notably web)
-      // report an empty or generic mimeType, so either signal matching is
-      // enough; only reject when neither does.
+      // Extension is authoritative when present. Some platforms/browsers
+      // report a generic MIME type (commonly "text/plain") for extensions
+      // they don't recognize — including code files like .js/.tsx — so
+      // trusting MIME type whenever it happens to match would let those
+      // slip past a disallowed extension. MIME type is only consulted as a
+      // fallback when there's no extension to go on at all.
       const ext = asset.name?.split('.').pop()?.toLowerCase();
-      const extAllowed = !!ext && ALLOWED_SYLLABUS_FILE_EXTENSIONS.includes(ext);
-      const mimeAllowed = !!asset.mimeType && ALLOWED_SYLLABUS_FILE_MIME_TYPES.includes(asset.mimeType);
-      if (!extAllowed && !mimeAllowed) {
+      const formatAllowed = ext
+        ? ALLOWED_SYLLABUS_FILE_EXTENSIONS.includes(ext)
+        : !!asset.mimeType && ALLOWED_SYLLABUS_FILE_MIME_TYPES.includes(asset.mimeType);
+      if (!formatAllowed) {
         toast.show('error', 'Unsupported File', `Please upload a supported file type (${ALLOWED_SYLLABUS_FILE_LABEL}).`);
         setIsEditingSyllabus(false);
         return;
