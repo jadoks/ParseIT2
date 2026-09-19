@@ -1927,7 +1927,21 @@ const fetchModules = useCallback(async (silent = false) => {
       showFeedback('error', 'Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
-    const files = assignmentFiles[selectedAssignment.id] || [];
+    // ✅ FIX (mirrors Assignments.tsx): Only ever submit the student's OWN
+    // items. `assignmentFiles` should already contain just student-added
+    // files/links, but if a teacher-attached file ever ends up mixed into
+    // this array (e.g. across an unsubmit -> edit -> resubmit cycle), it
+    // must not slip through here — otherwise it gets duplicated and
+    // re-uploaded as if it were a new student submission item. This mirrors
+    // the same `source !== 'teacher'` guard that getSubmittedFiles() already
+    // applies for display, plus an id-prefix check as a second safety net
+    // since teacher files are also stamped with a `teacher-file-...` id.
+    const isTeacherFile = (file: AssignmentFileUpload) =>
+      (file as any)?.source === 'teacher' || (file.id && file.id.startsWith('teacher-file-'));
+
+    const files = (assignmentFiles[selectedAssignment.id] || []).filter(
+      (file) => !isTeacherFile(file)
+    );
     if (files.length === 0) {
       showFeedback('error', 'No files', 'Please upload at least one file or link before submitting.');
       return;
