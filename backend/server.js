@@ -2682,6 +2682,28 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
     });
   }
 
+  // The MAIN class conversation for a class (type "class").
+  // Discussion rooms (type "room") are stored in the same collection with the
+  // SAME classId, so a plain `where("classId", "==", ...).limit(1)` can return a
+  // room instead of the main conversation. This never returns a room: it prefers
+  // type "class" and only falls back to a legacy doc that has no type at all.
+  async function findMainClassConversationDoc(classId) {
+    if (!classId) return null;
+
+    const snapshot = await db
+      .collection("messengerConversations")
+      .where("classId", "==", classId)
+      .get();
+
+    if (snapshot.empty) return null;
+
+    return (
+      snapshot.docs.find((doc) => doc.data()?.type === "class") ||
+      snapshot.docs.find((doc) => !doc.data()?.type) ||
+      null
+    );
+  }
+
   async function createClassMessengerConversation({
     classId,
     classCode,
@@ -8572,15 +8594,12 @@ app.post("/create-admin", async (req, res) => {
       // Student's class list just changed — their cached joined-classes is stale now.
       invalidateStudentJoinedClassesCache(student.studentId || normalizedStudentId);
 
-      const conversationSnapshot = await db
-        .collection("messengerConversations")
-        .where("classId", "==", classId)
-        .limit(1)
-        .get();
+      // Join the MAIN class conversation (type "class") — never a discussion room.
+      const mainConversationDoc = await findMainClassConversationDoc(classId);
 
-      if (!conversationSnapshot.empty) {
-        const conversationRef = conversationSnapshot.docs[0].ref;
-        const conversationData = conversationSnapshot.docs[0].data();
+      if (mainConversationDoc) {
+        const conversationRef = mainConversationDoc.ref;
+        const conversationData = mainConversationDoc.data() || {};
 
         const existingParticipants = Array.isArray(conversationData.participants)
           ? conversationData.participants
@@ -9524,15 +9543,11 @@ app.get(
           updatedAt: FieldValue.serverTimestamp(),
         });
 
-        const conversationSnapshot = await db
-          .collection("messengerConversations")
-          .where("classId", "==", memberData.classId)
-          .limit(1)
-          .get();
+        const mainConversationDoc = await findMainClassConversationDoc(memberData.classId);
 
-        if (!conversationSnapshot.empty && memberData?.userId) {
-          const conversationRef = conversationSnapshot.docs[0].ref;
-          const conversationData = conversationSnapshot.docs[0].data();
+        if (mainConversationDoc && memberData?.userId) {
+          const conversationRef = mainConversationDoc.ref;
+          const conversationData = mainConversationDoc.data() || {};
           const existingParticipants = Array.isArray(conversationData.participants)
             ? conversationData.participants
             : [];

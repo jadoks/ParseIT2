@@ -171,7 +171,12 @@ function DashboardTextArea({
 const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // Class banner upload — allowed formats: JPG, PNG, WEBP.
-const ALLOWED_BANNER_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// Includes the legacy "image/x-png" MIME type alongside "image/png": some
+// older tools, screenshot utilities, and even some current Windows/Paint
+// exports still tag PNG files this way, and without it a perfectly valid
+// PNG could get wrongly rejected if its filename/extension is also missing
+// or unusual (e.g. no extension at all, common for clipboard-pasted images).
+const ALLOWED_BANNER_MIME_TYPES = ['image/jpeg', 'image/png', 'image/x-png', 'image/webp'];
 const ALLOWED_BANNER_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 // launchImageLibrary uses the native OS photo picker on iOS/Android, which
@@ -187,9 +192,10 @@ const isAllowedBannerAsset = (
   mimeType: string | null | undefined,
   fileName: string | null | undefined
 ) => {
-  const normalizedMime = (mimeType || '').toLowerCase();
-  const dotIndex = (fileName || '').lastIndexOf('.');
-  const extension = dotIndex >= 0 ? (fileName as string).slice(dotIndex).toLowerCase() : '';
+  const normalizedMime = (mimeType || '').trim().toLowerCase();
+  const normalizedName = (fileName || '').trim();
+  const dotIndex = normalizedName.lastIndexOf('.');
+  const extension = dotIndex >= 0 ? normalizedName.slice(dotIndex).toLowerCase() : '';
 
   const mimeOk = normalizedMime !== '' && ALLOWED_BANNER_MIME_TYPES.includes(normalizedMime);
   const extOk = extension !== '' && ALLOWED_BANNER_EXTENSIONS.includes(extension);
@@ -201,6 +207,16 @@ const isAllowedBannerAsset = (
   // allowed image type; reject when we have no positive evidence at all
   // (e.g. mimeType empty and extension not a recognized image extension).
   return mimeOk || extOk;
+};
+
+// Collapses the legacy "image/x-png" MIME type down to the standard
+// "image/png" before it's stored/sent to the server, so the file's stored
+// contentType is always the standard one regardless of which variant the
+// source device/tool reported.
+const normalizeBannerMimeType = (mimeType: string | null | undefined): string => {
+  const normalized = (mimeType || '').trim().toLowerCase();
+  if (normalized === 'image/x-png') return 'image/png';
+  return normalized || 'image/jpeg';
 };
 const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -708,7 +724,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     const uri = asset?.uri;
     if (!isAllowedBannerAsset(asset?.type, asset?.fileName)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
     if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return; }
-    if (uri) { setClassBanner(uri); setClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setClassBannerMimeType(asset.type || 'image/jpeg'); }
+    if (uri) { setClassBanner(uri); setClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setClassBannerMimeType(normalizeBannerMimeType(asset.type)); }
   };
 
   const handlePickEditBanner = async () => {
@@ -719,7 +735,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     const uri = asset?.uri;
     if (!isAllowedBannerAsset(asset?.type, asset?.fileName)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
     if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return; }
-    if (uri) { setEditClassBanner(uri); setEditClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setEditClassBannerMimeType(asset.type || 'image/jpeg'); }
+    if (uri) { setEditClassBanner(uri); setEditClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setEditClassBannerMimeType(normalizeBannerMimeType(asset.type)); }
   };
 
   const toggleYear = (yearId: string) => {

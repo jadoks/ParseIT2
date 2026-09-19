@@ -48,33 +48,51 @@ type BannerFile = {
 
 const MAX_BANNER_SIZE_MB = 5;
 const MAX_BANNER_SIZE_BYTES = MAX_BANNER_SIZE_MB * 1024 * 1024;
-const ALLOWED_BANNER_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png"];
-const ALLOWED_BANNER_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+// Mirrors the teacher-side Create Class banner validation (TeacherDashboard.tsx):
+// allowed formats are JPG, PNG, WEBP. "image/x-png" is included alongside
+// "image/png" because some older tools, screenshot utilities, and even some
+// current Windows/Paint exports still tag PNG files with that legacy MIME
+// type — without it, a perfectly valid PNG could get wrongly rejected.
+const ALLOWED_BANNER_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/x-png", "image/webp"];
+const ALLOWED_BANNER_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
 // Some platforms (esp. web) don't report a mimeType for every file — e.g. a
 // browser has no registered MIME type for .tsx/.js, so `asset.mimeType`
 // comes back empty. We must NOT let a missing mimeType skip validation
 // ("fail open"); instead we check the extension too and only accept the
 // file if we have positive evidence it's an allowed image ("fail closed").
+//
+// Accept the file when EITHER signal is present AND positively confirms an
+// allowed image type (rather than requiring both to agree) — a picker/OS
+// quirk on one signal (e.g. a PNG reported as "image/x-png") shouldn't be
+// able to override a clean match on the other.
 const isAllowedImageAsset = (
   mimeType: string | null | undefined,
   name: string | null | undefined,
   allowedMimeTypes: string[],
   allowedExtensions: string[]
 ) => {
-  const normalizedMime = (mimeType || "").toLowerCase();
-  const dotIndex = (name || "").lastIndexOf(".");
-  const extension = dotIndex >= 0 ? (name as string).slice(dotIndex).toLowerCase() : "";
+  const normalizedMime = (mimeType || "").trim().toLowerCase();
+  const normalizedName = (name || "").trim();
+  const dotIndex = normalizedName.lastIndexOf(".");
+  const extension = dotIndex >= 0 ? normalizedName.slice(dotIndex).toLowerCase() : "";
 
   const mimeOk = normalizedMime !== "" && allowedMimeTypes.includes(normalizedMime);
   const extOk = extension !== "" && allowedExtensions.includes(extension);
 
-  // Require the extension to be a valid image extension. If a mimeType is
-  // present, it must also agree; if it's absent, the extension check alone
-  // is sufficient (native pickers can omit mimeType for legitimate images).
-  if (!extOk) return false;
-  if (normalizedMime !== "" && !mimeOk) return false;
-  return true;
+  return mimeOk || extOk;
+};
+
+// Collapses non-standard MIME type variants (e.g. the legacy "image/x-png",
+// or "image/jpg" which isn't a registered MIME type at all) down to their
+// standard form before the file is stored/sent to the server, so the
+// stored contentType is always the standard one regardless of which
+// variant the source device/tool reported.
+const normalizeBannerMimeType = (mimeType: string | null | undefined): string | null => {
+  const normalized = (mimeType || "").trim().toLowerCase();
+  if (normalized === "image/x-png") return "image/png";
+  if (normalized === "image/jpg") return "image/jpeg";
+  return normalized || null;
 };
 
 // One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
@@ -705,7 +723,7 @@ export default function AddClassModal({
           ALLOWED_BANNER_EXTENSIONS
         )
       ) {
-        showToast("Only JPG, JPEG, and PNG images are allowed.", "error");
+        showToast("Only JPG, PNG, and WEBP images are allowed.", "error");
         return;
       }
 
@@ -717,7 +735,7 @@ export default function AddClassModal({
       setBannerFile({
         uri: asset.uri,
         name: asset.name ?? null,
-        mimeType: asset.mimeType ?? null,
+        mimeType: normalizeBannerMimeType(asset.mimeType),
       });
     } catch (error) {
       console.error("Banner pick error:", error);
