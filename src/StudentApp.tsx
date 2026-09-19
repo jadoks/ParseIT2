@@ -829,9 +829,13 @@ const loadClassComments = useCallback(async (classId: string) => {
 // (fileUrl/storagePath). This just re-runs the same loader used on mount, so
 // it picks up anything the teacher changed (edited assignment, replaced file,
 // changed due date, etc.) while the student had the screen open.
+// ✅ FIX: this used to call loadJoinedClasses() NON-silently (and with a []
+// dep array, i.e. a stale closure), so every 15s poll from Assignments.tsx
+// flipped the isLoading* spinners and re-ran the full loading path. It now
+// runs in silent mode like the 8s background poll does.
 const refreshAssignmentCourseContent = useCallback(async () => {
-  await loadJoinedClasses();
-}, []);
+  await loadJoinedClasses({ silent: true });
+}, [currentStudent?.studentId]);
   
   // ✅ NEW: State to track which lesson should auto-open in CourseDetail
   const [autoOpenLessonId, setAutoOpenLessonId] = useState<string | null>(null);
@@ -1310,7 +1314,20 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             const studentOwnedFiles = (next[assignment.id] || []).filter(
               (f) => f.source !== 'teacher'
             );
-            next[assignment.id] = [...freshTeacherFiles, ...studentOwnedFiles];
+            // ✅ FIX: keep the existing array (same reference) when the teacher
+            // files are identical apart from their re-signed URLs, so the 8s/15s
+            // background polls don't hand the UI brand-new file objects.
+            const prevTeacherFiles = (next[assignment.id] || []).filter(
+              (f) => f.source === 'teacher'
+            );
+            const fileKey = (f: AssignmentFileUpload) =>
+              [f.id, f.fileName, f.fileType, f.storagePath || '', f.bucketPath || '', f.storagePath || f.bucketPath ? '' : f.fileUrl || ''].join('|');
+            const unchanged =
+              prevTeacherFiles.length === freshTeacherFiles.length &&
+              prevTeacherFiles.every((f, i) => fileKey(f) === fileKey(freshTeacherFiles[i]));
+            if (!unchanged || !next[assignment.id]) {
+              next[assignment.id] = [...freshTeacherFiles, ...studentOwnedFiles];
+            }
           });
         });
         return next;

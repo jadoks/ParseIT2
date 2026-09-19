@@ -799,12 +799,18 @@ const mapSubmissionToItems = (submission: any): any[] => {
 };
 
 // ✅ NEW: Same idea as fetchFreshSubmissionFile, but for the assignment's own
-// attachment (the file the teacher uploaded when creating/updating the
-// assignment). Re-hits /class-assignments/:classId, which always returns a
-// freshly-signed fileUrl, and picks out the matching assignment.
+// attachment(s) — the file(s) the teacher uploaded when creating/updating
+// the assignment. Re-hits /class-assignments/:classId, which the server
+// hydrates with freshly-signed URLs for EVERY file in the assignment's
+// multi-file `files` array (not just the legacy single attachment) — see
+// refreshAssignmentFileUrls() in server.js. Pass the specific file's
+// storagePath (preferred, stable) or id to resolve THAT file's fresh URL;
+// omitting both falls back to the legacy top-level fileUrl (the first/only
+// file on older assignments).
 const fetchFreshAssignmentFile = async (
   classIdForLookup: string | undefined,
-  assignmentId: string
+  assignmentId: string,
+  target?: { storagePath?: string | null; id?: string | null }
 ): Promise<string | null> => {
   if (!classIdForLookup) return null;
   try {
@@ -813,6 +819,18 @@ const fetchFreshAssignmentFile = async (
     const data = await response.json();
     if (Array.isArray(data)) {
       const match = data.find((item: any) => item.id === assignmentId);
+      if (!match) return null;
+
+      if (target?.storagePath || target?.id) {
+        const files = Array.isArray(match.files) ? match.files : [];
+        const matchedFile = files.find(
+          (f: any) =>
+            (target.storagePath && f?.storagePath === target.storagePath) ||
+            (target.id && f?.id === target.id)
+        );
+        if (matchedFile?.fileUrl) return matchedFile.fileUrl as string;
+      }
+
       if (match?.fileUrl) return match.fileUrl as string;
     }
   } catch (error) {
@@ -1006,29 +1024,32 @@ const handleDownloadPreview = async () => {
     setPreviewLoading(false);
   }
 };
-  // ✅ NEW: Preview the assignment's own attachment (the file the teacher
-  // uploaded when creating/updating the assignment) — separate from student
-  // submission files, but reuses the same inline Preview Modal.
-  const handlePreviewAssignmentAttachment = async () => {
-    // Assignment objects store the attachment URL under `fileUri` (see
-    // mapAssignment() in TeacherCourseDetail2.tsx, which maps the API's
-    // `fileUrl` field into `fileUri`). Fall back to `fileUrl` too in case
-    // that ever changes.
-    const assignmentFileUrl =
-      currentAssignment?.fileUri || (currentAssignment as any)?.fileUrl;
+  // ✅ UPDATED: Preview one of the assignment's own attachment(s) — the
+  // file(s) the teacher uploaded when creating/updating the assignment —
+  // separate from student submission files, but reuses the same inline
+  // Preview Modal. Takes the specific attachment to preview so it works for
+  // ANY file in a multi-file assignment, not just the legacy first/only one.
+  const handlePreviewAssignmentAttachment = async (attachment: {
+    id?: string;
+    fileName?: string;
+    fileUrl?: string;
+    fileType?: string;
+    storagePath?: string | null;
+  }) => {
+    const assignmentFileUrl = attachment.fileUrl;
 
-    if (!assignmentFileUrl || !currentAssignment?.fileName) {
+    if (!assignmentFileUrl || !attachment.fileName) {
       Alert.alert("No file", "This assignment has no attachment to preview.");
       return;
     }
 
     setPreviewItem({
-      fileName: currentAssignment.fileName,
+      fileName: attachment.fileName,
       url: assignmentFileUrl,
       isLink: false,
       submissionId: "",
-      fileType: currentAssignment.fileType,
-      storagePath: (currentAssignment as any).storagePath || null,
+      fileType: attachment.fileType,
+      storagePath: attachment.storagePath || null,
     });
     setPreviewVisible(true);
     setPreviewLoading(true);
@@ -1037,15 +1058,18 @@ const handleDownloadPreview = async () => {
     try {
       let resolvedUrl = assignmentFileUrl;
 
-      if (isTokenExpired(resolvedUrl) && currentAssignment.id) {
-        const freshUrl = await fetchFreshAssignmentFile(classId, currentAssignment.id);
+      if (isTokenExpired(resolvedUrl) && currentAssignment?.id) {
+        const freshUrl = await fetchFreshAssignmentFile(classId, currentAssignment.id, {
+          storagePath: attachment.storagePath,
+          id: attachment.id,
+        });
         if (freshUrl) {
           resolvedUrl = freshUrl;
           setPreviewItem((prev) => (prev ? { ...prev, url: freshUrl } : prev));
         }
       }
 
-      const viewerUrl = isImageFile(currentAssignment.fileName, currentAssignment.fileType)
+      const viewerUrl = isImageFile(attachment.fileName, attachment.fileType)
         ? resolvedUrl
         : getGoogleDocsViewerUrl(resolvedUrl);
 
@@ -1788,25 +1812,56 @@ const handleDownloadPreview = async () => {
           )}
         </View>
 
-        {/* ✅ NEW: Assignment attachment — the file the teacher uploaded when
-            creating/updating the assignment. Lets the teacher preview it
-            right from the submissions screen, and reminds them it can be
-            swapped out via "Update Assignment". */}
-        {!!currentAssignment?.fileName && (
+        {/* ✅ UPDATED: Assignment attachment(s) — every file the teacher
+            uploaded when creating/updating the assignment, not just the
+            legacy first one. `files` is the source of truth (matches
+            Assignment.files in TeacherCourseDetail2.tsx); we only fall back
+            to the legacy single fileName/fileUri fields for older
+            assignments that predate the multi-file `files` array. Lets the
+            teacher preview any of them right from the submissions screen,
+            and reminds them they can be swapped out via "Update
+            Assignment". */}
+        {(currentAssignment?.files?.length
+          ? currentAssignment.files
+          : currentAssignment?.fileName || currentAssignment?.fileUri
+            ? [
+                {
+                  id: currentAssignment.id,
+                  fileName: currentAssignment.fileName,
+                  fileUrl: currentAssignment.fileUri,
+                  fileType: currentAssignment.fileType,
+                  storagePath: (currentAssignment as any)?.storagePath || null,
+                },
+              ]
+            : []
+        ).map((file: any, index: number) => (
           <TouchableOpacity
+            key={file.id || file.storagePath || `${currentAssignment?.id}-attachment-${index}`}
             style={styles.assignmentAttachmentCard}
-            onPress={handlePreviewAssignmentAttachment}
+            onPress={() =>
+              handlePreviewAssignmentAttachment({
+                id: file.id,
+                fileName: file.fileName,
+                fileUrl: file.fileUrl,
+                fileType: file.fileType,
+                storagePath: file.storagePath,
+              })
+            }
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel={`Preview assignment attachment ${currentAssignment.fileName}`}
+            accessibilityLabel={`Preview assignment attachment ${file.fileName}`}
           >
             <View style={styles.assignmentAttachmentIconWrap}>
               <MaterialCommunityIcons name="paperclip" size={16} color="#D32F2F" />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.assignmentAttachmentLabel}>Assignment Attachment</Text>
+              <Text style={styles.assignmentAttachmentLabel}>
+                {currentAssignment && (currentAssignment.files?.length || 0) > 1
+                  ? `Assignment Attachment ${index + 1}`
+                  : 'Assignment Attachment'}
+              </Text>
               <Text style={styles.assignmentAttachmentName} numberOfLines={1}>
-                {currentAssignment.fileName}
+                {file.fileName}
               </Text>
             </View>
             <View style={styles.assignmentAttachmentPreviewBtn}>
@@ -1814,7 +1869,7 @@ const handleDownloadPreview = async () => {
               <Text style={styles.assignmentAttachmentPreviewText}>Preview</Text>
             </View>
           </TouchableOpacity>
-        )}
+        ))}
 
         <View style={styles.progressBarTrack}>
           <View style={[styles.progressBarFill, { width: `${completionPercent}%` }]} />

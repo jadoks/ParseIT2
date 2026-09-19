@@ -127,11 +127,20 @@ const TeacherAssignmentSection = ({
         </Text>
       </View>
 
-      {!!item.fileName && (
-        <Text style={styles.relatedPreviewText} numberOfLines={1}>
-          File: {item.fileName}
+      {(item.files?.length
+        ? item.files
+        : item.fileName || item.fileUri
+          ? [{ id: item.id, fileName: item.fileName }]
+          : []
+      ).map((file, index) => (
+        <Text
+          key={file.id || `${item.id}-file-${index}`}
+          style={styles.relatedPreviewText}
+          numberOfLines={1}
+        >
+          File: {file.fileName || 'Attachment'}
         </Text>
-      )}
+      ))}
 
       {item.assignmentType !== 'game_based' && (
         <View style={styles.recommendationBadge}>

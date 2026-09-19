@@ -1573,6 +1573,23 @@ const fetchModules = useCallback(async (silent = false) => {
     onConsumedAutoOpenAssignment?.();
   }, [autoOpenAssignmentId, safeCourse.assignments, completedActivityScores]);
 
+  // ✅ FIX (Assignment File flicker): the server re-signs every file URL on
+  // each poll, so comparing `fileUrl` / JSON.stringify(files) made the sync
+  // effect below think the assignment changed every few seconds and replace
+  // selectedAssignment, re-rendering the Assignment File section. Compare
+  // files by stable identity instead. When a storagePath/bucketPath exists the
+  // URL is ignored on purpose — the viewer re-signs from that path when the
+  // file is opened, so a stale URL is safe.
+  const fileIdentity = (f: any) =>
+    f?.storagePath || f?.bucketPath
+      ? [f.id, f.fileName || f.name, f.fileType, f.storagePath || '', f.bucketPath || ''].join('|')
+      : [f?.id, f?.fileName || f?.name, f?.fileType, f?.fileUrl || f?.fileUri || f?.uri || ''].join('|');
+  const sameFileList = (a?: any[], b?: any[]) => {
+    const x = (a || []).map(fileIdentity);
+    const y = (b || []).map(fileIdentity);
+    return x.length === y.length && x.every((v, i) => v === y[i]);
+  };
+
   // ✅ NEW: Whenever `course` (the source of truth from StudentApp) changes —
   // which happens after onRefreshCourseContent() re-fetches joined classes —
   // keep the currently-OPEN selectedAssignment's fields (title, dueDate,
@@ -1591,7 +1608,7 @@ const fetchModules = useCallback(async (silent = false) => {
         (prev as any).description === (freshMatch as any).description &&
         prev.points === (freshMatch as any).points &&
         prev.maxPoints === (freshMatch as any).maxPoints &&
-        prev.fileUrl === (freshMatch as any).fileUrl &&
+        ((freshMatch as any).storagePath ? true : prev.fileUrl === (freshMatch as any).fileUrl) &&
         prev.storagePath === (freshMatch as any).storagePath &&
         prev.numberOfAttempts === (freshMatch as any).numberOfAttempts &&
         // ✅ FIX: without this, a teacher flipping "Disable repository after
@@ -1601,7 +1618,7 @@ const fetchModules = useCallback(async (silent = false) => {
         // applied for that open session.
         !!(prev as any).repositoryDisabledAfterDue === !!(freshMatch as any).repositoryDisabledAfterDue &&
         JSON.stringify(prev.materialIds || []) === JSON.stringify((freshMatch as any).materialIds || []) &&
-        JSON.stringify((prev as any).files || []) === JSON.stringify((freshMatch as any).files || []);
+        sameFileList((prev as any).files, (freshMatch as any).files);
       if (sameContent) return prev;
       return { ...(freshMatch as any) };
     });
@@ -1858,9 +1875,15 @@ const fetchModules = useCallback(async (silent = false) => {
   const isAssignmentGraded = (assignment?: AssignmentItem | null) =>
     assignment?.status === "graded";
 
+  // Single source of truth for "the student's own items" (files + links).
+  // Used for the Your Uploads list, the submit-confirmation count, and the
+  // actual submit, so they can never disagree.
+  const isTeacherFile = (file: AssignmentFileUpload) =>
+    (file as any)?.source === "teacher" || !!(file.id && file.id.startsWith("teacher-file-"));
+
   const getSubmittedFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
-    return (assignmentFiles[assignment.id] || []).filter((f) => f.source !== "teacher");
+    return (assignmentFiles[assignment.id] || []).filter((file) => !isTeacherFile(file));
   };
 
   const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
@@ -1887,7 +1910,17 @@ const fetchModules = useCallback(async (silent = false) => {
       }));
     const topLevelUrl = getAssignmentFileUrl(assignment);
     if (topLevelUrl) {
-      const alreadyIncluded = mappedFiles.some((f) => f.fileUrl === topLevelUrl);
+      // ✅ FIX: dedupe by storagePath / file name too. Signed URLs differ on
+      // every fetch, so a URL-only match made the "main" card randomly
+      // appear/disappear (or duplicate) between polls.
+      const topStoragePath = (assignment as any)?.storagePath || (assignment as any)?.bucketPath || null;
+      const topFileName = getAssignmentFileName(assignment);
+      const alreadyIncluded = mappedFiles.some(
+        (f) =>
+          f.fileUrl === topLevelUrl ||
+          (!!topStoragePath && (f.storagePath === topStoragePath || f.bucketPath === topStoragePath)) ||
+          (!!topFileName && f.fileName === topFileName)
+      );
       if (!alreadyIncluded) {
         mappedFiles.unshift({
           id: `teacher-file-${assignment.id}-main`,
@@ -1936,12 +1969,7 @@ const fetchModules = useCallback(async (silent = false) => {
     // the same `source !== 'teacher'` guard that getSubmittedFiles() already
     // applies for display, plus an id-prefix check as a second safety net
     // since teacher files are also stamped with a `teacher-file-...` id.
-    const isTeacherFile = (file: AssignmentFileUpload) =>
-      (file as any)?.source === 'teacher' || (file.id && file.id.startsWith('teacher-file-'));
-
-    const files = (assignmentFiles[selectedAssignment.id] || []).filter(
-      (file) => !isTeacherFile(file)
-    );
+    const files = getSubmittedFiles(selectedAssignment);
     if (files.length === 0) {
       showFeedback('error', 'No files', 'Please upload at least one file or link before submitting.');
       return;
@@ -3922,9 +3950,7 @@ const fetchModules = useCallback(async (silent = false) => {
             <Text style={styles.deleteModalTitle}>Submit assignment?</Text>
             <Text style={styles.deleteModalMessage}>
               {(() => {
-                const itemCount = selectedAssignment
-                  ? (assignmentFiles[selectedAssignment.id] || []).length
-                  : 0;
+                const itemCount = getSubmittedFiles(selectedAssignment).length;
                 const itemLabel = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
                 const pastDue = isPastDueDate(selectedAssignment?.dueDate);
                 return `You're about to submit ${itemLabel} for "${selectedAssignment?.title ?? "this assignment"

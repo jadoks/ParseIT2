@@ -1274,11 +1274,15 @@ const Assignments = ({
     return assignment?.status === 'graded';
   };
 
+  // Single source of truth for "the student's own items" (files + links).
+  // Used for the Your Uploads list, the submit-confirmation count, and the
+  // actual submit, so they can never disagree.
+  const isTeacherFile = (file: AssignmentFileUpload) =>
+    (file as any)?.source === 'teacher' || !!(file.id && file.id.startsWith('teacher-file-'));
+
   const getSubmittedFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
-    return (assignmentFiles[assignment.id] || []).filter(
-      (file) => file.source !== 'teacher'
-    );
+    return (assignmentFiles[assignment.id] || []).filter((file) => !isTeacherFile(file));
   };
 
     const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
@@ -1414,12 +1418,7 @@ const Assignments = ({
     // `source !== 'teacher'` guard that getSubmittedFiles() already applies
     // for display, plus an id-prefix check as a second safety net since
     // teacher files are also stamped with a `teacher-file-...` id.
-    const isTeacherFile = (file: AssignmentFileUpload) =>
-      (file as any)?.source === 'teacher' || (file.id && file.id.startsWith('teacher-file-'));
-
-    const files = (assignmentFiles[selectedAssignment.id] || []).filter(
-      (file) => !isTeacherFile(file)
-    );
+    const files = getSubmittedFiles(selectedAssignment);
     if (files.length === 0) {
       Alert.alert('No files', 'Please upload at least one file or link before submitting.');
       return;
@@ -2681,9 +2680,7 @@ const Assignments = ({
             <Text style={styles.deleteModalTitle}>Submit assignment?</Text>
             <Text style={styles.deleteModalMessage}>
               {(() => {
-                const itemCount = selectedAssignment
-                  ? (assignmentFiles[selectedAssignment.id] || []).length
-                  : 0;
+                const itemCount = getSubmittedFiles(selectedAssignment).length;
                 const itemLabel = `${itemCount} item${itemCount === 1 ? '' : 's'}`;
                 const pastDue = isPastDueDate(selectedAssignment?.dueDate);
                 return `You're about to submit ${itemLabel} for "${selectedAssignment?.title ?? 'this assignment'
