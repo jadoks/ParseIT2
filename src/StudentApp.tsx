@@ -1376,7 +1376,19 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         const localOnly = (prev[assignmentId] || []).filter(
           (f) => f.isSubmitted === false && !knownIds.has(f.id)
         );
-        merged[assignmentId] = [...serverFiles, ...localOnly];
+        // ✅ FIX (Assignment File flicker): teacher-attached files are owned by
+        // the joinedCourses seeding effect above, NOT by submission state.
+        // Replacing the whole array here wiped them out on every
+        // onRefreshSubmissions() poll (until the next joinedCourses refresh
+        // re-seeded them), so the modal's "Assignment File" section blanked
+        // and reappeared every few seconds. Keep the teacher files already
+        // in state; only fall back to the incoming copy if none exist yet.
+        const isTeacher = (f: AssignmentFileUpload) => f.source === 'teacher';
+        const incomingTeacher = serverFiles.filter(isTeacher);
+        const incomingOther = serverFiles.filter((f) => !isTeacher(f));
+        const prevTeacher = (prev[assignmentId] || []).filter(isTeacher);
+        const teacherFiles = prevTeacher.length ? prevTeacher : incomingTeacher;
+        merged[assignmentId] = [...teacherFiles, ...incomingOther, ...localOnly];
       });
       return merged;
     });

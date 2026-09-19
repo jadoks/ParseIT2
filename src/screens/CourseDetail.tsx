@@ -1938,6 +1938,29 @@ const fetchModules = useCallback(async (silent = false) => {
     return mappedFiles;
   };
 
+  // ✅ FIX (Assignment File flicker): freeze the "Assignment File" list to a
+  // memoized snapshot keyed by stable file identity (ids/paths/names — NOT
+  // re-signed URLs), the same way `selectedAssignmentRelatedMaterials` is
+  // frozen above. Every 5s poll hands back new assignment/file object
+  // references; rebuilding this list from them on each render made the section
+  // re-map (and remount) even though nothing about the files had changed.
+  const teacherFilesContentKey = useMemo(() => {
+    if (!selectedAssignment) return "";
+    const list = ((selectedAssignment as any).files || []) as any[];
+    return [
+      list.map(fileIdentity).join(","),
+      (selectedAssignment as any).storagePath || (selectedAssignment as any).bucketPath || selectedAssignment.fileUrl || "",
+      (selectedAssignment as any).fileName || "",
+    ].join("#");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignment]);
+
+  const selectedAssignmentTeacherFiles = useMemo(() => {
+    if (!selectedAssignment) return [];
+    return getTeacherAssignmentFiles(selectedAssignment);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignment?.id, teacherFilesContentKey]);
+
   const syncSelectedAssignmentStatus = (status: AssignmentItem["status"]) => {
     if (!selectedAssignment) return;
     setSelectedAssignment((prev) => (prev ? { ...prev, status } : prev));
@@ -3328,9 +3351,9 @@ const fetchModules = useCallback(async (silent = false) => {
                     {/* Assignment File */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Assignment File</Text>
-                      {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
+                      {selectedAssignmentTeacherFiles.length > 0 ? (
                         <View>
-                          {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
+                          {selectedAssignmentTeacherFiles.map((file) => (
                             <View key={file.id} style={styles.attachmentFileCard}>
                               <Ionicons name="attach-outline" size={20} color="#D32F2F" />
                               <View style={styles.fileInfo}>
