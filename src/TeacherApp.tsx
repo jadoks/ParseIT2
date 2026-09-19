@@ -1048,6 +1048,36 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     }
   };
 
+  // Post owner hides / unhides an answer on their own post (Facebook-style).
+  // The child screen updates optimistically; we persist, then re-sync from the
+  // server (which also rolls the UI back if the request failed).
+  const handleSetCommunityAnswerHidden = async (
+    postId: string,
+    answerId: string,
+    hidden: boolean
+  ) => {
+    try {
+      const response = await apiFetch(
+        `/community-posts/${postId}/answers/${answerId}/visibility`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ hidden }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update answer visibility.');
+      }
+    } catch (error: any) {
+      Alert.alert(
+        hidden ? 'Hide Failed' : 'Unhide Failed',
+        error?.message || 'Unable to update answer visibility.'
+      );
+    } finally {
+      await loadCommunityPosts();
+    }
+  };
+
   const handleDrawerEmailUpdated = (nextEmail: string) => {
     setTeacherProfile((prev) => ({
       ...(prev || activeProfile || {}),
@@ -1314,6 +1344,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             onDeletePost={handleDeleteCommunityPost}
             onEditAnswer={handleEditCommunityAnswer}
             onDeleteAnswer={handleDeleteCommunityAnswer}
+            onSetAnswerHidden={handleSetCommunityAnswerHidden}
             userName={teacherFullName}
             userEmail={teacherEmail}
             profileImage={currentUserAvatar}
@@ -1374,6 +1405,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             onDeletePost={handleDeleteCommunityPost}
             onEditAnswer={handleEditCommunityAnswer}
             onDeleteAnswer={handleDeleteCommunityAnswer}
+            onSetAnswerHidden={handleSetCommunityAnswerHidden}
             onRefresh={loadCommunityPosts}
             refreshIntervalMs={8000}
           />

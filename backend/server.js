@@ -523,6 +523,59 @@ import multer from "multer";
     return next();
   }
 
+  // Same credential checks as requireAuth, but never rejects: returns the
+  // verified auth uid, or null for an anonymous / invalid caller. Used by
+  // routes that stay publicly readable but tailor the payload to the viewer.
+  async function getOptionalAuthUid(req) {
+    const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME] || "";
+    const bearerToken = getAuthBearerToken(req);
+    let decoded = null;
+
+    if (sessionCookie) {
+      try {
+        decoded = await admin.auth().verifySessionCookie(sessionCookie, true);
+      } catch (_) {
+        // fall through to bearer token
+      }
+    }
+
+    if (!decoded?.uid && bearerToken) {
+      try {
+        decoded = await admin.auth().verifyIdToken(bearerToken, false);
+      } catch (_) {
+        // treat as anonymous
+      }
+    }
+
+    return decoded?.uid || null;
+  }
+
+  // Does the signed-in user (profile + auth uid) match a community post/answer
+  // author? Matches on the stored auth uid when present, otherwise on
+  // role + the studentId / teacherId / adminId (or doc id) saved as authorId.
+  function isSameCommunityIdentity(profile, authUid, { authorId, authorUid, authorRole } = {}) {
+    const storedUid = normalizeOptionalText(authorUid);
+    if (authUid && storedUid && storedUid === String(authUid).trim()) return true;
+
+    if (!profile) return false;
+
+    const storedRole = normalizeOptionalText(authorRole);
+    if (storedRole && profile.role !== storedRole) return false;
+
+    const storedId = String(authorId || "").trim();
+    if (!storedId) return false;
+
+    return [
+      profile.data?.studentId,
+      profile.data?.teacherId,
+      profile.data?.adminId,
+      profile.id,
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).trim())
+      .includes(storedId);
+  }
+
   async function findUserProfileByAuthUid(authUid) {
     if (!authUid) return null;
 
@@ -14099,6 +14152,7 @@ app.get(
         "DELETE /community-posts/:postId",
         "POST /community-posts/:postId/answers",
         "PUT /community-posts/:postId/answers/:answerId",
+        "PUT /community-posts/:postId/answers/:answerId/visibility",
         "DELETE /community-posts/:postId/answers/:answerId",
 
         "GET /messenger-conversations",
@@ -15837,6 +15891,16 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
   app.get("/community-posts", async (req, res) => {
     try {
+      // Who is looking? Needed so answers hidden by a post owner are only
+      // delivered to that owner and to the answer's own author.
+      const viewerAuthUid = await getOptionalAuthUid(req);
+      const viewerProfile = viewerAuthUid
+        ? await findUserProfileByAuthUid(viewerAuthUid)
+        : null;
+      const viewerKey = viewerProfile
+        ? `${viewerProfile.role}:${viewerProfile.id}`
+        : null;
+
       const postsSnapshot = await db
         .collection("communityPosts")
         .orderBy("createdAt", "desc")
@@ -15845,6 +15909,12 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const posts = await Promise.all(
         postsSnapshot.docs.map(async (doc) => {
           const postData = doc.data() || {};
+
+          const viewerIsPostOwner = isSameCommunityIdentity(
+            viewerProfile,
+            viewerAuthUid,
+            postData
+          );
 
           const resolvedPostAvatar = await resolveCommunityUserAvatar(
             postData.authorRole,
@@ -15859,9 +15929,34 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
             .orderBy("createdAt", "asc")
             .get();
 
-          const answers = await Promise.all(
+          const answers = (await Promise.all(
             answersSnapshot.docs.map(async (answerDoc) => {
               const answerData = answerDoc.data() || {};
+
+              // Facebook-style hide, two layers:
+              // 1) hiddenByPostOwner — the post owner hid it: omitted for
+              //    everyone except the owner (isHidden: true -> "Unhide" stub)
+              //    and the answer's own author (sees it normally).
+              // 2) hiddenForUserKeys — a viewer hid it just for themselves:
+              //    only that viewer gets isHidden: true; others are unaffected.
+              let isHiddenForViewer = false;
+              if (answerData.hiddenByPostOwner === true) {
+                if (viewerIsPostOwner) {
+                  isHiddenForViewer = true;
+                } else if (
+                  !isSameCommunityIdentity(viewerProfile, viewerAuthUid, answerData)
+                ) {
+                  return null;
+                }
+              }
+
+              if (
+                viewerKey &&
+                Array.isArray(answerData.hiddenForUserKeys) &&
+                answerData.hiddenForUserKeys.includes(viewerKey)
+              ) {
+                isHiddenForViewer = true;
+              }
 
               const resolvedAnswerAvatar = await resolveCommunityUserAvatar(
                 answerData.authorRole,
@@ -15879,9 +15974,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
                   null,
                 answeredAt: formatFirestoreDateTime(answerData.createdAt),
                 message: answerData.message || "",
+                isHidden: isHiddenForViewer,
               };
             })
-          );
+          )).filter(Boolean);
 
           return {
             id: doc.id,
@@ -16142,6 +16238,92 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       });
     }
   });
+
+  // Hide / unhide an answer (Facebook-style). Scope is decided by WHO calls:
+  //  - the post owner -> hidden for everyone except the answer's author
+  //  - anyone else    -> hidden for that user only; others still see it
+  app.put(
+    "/community-posts/:postId/answers/:answerId/visibility",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { postId, answerId } = req.params;
+        const { hidden } = req.body || {};
+
+        if (typeof hidden !== "boolean") {
+          return res.status(400).json({ error: "hidden must be true or false." });
+        }
+
+        const postRef = db.collection("communityPosts").doc(postId);
+        const answerRef = postRef.collection("answers").doc(answerId);
+
+        const [postSnap, answerSnap] = await Promise.all([
+          postRef.get(),
+          answerRef.get(),
+        ]);
+
+        if (!postSnap.exists) {
+          return res.status(404).json({ error: "Post not found." });
+        }
+
+        if (!answerSnap.exists) {
+          return res.status(404).json({ error: "Answer not found." });
+        }
+
+        const profile = await findUserProfileByAuthUid(req.user.uid);
+        if (!profile) {
+          return res.status(403).json({ error: "User profile not found." });
+        }
+
+        const postData = postSnap.data() || {};
+        const answerData = answerSnap.data() || {};
+
+        if (isSameCommunityIdentity(profile, req.user.uid, answerData)) {
+          return res.status(400).json({
+            error: "You can't hide your own answer. Edit or delete it instead.",
+          });
+        }
+
+        const isPostOwner = isSameCommunityIdentity(profile, req.user.uid, postData);
+
+        if (isPostOwner) {
+          await answerRef.update(
+            hidden
+              ? {
+                  hiddenByPostOwner: true,
+                  hiddenAt: FieldValue.serverTimestamp(),
+                }
+              : {
+                  hiddenByPostOwner: false,
+                  hiddenAt: FieldValue.delete(),
+                }
+          );
+        } else {
+          const viewerKey = `${profile.role}:${profile.id}`;
+          await answerRef.update({
+            hiddenForUserKeys: hidden
+              ? FieldValue.arrayUnion(viewerKey)
+              : FieldValue.arrayRemove(viewerKey),
+          });
+        }
+
+        return res.json({
+          success: true,
+          message: hidden ? "Answer hidden." : "Answer unhidden.",
+          data: {
+            id: answerId,
+            isHidden: hidden,
+            scope: isPostOwner ? "everyone" : "me",
+          },
+        });
+      } catch (error) {
+        console.error("Update answer visibility error:", error);
+        return res.status(500).json({
+          error: error.message || "Failed to update answer visibility.",
+        });
+      }
+    }
+  );
 
   app.delete("/community-posts/:postId/answers/:answerId", async (req, res) => {
     try {

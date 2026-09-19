@@ -1918,6 +1918,37 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     }
   };
 
+  // Post owner hides / unhides an answer on their own post (Facebook-style).
+  // Persisted on the server; patched in place (optimistic) and rolled back on failure.
+  const handleSetCommunityAnswerHidden = async (postId: string, answerId: string, hidden: boolean) => {
+    const applyHidden = (value: boolean) =>
+      setCommunityPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                answers: post.answers.map((answer) =>
+                  answer.id === answerId ? { ...answer, isHidden: value } : answer
+                ),
+              }
+            : post
+        )
+      );
+    applyHidden(hidden);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}/visibility`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to update answer visibility.');
+    } catch (error: any) {
+      applyHidden(!hidden);
+      Alert.alert(hidden ? 'Hide Failed' : 'Unhide Failed', error?.message || 'Unable to update answer visibility.');
+    }
+  };
+
   useEffect(() => { loadCommunityPosts(); }, []);
 
   const getScorePercent = (assignment: { status: 'pending' | 'submitted' | 'graded' | 'late'; points?: number; maxPoints?: number }) => {
@@ -2794,6 +2825,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         onDeletePost={handleDeleteCommunityPost}
         onEditAnswer={handleEditCommunityAnswer}
         onDeleteAnswer={handleDeleteCommunityAnswer}
+        onSetAnswerHidden={handleSetCommunityAnswerHidden}
         userName={currentUserName}
         userEmail={currentUserEmail}
         profileImage={currentUserAvatar}
@@ -3082,6 +3114,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onDeletePost={handleDeleteCommunityPost} 
           onEditAnswer={handleEditCommunityAnswer} 
           onDeleteAnswer={handleDeleteCommunityAnswer} 
+          onSetAnswerHidden={handleSetCommunityAnswerHidden}
           initialPostId={communityInitialPostId} 
           // 🔥 NEW — silent background refresh, polled from inside Community
           // (paused automatically while a modal/dropdown is open there)

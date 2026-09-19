@@ -47,6 +47,8 @@ interface ProfileProps {
   onDeletePost?: (postId: string) => void;
   onEditAnswer?: (postId: string, answerId: string, message: string) => void;
   onDeleteAnswer?: (postId: string, answerId: string) => void;
+  // Post owner hides/unhides an answer on their own post (Facebook-style).
+  onSetAnswerHidden?: (postId: string, answerId: string, hidden: boolean) => void;
   userName?: string;
   userEmail?: string;
   profileImage?: any;
@@ -177,6 +179,7 @@ const Profile: React.FC<ProfileProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
+  onSetAnswerHidden,
   userName,
   userEmail,
   profileImage,
@@ -212,7 +215,6 @@ const Profile: React.FC<ProfileProps> = ({
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostText, setEditPostText] = useState('');
   const [editPostModalVisible, setEditPostModalVisible] = useState(false);
-  const [hiddenAnswersByPost, setHiddenAnswersByPost] = useState<Record<string, string[]>>({});
   const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
   const [editAnswerText, setEditAnswerText] = useState('');
   const [editAnswerModalVisible, setEditAnswerModalVisible] = useState(false);
@@ -348,14 +350,6 @@ useEffect(() => {
     () => normalizeImageSource(refreshedBannerImageUrl || bannerImage),
     [bannerImage, refreshedBannerImageUrl]
   );
-
-  const visibleAnswers = useMemo(() => {
-    if (!selectedPost) return [];
-    const hiddenForSelectedPost = hiddenAnswersByPost[selectedPost.id] || [];
-    return selectedPost.answers.filter(
-      (answer) => !hiddenForSelectedPost.includes(answer.id)
-    );
-  }, [selectedPost, hiddenAnswersByPost]);
 
   const cropViewport = useMemo(() => {
     const modalMaxWidth = Math.min(width - 32, isLargeScreen ? 760 : 520);
@@ -886,15 +880,102 @@ useEffect(() => {
     reopenAnswersModal();
   };
 
-  const handleHideAnswer = (answerId: string) => {
+  // ---- Facebook-style "Hide answer" -------------------------------------
+  // Anyone can hide an answer that isn't their own. Persisted on the server
+  // (PUT .../answers/:answerId/visibility) and the server decides the scope:
+  //  - On SOMEONE ELSE'S post -> hidden for YOU only; others still see it.
+  //  - On YOUR OWN post (post owner) -> hidden for everyone except the
+  //    answer's author, who still sees it normally (like Facebook).
+  // Either way the hider sees a collapsed "Answer hidden" stub with Unhide.
+  const isSelectedPostOwner = !!selectedPost;
+  const answersForSelectedPost = selectedPost?.answers ?? [];
+
+  const handleToggleAnswerHidden = (answerId: string, hidden: boolean) => {
     if (!selectedPostId) return;
+
     closeAnswerDropdown();
     closePostDropdown();
-    setHiddenAnswersByPost((prev) => ({
-      ...prev,
-      [selectedPostId]: [...(prev[selectedPostId] || []), answerId],
-    }));
-    showToast('Answer hidden.', 'info');
+
+    // Optimistic — the parent persists it and rolls back / refetches on failure.
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === answerId ? { ...answer, isHidden: hidden } : answer
+              ),
+            }
+          : post
+      )
+    );
+
+    onSetAnswerHidden?.(selectedPostId, answerId, hidden);
+    showToast(
+      hidden
+        ? isSelectedPostOwner
+          ? 'Answer hidden. Only you and its author can see it.'
+          : 'Answer hidden for you. Others can still see it.'
+        : 'Answer unhidden.',
+      'info'
+    );
+  };
+
+  const renderAnswerItem = (answer: CommunityAnswer) => {
+    const isOwnAnswer = answer.userName === safeUserName;
+    const canHideAnswer = !isOwnAnswer;
+
+    // Collapsed placeholder — shown only to the person who hid the answer.
+    if (answer.isHidden && canHideAnswer) {
+      return (
+        <View key={answer.id} style={styles.hiddenAnswerCard}>
+          <View style={styles.hiddenAnswerIconCircle}>
+            <Ionicons name="eye-off" size={14} color="#fff" />
+          </View>
+          <View style={styles.hiddenAnswerTextWrap}>
+            <Text style={styles.hiddenAnswerTitle}>Answer hidden</Text>
+            <Text style={styles.hiddenAnswerSubtitle} numberOfLines={2}>
+              {isSelectedPostOwner
+                ? `Only you and ${answer.userName} can see this answer.`
+                : 'Hidden for you only. Others can still see it.'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.unhideButton}
+            onPress={() => handleToggleAnswerHidden(answer.id, false)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.unhideButtonText}>Unhide</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View key={answer.id} style={styles.answerCard}>
+        <View style={styles.answerPreviewHeader}>
+          <View style={styles.userRow}>
+            {renderProfileImage(
+              normalizeImageSource(answer.avatar),
+              styles.answerAvatar
+            )}
+            <View style={{ marginLeft: 8, flex: 1 }}>
+              <Text style={styles.answerUserName}>{answer.userName}</Text>
+              <Text style={styles.answerDate}>{answer.answeredAt}</Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={(event) => openAnswerDropdown(event, answer)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="ellipsis-vertical" size={18} color="#555" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <Text style={styles.answerPreviewText}>{answer.message}</Text>
+      </View>
+    );
   };
 
   const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
@@ -1721,36 +1802,8 @@ useEffect(() => {
                       keyboardShouldPersistTaps="handled"
                       scrollEventThrottle={16}
                     >
-                      {visibleAnswers.length > 0 ? (
-                        visibleAnswers.map((answer) => (
-                          <View key={answer.id} style={styles.answerCard}>
-                            <View style={styles.answerPreviewHeader}>
-                              <View style={styles.userRow}>
-                                {renderProfileImage(
-                                  normalizeImageSource(answer.avatar),
-                                  styles.answerAvatar
-                                )}
-                                <View style={{ marginLeft: 8, flex: 1 }}>
-                                  <Text style={styles.answerUserName}>{answer.userName}</Text>
-                                  <Text style={styles.answerDate}>{answer.answeredAt}</Text>
-                                </View>
-                                <TouchableOpacity
-                                  onPress={(event) => openAnswerDropdown(event, answer)}
-                                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                >
-                                  <Ionicons
-                                    name="ellipsis-vertical"
-                                    size={18}
-                                    color="#555"
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                            <Text style={styles.answerPreviewText}>
-                              {answer.message}
-                            </Text>
-                          </View>
-                        ))
+                      {answersForSelectedPost.length > 0 ? (
+                        answersForSelectedPost.map((answer) => renderAnswerItem(answer))
                       ) : (
                         <Text style={styles.noAnswersText}>No answers yet.</Text>
                       )}
@@ -1847,12 +1900,12 @@ useEffect(() => {
                       ) : (
                         <TouchableOpacity
                           style={styles.menuItem}
-                          onPress={() => handleHideAnswer(answerDropdownState.answer.id)}
+                          onPress={() => handleToggleAnswerHidden(answerDropdownState.answer.id, true)}
                         >
                           <View style={styles.hideIconCircle}>
                             <Ionicons name="eye-off" size={13} color="#fff" />
                           </View>
-                          <Text style={styles.menuText}>Hide</Text>
+                          <Text style={styles.menuText}>Hide Answer</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -2277,6 +2330,52 @@ askText: {
     paddingRight: 8,
     paddingBottom: 8,
   },
+  hiddenAnswerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E1E3E6',
+    borderStyle: 'dashed',
+    marginBottom: 10,
+  },
+  hiddenAnswerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#9AA0A6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hiddenAnswerTextWrap: {
+    flex: 1,
+    marginLeft: 10,
+    marginRight: 8,
+  },
+  hiddenAnswerTitle: { fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#444',
+  },
+  hiddenAnswerSubtitle: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+  },
+  unhideButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#E4E6EB',
+  },
+  unhideButtonText: { fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#222',
+  },
+
   answerCard: {
     backgroundColor: '#F8F8F8',
     borderRadius: 16,
