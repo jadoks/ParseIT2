@@ -1929,7 +1929,12 @@ const styles = StyleSheet.create({
   emptyClassesBox: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 14, backgroundColor: '#FAFAFA' },
   emptyClassesText: { color: '#6B7280', fontSize: 13, textAlign: 'center', fontFamily },
 
-  modalButtonRow: { flexDirection: 'row', gap: 10 },
+  // alignSelf: 'stretch' makes this row span its parent's full width even
+  // when the parent uses alignItems: 'center' (e.g. confirmDeleteCard) —
+  // without it, the row shrink-wraps to its content and the flex: 1 on
+  // each button below has nothing to stretch into, leaving them small and
+  // centered instead of splitting the row evenly.
+  modalButtonRow: { flexDirection: 'row', gap: 10, alignSelf: 'stretch' },
   cancelBtn: { flex: 1, backgroundColor: '#F3F4F6', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   cancelBtnText: { color: '#374151', fontWeight: WEIGHT_EMPHASIS, fontSize: 14, fontFamily },
   confirmBtn: { flex: 1, backgroundColor: '#B71C1C', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
