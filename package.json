@@ -80,6 +80,7 @@
     "react-native-worklets": "0.5.1",
     "react-native-youtube-iframe": "^2.4.1",
     "recharts": "^3.8.0",
+    "sharp": "^0.35.4",
     "word-extractor": "^1.0.4",
     "xlsx": "^0.18.5"
   },

@@ -23,6 +23,7 @@
     "officeparser": "^7.1.0",
     "pdf-parse": "^1.1.1",
     "resend": "^6.18.0",
+    "sharp": "^0.35.4",
     "word-extractor": "^1.0.4",
     "xlsx": "^0.18.5"
   }
