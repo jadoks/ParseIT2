@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import AvatarImage, { thumbCacheKey } from '../components/AvatarImage';
 import PostQueryModal from '../components/PostQueryModal';
 import { CommunityAnswer, CommunityPost } from './Community';
 // 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
@@ -93,7 +94,10 @@ type ToastType = 'success' | 'error' | 'info';
 // ---- Cache-aware signed-URL refresh for the student's own profile/banner images. ----
 const refreshUserImageUrl = async (
   entityId: string,
-  storagePath?: string | null
+  storagePath?: string | null,
+  // Optional avatar variant: 'thumb' (160px) for post/answer avatars,
+  // 'md' (512px) for the big profile photo. Omit for banners / originals.
+  size?: 'thumb' | 'md'
 ): Promise<string | null> => {
   if (!storagePath) return null;
   // Cache hit — skip the network call entirely.
@@ -102,7 +106,7 @@ const refreshUserImageUrl = async (
   try {
     const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
-      body: JSON.stringify({ storagePath }),
+      body: JSON.stringify(size ? { storagePath, size } : { storagePath }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -320,7 +324,7 @@ useEffect(() => {
     const refreshProfileImages = async () => {
       const [nextProfileUrl, nextBannerUrl] = await Promise.all([
         profileImageStoragePath
-          ? refreshUserImageUrl('profile', profileImageStoragePath)
+          ? refreshUserImageUrl('profile', profileImageStoragePath, 'md')
           : Promise.resolve(null),
         bannerImageStoragePath
           ? refreshUserImageUrl('banner', bannerImageStoragePath)
@@ -668,7 +672,7 @@ useEffect(() => {
             : [{ resize: { width: 1400, height: 600 } }]),
         ],
         {
-          compress: 0.95,
+          compress: 0.8,
           format: ImageManipulator.SaveFormat.JPEG,
           base64: false,
         }
@@ -957,7 +961,8 @@ useEffect(() => {
           <View style={styles.userRow}>
             {renderProfileImage(
               normalizeImageSource(answer.avatar),
-              styles.answerAvatar
+              styles.answerAvatar,
+              thumbCacheKey(answer.avatarStoragePath)
             )}
             <View style={{ marginLeft: 8, flex: 1 }}>
               <Text style={styles.answerUserName}>{answer.userName}</Text>
@@ -978,9 +983,13 @@ useEffect(() => {
     );
   };
 
-  const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
+  const renderProfileImage = (
+    source: ImageSourcePropType | undefined,
+    style: any,
+    cacheKey?: string | null
+  ) => {
     if (source) {
-      return <Image source={source} style={style} resizeMode="cover" />;
+      return <AvatarImage source={source} style={style} cacheKey={cacheKey} />;
     }
     return (
       <View style={[style, styles.imagePlaceholder]}>
@@ -1212,7 +1221,8 @@ useEffect(() => {
                         height: isSmallPhone ? 36 : 40,
                         borderRadius: isSmallPhone ? 18 : 20,
                       },
-                    ]
+                    ],
+                    thumbCacheKey(post.avatarStoragePath)
                   )}
                   <View style={{ flex: 1, marginLeft: 8 }}>
                     <Text

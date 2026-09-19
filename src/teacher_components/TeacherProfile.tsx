@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import AvatarImage, { thumbCacheKey } from '../components/AvatarImage';
 import { CommunityAnswer, CommunityPost } from './TeacherCommunity';
 import PostQueryModal from './TeacherPostQueryModal';
 // 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
@@ -99,7 +100,10 @@ type ToastType = 'success' | 'error' | 'info';
 // and also for post/answer avatars (mirrors TeacherCommunity's implementation). ----
 const refreshUserImageUrl = async (
   entityId: string,
-  storagePath?: string | null
+  storagePath?: string | null,
+  // Optional avatar variant: 'thumb' (160px) for post/answer avatars,
+  // 'md' (512px) for the big profile photo. Omit for banners / originals.
+  size?: 'thumb' | 'md'
 ): Promise<string | null> => {
   if (!storagePath) return null;
   // Cache hit — skip the network call entirely.
@@ -108,7 +112,7 @@ const refreshUserImageUrl = async (
   try {
     const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
-      body: JSON.stringify({ storagePath }),
+      body: JSON.stringify(size ? { storagePath, size } : { storagePath }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -332,7 +336,7 @@ const Profile: React.FC<ProfileProps> = ({
     const refreshProfileImages = async () => {
       const [nextProfileUrl, nextBannerUrl] = await Promise.all([
         profileImageStoragePath
-          ? refreshUserImageUrl('profile', profileImageStoragePath)
+          ? refreshUserImageUrl('profile', profileImageStoragePath, 'md')
           : Promise.resolve(null),
         bannerImageStoragePath
           ? refreshUserImageUrl('banner', bannerImageStoragePath)
@@ -378,9 +382,21 @@ const Profile: React.FC<ProfileProps> = ({
       const nextPostAvatars: Record<string, string> = {};
       const nextAnswerAvatars: Record<string, string> = {};
 
+      // One request per unique avatar per pass, not one per post/answer
+      // (the same author often appears on many posts).
+      const urlByPath = new Map<string, Promise<string | null>>();
+      const resolveAvatarUrl = (entityId: string, path: string) => {
+        let pending = urlByPath.get(path);
+        if (!pending) {
+          pending = refreshUserImageUrl(entityId, path, 'thumb');
+          urlByPath.set(path, pending);
+        }
+        return pending;
+      };
+
       for (const post of localPosts) {
         if (post.avatarStoragePath) {
-          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
+          const url = await resolveAvatarUrl(post.id, post.avatarStoragePath);
           if (url) {
             nextPostAvatars[post.id] = url;
           }
@@ -388,7 +404,7 @@ const Profile: React.FC<ProfileProps> = ({
 
         for (const answer of post.answers || []) {
           if (answer.avatarStoragePath) {
-            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
+            const url = await resolveAvatarUrl(answer.id, answer.avatarStoragePath);
             if (url) {
               nextAnswerAvatars[answer.id] = url;
             }
@@ -731,7 +747,7 @@ const Profile: React.FC<ProfileProps> = ({
             : [{ resize: { width: 1400, height: 600 } }]),
         ],
         {
-          compress: 0.95,
+          compress: 0.8,
           format: ImageManipulator.SaveFormat.JPEG,
           base64: false,
         }
@@ -1013,7 +1029,8 @@ const Profile: React.FC<ProfileProps> = ({
           <View style={styles.userRow}>
             {renderProfileImage(
               normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar),
-              styles.answerAvatar
+              styles.answerAvatar,
+              thumbCacheKey(answer.avatarStoragePath)
             )}
             <View style={{ marginLeft: 8, flex: 1 }}>
               <Text style={styles.answerUserName}>{answer.userName}</Text>
@@ -1034,9 +1051,13 @@ const Profile: React.FC<ProfileProps> = ({
     );
   };
 
-  const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
+  const renderProfileImage = (
+    source: ImageSourcePropType | undefined,
+    style: any,
+    cacheKey?: string | null
+  ) => {
     if (source) {
-      return <Image source={source} style={style} resizeMode="cover" />;
+      return <AvatarImage source={source} style={style} cacheKey={cacheKey} />;
     }
     return (
       <View style={[style, styles.imagePlaceholder]}>
@@ -1252,7 +1273,8 @@ const Profile: React.FC<ProfileProps> = ({
                 <View style={styles.userRow}>
                   {renderProfileImage(
                     normalizeImageSource(refreshedPostAvatars[post.id] || post.avatar),
-                    styles.postAvatar
+                    styles.postAvatar,
+                    thumbCacheKey(post.avatarStoragePath)
                   )}
                   <View style={{ flex: 1, marginLeft: 8 }}>
                     <Text style={styles.postName} numberOfLines={1}>

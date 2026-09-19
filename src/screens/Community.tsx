@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import AvatarImage, { thumbCacheKey } from '../components/AvatarImage';
 import PostQueryModal from '../components/PostQueryModal'; // Ensure this path is correct for your project structure
 
 // 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
@@ -104,7 +105,10 @@ type ToastType = 'success' | 'error' | 'info';
 // naturally falls out of scope once its TTL passes (see userImageUrlCache).
 const refreshUserImageUrl = async (
   entityId: string,
-  storagePath?: string | null
+  storagePath?: string | null,
+  // Optional avatar variant: 'thumb' (160px) for post/answer avatars,
+  // 'md' (512px) for the big profile photo. Omit for banners / originals.
+  size?: 'thumb' | 'md'
 ): Promise<string | null> => {
   if (!storagePath) return null;
 
@@ -115,7 +119,7 @@ const refreshUserImageUrl = async (
   try {
     const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
-      body: JSON.stringify({ storagePath }),
+      body: JSON.stringify(size ? { storagePath, size } : { storagePath }),
     });
 
     const data = await response.json();
@@ -311,9 +315,21 @@ const Community: React.FC<CommunityProps> = ({
       const nextPostAvatars: Record<string, string> = {};
       const nextAnswerAvatars: Record<string, string> = {};
 
+      // One request per unique avatar per pass, not one per post/answer
+      // (the same author often appears on many posts).
+      const urlByPath = new Map<string, Promise<string | null>>();
+      const resolveAvatarUrl = (entityId: string, path: string) => {
+        let pending = urlByPath.get(path);
+        if (!pending) {
+          pending = refreshUserImageUrl(entityId, path, 'thumb');
+          urlByPath.set(path, pending);
+        }
+        return pending;
+      };
+
       for (const post of localPosts) {
         if (post.avatarStoragePath) {
-          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
+          const url = await resolveAvatarUrl(post.id, post.avatarStoragePath);
           if (url) {
             nextPostAvatars[post.id] = url;
           }
@@ -321,7 +337,7 @@ const Community: React.FC<CommunityProps> = ({
 
         for (const answer of post.answers || []) {
           if (answer.avatarStoragePath) {
-            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
+            const url = await resolveAvatarUrl(answer.id, answer.avatarStoragePath);
             if (url) {
               nextAnswerAvatars[answer.id] = url;
             }
@@ -696,10 +712,10 @@ const Community: React.FC<CommunityProps> = ({
       <View key={answer.id} style={styles.answerCard}>
         <View style={styles.answerPreviewHeader}>
           <View style={styles.userRow}>
-            <Image
+            <AvatarImage
               source={normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar)}
+              cacheKey={thumbCacheKey(answer.avatarStoragePath)}
               style={styles.answerAvatar}
-              resizeMode="cover"
             />
             <View style={{ marginLeft: 8, flex: 1 }}>
               <Text style={styles.answerUserName}>{answer.userName}</Text>
@@ -725,10 +741,10 @@ const Community: React.FC<CommunityProps> = ({
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
           <View style={styles.userRow}>
-            <Image
+            <AvatarImage
               source={normalizeImageSource(refreshedPostAvatars[item.id] || item.avatar)}
+              cacheKey={thumbCacheKey(item.avatarStoragePath)}
               style={styles.postAvatar}
-              resizeMode="cover"
             />
             <View style={{ marginLeft: 8, flex: 1 }}>
               <Text style={styles.postUserName}>{item.userName}</Text>

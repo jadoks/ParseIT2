@@ -2,7 +2,6 @@ import { signOut } from 'firebase/auth';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   LayoutChangeEvent,
   Modal,
   Platform,
@@ -20,6 +19,7 @@ import Feather from 'react-native-vector-icons/Feather';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
+import AvatarImage, { thumbCacheKey } from '../components/AvatarImage';
 // 🔥 Import shared API and Cache utilities
 import Svg, { Path } from 'react-native-svg';
 import { apiFetch } from '../services/api';
@@ -118,20 +118,21 @@ const refreshUserImageUrl = async (
 ): Promise<string | null> => {
   if (!storagePath) return null;
   if (!bypassCache) {
-    const cached = getCachedUserImageUrl(entityId, storagePath);
+    const cached = getCachedUserImageUrl(`${entityId}:thumb`, storagePath);
     if (cached) return cached;
   }
   try {
     const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
-      body: JSON.stringify({ storagePath }),
+      // The drawer avatar is a 50px circle, so ask for the small variant.
+      body: JSON.stringify({ storagePath, size: 'thumb' }),
     });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data?.error || 'Unable to refresh user image.');
     }
     if (data?.url) {
-      setCachedUserImageUrl(entityId, storagePath, data.url);
+      setCachedUserImageUrl(`${entityId}:thumb`, storagePath, data.url);
       return data.url;
     }
     return null;
@@ -296,7 +297,11 @@ const TeacherDrawerMenu = ({
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
 
   // 👇 State for refreshed avatar URL
-  const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(null);
+  const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(() =>
+    userAvatarStoragePath
+      ? getCachedUserImageUrl(`${userId}:thumb`, userAvatarStoragePath) || null
+      : null
+  );
 
   // ✅ Toast state — same shape/usage as the Admin Settings flow, replacing
   // Alert.alert everywhere in this file.
@@ -708,9 +713,13 @@ const TeacherDrawerMenu = ({
   };
 
   // 👇 Determine final avatar source
+  // While the small variant is loading, show the placeholder instead of the
+  // full-size `userAvatar` (which can be a multi-MB original).
   const finalAvatarSource = refreshedAvatarUrl
     ? { uri: refreshedAvatarUrl }
-    : normalizeImageSource(userAvatar);
+    : userAvatarStoragePath
+      ? DEFAULT_AVATAR
+      : normalizeImageSource(userAvatar);
 
   return (
     <View
@@ -746,10 +755,10 @@ const TeacherDrawerMenu = ({
         />
       </Svg>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
-        <Image
+        <AvatarImage
           source={finalAvatarSource}
+          cacheKey={refreshedAvatarUrl ? thumbCacheKey(userAvatarStoragePath) : undefined}
           style={styles.avatar}
-          resizeMode="cover"
           onError={() => {
             // 🔥 FIX: if the signed URL expired before the next 5-minute
             // refresh tick (e.g. the tab was backgrounded/throttled), force

@@ -14,6 +14,7 @@ import zlib from "zlib";
   import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
+import { createAvatarThumbs } from "./avatarThumbs.js";
 
   import officeparser from "officeparser";
 
@@ -806,6 +807,9 @@ async function createReadSignedUrlIfExists(storagePath) {
   }
 }
  
+
+  // Small cached avatar variants ("thumb" 160px, "md" 512px). See avatarThumbs.js.
+  const avatarThumbs = createAvatarThumbs({ bucket, createReadSignedUrl });
 
   async function hydrateClassBannerUrl(classData = {}) {
     const refreshedBannerUrl = await createReadSignedUrlIfExists(
@@ -3359,7 +3363,17 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
         return res.status(404).json({ error: "File not found." });
       }
 
-      const url = await createReadSignedUrl(storagePath);
+      // Optional avatar variant. Only honored for profile photos (never banners,
+      // which aren't square). Falls back to the original if a variant fails.
+      const size = req.body?.size;
+      const wantsVariant =
+        (size === "thumb" || size === "md") &&
+        (storagePath.startsWith("user-profiles/") ||
+          storagePath === DEFAULT_PROFILE_IMAGE_STORAGE_PATH);
+
+      const url =
+        (wantsVariant ? await avatarThumbs.getUrl(storagePath, size) : null) ||
+        (await createReadSignedUrl(storagePath));
 
       return res.json({
         success: true,
@@ -9654,7 +9668,9 @@ app.get(
           let hydratedAvatarUrl = conversation.avatarUrl || null;
           if (conversation.avatarStoragePath) {
             try {
-              const freshUrl = await createReadSignedUrlIfExists(conversation.avatarStoragePath);
+              const freshUrl =
+                (await avatarThumbs.getUrl(conversation.avatarStoragePath, "md")) ||
+                (await createReadSignedUrlIfExists(conversation.avatarStoragePath));
               if (freshUrl) hydratedAvatarUrl = freshUrl;
             } catch (e) {
               console.warn("Failed to hydrate conversation avatar:", e?.message);
@@ -15628,9 +15644,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       );
 
       if (profileImageStoragePath) {
-        const freshAvatar = await createReadSignedUrlIfExists(
-          profileImageStoragePath
-        );
+        const freshAvatar =
+          (await avatarThumbs.getUrl(profileImageStoragePath, "thumb")) ||
+          (await createReadSignedUrlIfExists(profileImageStoragePath));
 
         return {
           avatar: freshAvatar || null,
@@ -16384,9 +16400,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     const storagePath = `${folder}/${userId}/${Date.now()}-${safeFileName}`;
     const file = bucket.file(storagePath);
 
-    await file.save(Buffer.from(cleanedBase64, "base64"), {
+    // Profile photos are only ever shown as small circles, so cap them at 512px
+    // instead of storing whatever the client sent (a 10 MB original is common).
+    // If the buffer can't be processed we keep the original bytes (old behavior).
+    let uploadBuffer = Buffer.from(cleanedBase64, "base64");
+    let uploadMimeType = safeMimeType;
+    if (folder === "user-profiles") {
+      try {
+        uploadBuffer = await avatarThumbs.shrinkUpload(uploadBuffer);
+        uploadMimeType = "image/jpeg";
+      } catch (shrinkError) {
+        console.warn("Profile image shrink skipped:", shrinkError?.message || shrinkError);
+      }
+    }
+
+    await file.save(uploadBuffer, {
       metadata: {
-        contentType: safeMimeType,
+        contentType: uploadMimeType,
         cacheControl: "private,max-age=0,no-transform",
       },
       resumable: false,
@@ -16398,7 +16428,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       fileUrl,
       storagePath,
       fileName: safeFileName,
-      fileType: safeMimeType,
+      fileType: uploadMimeType,
     };
   }
 
@@ -16450,6 +16480,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           !isDefaultUserImageStoragePath(userData.profileImageStoragePath)
         ) {
           await deleteStorageFileIfExists(userData.profileImageStoragePath);
+          await avatarThumbs.deleteVariants(userData.profileImageStoragePath);
         }
 
         const uploadedProfile = await uploadUserImageToStorage({
@@ -17541,14 +17572,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const storagePath = `conversation-avatars/${conversationId}/${Date.now()}-${safeFileName}`;
 
       const file = bucket.file(storagePath);
-      await file.save(Buffer.from(cleanedBase64, "base64"), {
-        metadata: { contentType: safeMimeType, cacheControl: "private,max-age=0,no-transform" },
+      let avatarBuffer = Buffer.from(cleanedBase64, "base64");
+      let avatarMimeType = safeMimeType;
+      try {
+        avatarBuffer = await avatarThumbs.shrinkUpload(avatarBuffer);
+        avatarMimeType = "image/jpeg";
+      } catch (shrinkError) {
+        console.warn("Conversation avatar shrink skipped:", shrinkError?.message || shrinkError);
+      }
+      await file.save(avatarBuffer, {
+        metadata: { contentType: avatarMimeType, cacheControl: "private,max-age=0,no-transform" },
         resumable: false,
       });
 
       // Delete old avatar from storage if it exists to save space
       if (convData.avatarStoragePath) {
         await deleteStorageFileIfExists(convData.avatarStoragePath);
+        await avatarThumbs.deleteVariants(convData.avatarStoragePath);
       }
 
       // 👇 FIX: Create avatarUrl BEFORE using it in the update
