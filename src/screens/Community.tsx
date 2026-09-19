@@ -70,6 +70,9 @@ interface CommunityProps {
   onDeleteAnswer?: (postId: string, answerId: string) => void;
   // Post owner hides/unhides an answer on their own post (Facebook-style).
   onSetAnswerHidden?: (postId: string, answerId: string, hidden: boolean) => void;
+  // Hide a post for the CURRENT viewer only (Facebook-style). Called once the
+  // "Undo" window has passed. Resolve `true` when saved, `false` on failure.
+  onSetPostHidden?: (postId: string, hidden: boolean) => Promise<boolean> | boolean | void;
   searchQuery?: string; // 👈 To receive global search query
   initialPostId?: string | null; // 👈 To open specific post from notification
   // 🔥 NEW — silent background refresh. Parent should re-fetch posts and
@@ -141,6 +144,8 @@ const refreshUserImageUrl = async (
 
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 const POST_DROPDOWN_WIDTH = 160;
+// How long the "Undo" stub stays up after pressing Hide (Facebook-style).
+const HIDE_POST_UNDO_MS = 5000;
 const ANSWER_DROPDOWN_WIDTH = 170;
 
 const normalizeImageSource = (img: any) => {
@@ -174,6 +179,7 @@ const Community: React.FC<CommunityProps> = ({
   onEditAnswer,
   onDeleteAnswer,
   onSetAnswerHidden,
+  onSetPostHidden,
   searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
   onRefresh, // 🔥 NEW
@@ -218,7 +224,27 @@ const Community: React.FC<CommunityProps> = ({
     });
   }, [localPosts, searchQuery]);
 
+  // Posts the viewer has hidden for good (saved on the server).
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
+  // Posts inside the "Undo" window: shown as a collapsed stub, not yet saved.
+  const [pendingHiddenPosts, setPendingHiddenPosts] = useState<string[]>([]);
+  const hideTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const onSetPostHiddenRef = useRef(onSetPostHidden);
+  useEffect(() => {
+    onSetPostHiddenRef.current = onSetPostHidden;
+  }, [onSetPostHidden]);
+
+  // If the screen closes mid-countdown, save the hide instead of dropping it
+  // (the user already pressed Hide and didn't undo).
+  useEffect(() => {
+    return () => {
+      Object.entries(hideTimersRef.current).forEach(([postId, timer]) => {
+        clearTimeout(timer);
+        onSetPostHiddenRef.current?.(postId, true);
+      });
+      hideTimersRef.current = {};
+    };
+  }, []);
   const [modalVisible, setModalVisible] = useState(false);
 
   const [answersModalVisible, setAnswersModalVisible] = useState(false);
@@ -540,10 +566,41 @@ const Community: React.FC<CommunityProps> = ({
     setDeletePostConfirmVisible(false);
   };
 
+  // ---- Facebook-style "Hide post" ----------------------------------------
+  // 1) Hide  -> the post collapses into a "Post hidden · Undo" stub.
+  // 2) Undo within HIDE_POST_UNDO_MS -> the post simply comes back.
+  // 3) Otherwise the hide is saved for THIS user only and the stub disappears.
+  //    Anyone who didn't hide the post keeps seeing it.
+  const commitHidePost = async (postId: string) => {
+    delete hideTimersRef.current[postId];
+    setPendingHiddenPosts((prev) => prev.filter((id) => id !== postId));
+    setHiddenPosts((prev) => (prev.includes(postId) ? prev : [...prev, postId]));
+
+    try {
+      const saved = await onSetPostHiddenRef.current?.(postId, true);
+      if (saved === false) throw new Error('Hide failed');
+    } catch {
+      // Not saved -> bring the post back so the UI matches the server.
+      setHiddenPosts((prev) => prev.filter((id) => id !== postId));
+      showToast("Couldn't hide the post. Please try again.", 'error');
+    }
+  };
+
   const handleHidePost = (postId: string) => {
     closePostDropdown();
-    setHiddenPosts((prev) => [...prev, postId]);
-    showToast('Post hidden.', 'info');
+    if (hideTimersRef.current[postId]) return;
+    setPendingHiddenPosts((prev) => (prev.includes(postId) ? prev : [...prev, postId]));
+    hideTimersRef.current[postId] = setTimeout(
+      () => commitHidePost(postId),
+      HIDE_POST_UNDO_MS
+    );
+  };
+
+  const handleUndoHidePost = (postId: string) => {
+    const timer = hideTimersRef.current[postId];
+    if (timer) clearTimeout(timer);
+    delete hideTimersRef.current[postId];
+    setPendingHiddenPosts((prev) => prev.filter((id) => id !== postId));
   };
 
   const handleEditAnswer = (answer: CommunityAnswer) => {
@@ -737,6 +794,29 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   const renderPost = ({ item }: { item: CommunityPost }) => {
+    if (pendingHiddenPosts.includes(item.id)) {
+      return (
+        <View style={styles.hiddenPostCard}>
+          <View style={styles.hiddenAnswerIconCircle}>
+            <Ionicons name="eye-off" size={14} color="#fff" />
+          </View>
+          <View style={styles.hiddenAnswerTextWrap}>
+            <Text style={styles.hiddenAnswerTitle}>Post hidden</Text>
+            <Text style={styles.hiddenAnswerSubtitle} numberOfLines={2}>
+              You won't see this post anymore. Others can still see it.
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.unhideButton}
+            onPress={() => handleUndoHidePost(item.id)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.unhideButtonText}>Undo</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
@@ -1505,6 +1585,18 @@ inputPlaceholder: { fontFamily: FONT_BODY,
     paddingBottom: 8,
   },
 
+  hiddenPostCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E1E3E6',
+    borderStyle: 'dashed',
+    marginBottom: 12,
+    width: '100%',
+  },
   hiddenAnswerCard: {
     flexDirection: 'row',
     alignItems: 'center',

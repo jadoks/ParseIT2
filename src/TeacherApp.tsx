@@ -1078,6 +1078,35 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     }
   };
 
+  // Hide a POST for the current user only (Facebook-style). TeacherCommunity runs
+  // the "Undo" countdown and calls this once it has expired. Others still see it.
+  // Returns true when saved so the child can roll back on failure.
+  const handleSetCommunityPostHidden = async (
+    postId: string,
+    hidden: boolean
+  ): Promise<boolean> => {
+    try {
+      const response = await apiFetch(`/community-posts/${postId}/visibility`, {
+        method: 'PUT',
+        body: JSON.stringify({ hidden }),
+      });
+      // 404 = the author already deleted it, so there is nothing left to hide.
+      if (response.status !== 404) {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to update post visibility.');
+        }
+      }
+      if (hidden) {
+        setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+      }
+      return true;
+    } catch (error) {
+      console.warn('Hide post failed:', error);
+      return false;
+    }
+  };
+
   const handleDrawerEmailUpdated = (nextEmail: string) => {
     setTeacherProfile((prev) => ({
       ...(prev || activeProfile || {}),
@@ -1406,6 +1435,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             onEditAnswer={handleEditCommunityAnswer}
             onDeleteAnswer={handleDeleteCommunityAnswer}
             onSetAnswerHidden={handleSetCommunityAnswerHidden}
+            onSetPostHidden={handleSetCommunityPostHidden}
             onRefresh={loadCommunityPosts}
             refreshIntervalMs={8000}
           />

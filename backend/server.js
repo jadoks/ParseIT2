@@ -15926,6 +15926,17 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         postsSnapshot.docs.map(async (doc) => {
           const postData = doc.data() || {};
 
+          // Facebook-style "Hide post": this viewer hid the post for THEMSELVES.
+          // Drop it from their feed (before any avatar/answer reads). Everyone
+          // who did not hide it still receives it as normal.
+          if (
+            viewerKey &&
+            Array.isArray(postData.hiddenForUserKeys) &&
+            postData.hiddenForUserKeys.includes(viewerKey)
+          ) {
+            return null;
+          }
+
           const viewerIsPostOwner = isSameCommunityIdentity(
             viewerProfile,
             viewerAuthUid,
@@ -16013,7 +16024,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       return res.json({
         success: true,
-        data: posts,
+        data: posts.filter(Boolean),
       });
     } catch (error) {
       console.error("Fetch community posts error:", error);
@@ -16340,6 +16351,57 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
     }
   );
+
+  // Hide / unhide a POST just for the signed-in viewer (Facebook-style).
+  // Only the caller is affected — everyone else who did not hide the post
+  // keeps seeing it. The client shows a short "Undo" window first and only
+  // calls this once that window has passed.
+  app.put("/community-posts/:postId/visibility", requireAuth, async (req, res) => {
+    try {
+      const { postId } = req.params;
+      const { hidden } = req.body || {};
+
+      if (typeof hidden !== "boolean") {
+        return res.status(400).json({ error: "hidden must be true or false." });
+      }
+
+      const postRef = db.collection("communityPosts").doc(postId);
+      const postSnap = await postRef.get();
+
+      if (!postSnap.exists) {
+        return res.status(404).json({ error: "Post not found." });
+      }
+
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (!profile) {
+        return res.status(403).json({ error: "User profile not found." });
+      }
+
+      if (isSameCommunityIdentity(profile, req.user.uid, postSnap.data() || {})) {
+        return res.status(400).json({
+          error: "You can't hide your own post. Edit or delete it instead.",
+        });
+      }
+
+      const viewerKey = `${profile.role}:${profile.id}`;
+      await postRef.update({
+        hiddenForUserKeys: hidden
+          ? FieldValue.arrayUnion(viewerKey)
+          : FieldValue.arrayRemove(viewerKey),
+      });
+
+      return res.json({
+        success: true,
+        message: hidden ? "Post hidden." : "Post unhidden.",
+        data: { id: postId, isHidden: hidden, scope: "me" },
+      });
+    } catch (error) {
+      console.error("Update post visibility error:", error);
+      return res.status(500).json({
+        error: error.message || "Failed to update post visibility.",
+      });
+    }
+  });
 
   app.delete("/community-posts/:postId/answers/:answerId", async (req, res) => {
     try {

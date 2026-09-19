@@ -1949,6 +1949,29 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     }
   };
 
+  // Hide a POST for the current user only (Facebook-style). Community.tsx runs the
+  // "Undo" countdown and calls this once it has expired. Others still see the post.
+  // Returns true when saved so the child can roll back on failure.
+  const handleSetCommunityPostHidden = async (postId: string, hidden: boolean): Promise<boolean> => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/visibility`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden })
+      });
+      // 404 = the author already deleted it, so there is nothing left to hide.
+      if (response.status !== 404) {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'Failed to update post visibility.');
+      }
+      if (hidden) setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+      return true;
+    } catch (error) {
+      console.warn('Hide post failed:', error);
+      return false;
+    }
+  };
+
   useEffect(() => { loadCommunityPosts(); }, []);
 
   const getScorePercent = (assignment: { status: 'pending' | 'submitted' | 'graded' | 'late'; points?: number; maxPoints?: number }) => {
@@ -3115,6 +3138,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onEditAnswer={handleEditCommunityAnswer} 
           onDeleteAnswer={handleDeleteCommunityAnswer} 
           onSetAnswerHidden={handleSetCommunityAnswerHidden}
+          onSetPostHidden={handleSetCommunityPostHidden}
           initialPostId={communityInitialPostId} 
           // 🔥 NEW — silent background refresh, polled from inside Community
           // (paused automatically while a modal/dropdown is open there)
