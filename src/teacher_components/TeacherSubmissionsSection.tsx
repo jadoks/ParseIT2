@@ -743,7 +743,6 @@ const mapSubmissionToItems = (submission: any): any[] => {
                     styles.fileNameText,
                     isLink && styles.linkFileNameText,
                   ]}
-                  numberOfLines={2}
                 >
                   {isLink ? item.url : item.fileName}
                 </Text>
@@ -1393,15 +1392,15 @@ const handleDownloadPreview = async () => {
             <MaterialCommunityIcons name="account" size={18} color={isSelected ? "#D32F2F" : "#9CA3AF"} />
           </View>
           <View style={styles.listItemTextWrap}>
-            <Text style={[styles.listItemName, isSelected && styles.listItemNameActive]} numberOfLines={1}>
+            <Text style={[styles.listItemName, isSelected && styles.listItemNameActive]}>
               {student.name}
             </Text>
-            <Text style={styles.listItemHandle} numberOfLines={1}>
+            <Text style={styles.listItemHandle}>
               {student.handle}
             </Text>
           </View>
           {status === "graded" && score !== undefined && (
-            <Text style={styles.listItemScore} numberOfLines={1}>
+            <Text style={styles.listItemScore}>
               {score}/{totalScoreValue}
             </Text>
           )}
@@ -1448,7 +1447,7 @@ const handleDownloadPreview = async () => {
               <Ionicons name="calendar-outline" size={isSmallPhone ? 11 : 12} color="#6B7280" />
               <Text style={styles.metaCellLabel}>Submitted</Text>
             </View>
-            <Text style={styles.metaCellValue} numberOfLines={1}>
+            <Text style={styles.metaCellValue}>
               {latestSub?.submittedAt || "Not yet"}
             </Text>
           </View>
@@ -1481,10 +1480,10 @@ const handleDownloadPreview = async () => {
               <MaterialCommunityIcons name="account" size={20} color="#D32F2F" />
             </View>
             <View style={styles.studentCardNameWrap}>
-              <Text style={styles.studentCardName} numberOfLines={1}>
+              <Text style={styles.studentCardName}>
                 {student.name}
               </Text>
-              <Text style={styles.studentCardId} numberOfLines={1}>
+              <Text style={styles.studentCardId}>
                 {student.id}
               </Text>
             </View>
@@ -1646,7 +1645,7 @@ const handleDownloadPreview = async () => {
                         ]}
                       >
                         <View style={styles.bubbleHeaderRow}>
-                          <Text style={styles.bubbleAuthor} numberOfLines={1}>
+                          <Text style={styles.bubbleAuthor}>
                             {comment.authorName || (comment.isInstructor ? "Instructor" : "Student")}
                           </Text>
                           {canManage && !isEditing && (
@@ -1764,14 +1763,31 @@ const handleDownloadPreview = async () => {
   return (
     <SafeAreaView style={styles.container}>
       {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
+      {/* ✅ FIX: the WHOLE screen (header, attachments, progress, summary cards,
+          search/filters AND the student list) now lives in one page-level
+          ScrollView. Before, everything above the list was pinned, so on a
+          phone/tablet the actual list was squeezed into a small strip that
+          was hard to view. */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingBottom: isMobile ? Math.max(90, insets.bottom + 80) : Math.max(30, insets.bottom + 20),
+        }}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
+        }
+      >
       {/* ── Header ─ */}
       <View
         style={[
           styles.headerBar,
           {
             paddingHorizontal: pagePadding,
-            paddingTop: isMobile ? 14 : 20,
-            paddingBottom: isMobile ? 12 : 18,
+            paddingTop: isMobile ? 18 : 24,
+            paddingBottom: isMobile ? 18 : 24,
           },
         ]}
       >
@@ -1789,7 +1805,6 @@ const handleDownloadPreview = async () => {
           <View style={styles.headerTitleWrap}>
             <Text
               style={[styles.headerTitle, { fontSize: isSmallPhone ? 18 : isMobile ? 20 : 24 }]}
-              numberOfLines={1}
             >
               {currentAssignment?.header || "Assignment"}
             </Text>
@@ -1860,7 +1875,7 @@ const handleDownloadPreview = async () => {
                   ? `Assignment Attachment ${index + 1}`
                   : 'Assignment Attachment'}
               </Text>
-              <Text style={styles.assignmentAttachmentName} numberOfLines={1}>
+              <Text style={styles.assignmentAttachmentName}>
                 {file.fileName}
               </Text>
             </View>
@@ -1898,19 +1913,19 @@ const handleDownloadPreview = async () => {
 
       {/* ── Progress Summary Dashboard ── */}
       <View style={[styles.summaryRow, { paddingHorizontal: pagePadding }]}>
-        <View style={styles.summaryCard}>
+        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
           <Text style={styles.summaryCardValue}>{completedCount}</Text>
           <Text style={styles.summaryCardLabel}>Completed</Text>
         </View>
-        <View style={styles.summaryCard}>
+        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
           <Text style={styles.summaryCardValue}>{Math.max(pendingCount, 0)}</Text>
           <Text style={styles.summaryCardLabel}>Pending</Text>
         </View>
-        <View style={styles.summaryCard}>
+        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
           <Text style={styles.summaryCardValue}>{lateCount}</Text>
           <Text style={styles.summaryCardLabel}>Late</Text>
         </View>
-        <View style={styles.summaryCard}>
+        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
           <Text style={styles.summaryCardValue}>
             {averageScore}/{totalScoreValue}
           </Text>
@@ -1965,48 +1980,29 @@ const handleDownloadPreview = async () => {
         <View style={[styles.masterDetailRow, { paddingHorizontal: pagePadding }]}>
           <View style={styles.masterList}>
             <Text style={styles.masterListTitle}>Student List</Text>
-            <ScrollView
-              showsVerticalScrollIndicator={true}
-              refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
-              }
-            >
+            <View>
               {visibleStudents.map((student) => renderStudentListItem(student, "list"))}
               {visibleStudents.length === 0 && (
                 <Text style={styles.emptyText}>No students match your search.</Text>
               )}
-            </ScrollView>
+            </View>
           </View>
 
-          <ScrollView
-            style={styles.detailScroll}
-            contentContainerStyle={{ paddingBottom: Math.max(30, insets.bottom + 20) }}
-            showsVerticalScrollIndicator={true}
-            refreshControl={
-              <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
-            }
-          >
+          <View style={styles.detailScroll}>
             {selectedStudent ? (
               renderSelectedStudentDetail(selectedStudent)
             ) : (
               <Text style={styles.emptyText}>Select a student to view details.</Text>
             )}
-          </ScrollView>
+          </View>
         </View>
       ) : (
-        <ScrollView
-          contentContainerStyle={[
+        <View
+          style={[
             styles.scrollContent,
             isTablet && styles.scrollContentGrid,
-            {
-              paddingHorizontal: pagePadding,
-              paddingBottom: Math.max(30, insets.bottom + 20),
-            },
+            { paddingHorizontal: pagePadding },
           ]}
-          showsVerticalScrollIndicator={true}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
-          }
         >
           {visibleStudents.map((student) => {
             const isExpandedOnMobile = isMobile && selectedStudentId === student.id;
@@ -2046,8 +2042,10 @@ const handleDownloadPreview = async () => {
               {studentMembers.length === 0 ? "No students found for this class." : "No students match your search."}
             </Text>
           )}
-        </ScrollView>
+
+        </View>
       )}
+      </ScrollView>
 
       {/* ── Mobile FAB ── */}
       {isMobile && (
@@ -2211,7 +2209,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", paddingBottom: 15 },
   // ── Header ──
   headerBar: { backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
-  headerTopRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  headerTopRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -8 },
   headerTitleWrap: { flex: 1, marginLeft: 2 },
   headerTitle: { fontWeight: "800", color: "#111827" },
@@ -2283,12 +2281,14 @@ const styles = StyleSheet.create({
   smallChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   smallChipText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700" },
   // ── Progress Summary ──
-  summaryRow: { flexDirection: "row", gap: 10, marginTop: 16, marginBottom: 4 },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 20, marginBottom: 4 },
+  summaryCardMobile: { flexBasis: "47%", flexGrow: 1 },
   summaryCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    paddingVertical: 14,
+    paddingVertical: 20,
+    paddingHorizontal: 8,
     alignItems: "center",
     shadowColor: "#000",
     shadowOpacity: 0.04,
@@ -2296,10 +2296,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  summaryCardValue: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: "800", color: "#111827" },
-  summaryCardLabel: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "600", color: "#6B7280", marginTop: 4 },
+  summaryCardValue: { fontFamily: FONT_BODY, fontSize: 22, fontWeight: "800", color: "#111827" },
+  summaryCardLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "600", color: "#6B7280", marginTop: 4 },
   // ── Search + Filters ──
-  searchFilterWrap: { marginTop: 16, marginBottom: 8 },
+  searchFilterWrap: { marginTop: 20, marginBottom: 12 },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -2312,7 +2312,7 @@ const styles = StyleSheet.create({
     height: 44,
   },
   searchInput: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: "#111827" },
-  filterChipsRow: { flexDirection: "row", gap: 8, marginTop: 10, paddingVertical: 2 },
+  filterChipsRow: { flexDirection: "row", gap: 10, marginTop: 12, paddingVertical: 4 },
   filterChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -2327,13 +2327,13 @@ const styles = StyleSheet.create({
   filterChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#4B5563" },
   filterChipTextActive: { color: "#FFFFFF" },
   // ── Scroll containers ──
-  scrollContent: { gap: 14, paddingTop: 8 },
+  scrollContent: { gap: 18, paddingTop: 12 },
   scrollContentGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   // ── Master-detail ──
-  masterDetailRow: { flex: 1, flexDirection: "row", gap: 20, marginTop: 12 },
-  masterList: { width: 280, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB" },
+  masterDetailRow: { flexDirection: "row", alignItems: "flex-start", gap: 20, marginTop: 12 },
+  masterList: { width: 320, alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB" },
   masterListTitle: { fontFamily: FONT_TITLE, fontSize: 13, fontWeight: "800", color: "#6B7280", textTransform: "uppercase", marginBottom: 8, paddingHorizontal: 6 },
-  detailScroll: { flex: 1 },
+  detailScroll: { flex: 1, minWidth: 0 },
   listItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -2370,12 +2370,12 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   tabletExpandedDetail: { marginTop: 8, marginBottom: 8 },
-  mobileExpandedDetail: { gap: 12, marginTop: 5, marginBottom: 8 },
+  mobileExpandedDetail: { gap: 16, marginTop: 10, marginBottom: 12 },
   // ── Student Card ──
   studentCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -2396,12 +2396,12 @@ const styles = StyleSheet.create({
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700" },
   statusChipTextSmall: { fontFamily: FONT_BODY, fontSize: 11 },
-  cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 14 },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  metaCell: { flexGrow: 1, flexBasis: 100, minWidth: 90 },
+  cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 18 },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 14 },
+  metaCell: { flexGrow: 1, flexBasis: 130, minWidth: 110 },
   metaCellLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 3 },
   metaCellLabel: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", fontWeight: "600" },
-  metaCellValue: { fontFamily: FONT_BODY, fontSize: 14, color: "#111827", fontWeight: "800" },
+  metaCellValue: { fontFamily: FONT_BODY, fontSize: 15, color: "#111827", fontWeight: "800" },
   // ── Submitted Files ──
   noSubmissionContainer: {
     marginTop: 14,
@@ -2568,7 +2568,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 44,
-    maxHeight: 120,
+    maxHeight: 200,
     fontSize: 13,
     color: "#111827",
     textAlignVertical: "top",
