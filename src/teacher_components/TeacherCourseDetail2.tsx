@@ -272,19 +272,18 @@ const MAX_TEMPLATE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per header/foote
 const ALLOWED_TEMPLATE_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 // Course Syllabus upload (feeds "Generate Module" / "Generate Module 1") —
-// the AI parses this file's content into the module/topic structure, so
-// only accept formats it can actually read text or images from.
+// the AI parses this file's content into the module/topic structure. A real
+// Course Syllabus (e.g. a CTU "COURSE SYLLABUS" INS Form 1b) is always a
+// formal document — issued as PDF or Word — never a spreadsheet, slide
+// deck, plain-text file, or image, so only PDF/DOC/DOCX are accepted here.
+// (Content itself is separately verified server-side: the upload is
+// rejected unless the AI finds an actual "Week No." weekly schedule.)
 const MAX_SYLLABUS_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
-const ALLOWED_SYLLABUS_FILE_EXTENSIONS = [
-  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp',
-];
+const ALLOWED_SYLLABUS_FILE_EXTENSIONS = ['pdf', 'doc', 'docx'];
 const ALLOWED_SYLLABUS_FILE_MIME_TYPES = [
   'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/plain', 'text/csv', 'image/png', 'image/jpeg', 'image/webp',
 ];
-const ALLOWED_SYLLABUS_FILE_LABEL = 'PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, CSV, PNG, JPG, WEBP';
+const ALLOWED_SYLLABUS_FILE_LABEL = 'PDF, DOC, DOCX';
 
 const formatFileSizeMB = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 

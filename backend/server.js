@@ -17976,6 +17976,13 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const { fileBase64, fileName, fileType } = req.body;
       if (!fileBase64) return res.status(400).json({ error: "File data required." });
 
+      if (!isAllowedSyllabusFile(fileName, fileType)) {
+        return res.status(400).json({
+          error: "Unsupported file type. Please upload a PDF, DOC, or DOCX Course Syllabus file.",
+          code: "UNSUPPORTED_FILE_TYPE",
+        });
+      }
+
       const buffer = Buffer.from(fileBase64.split(',')[1], 'base64');
       
       // Use existing conversion logic if needed (PPTX -> PDF)
@@ -18104,6 +18111,13 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     try {
       const { classId, fileBase64, fileName, fileType } = req.body;
       if (!classId || !fileBase64) return res.status(400).json({ error: "Missing data." });
+
+      if (!isAllowedSyllabusFile(fileName, fileType)) {
+        return res.status(400).json({
+          error: "Unsupported file type. Please upload a PDF, DOC, or DOCX Course Syllabus file.",
+          code: "UNSUPPORTED_FILE_TYPE",
+        });
+      }
 
       const bucket = admin.storage().bucket();
       const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
@@ -18305,6 +18319,27 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   // ─── COURSE SYLLABUS ROUTES ───────────────────────────────────────────────────
   const SYLLABUS_MAX_SIZE = 20 * 1024 * 1024; // 20MB
 
+  // A real Course Syllabus is always a formal document (PDF or Word) — never a
+  // spreadsheet, slide deck, plain-text file, or image. The client's file
+  // picker already restricts to this, but that only stops the app UI; the
+  // HTTP route itself has to enforce it too, since /course-syllabus/upload
+  // and /course-syllabus/parse can be called directly with any fileType.
+  const ALLOWED_SYLLABUS_MIME_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ];
+  const ALLOWED_SYLLABUS_EXTENSIONS = ["pdf", "doc", "docx"];
+
+  function isAllowedSyllabusFile(fileName, fileType) {
+    const ext = (fileName || "").split(".").pop()?.toLowerCase();
+    // Extension is authoritative when present (mirrors the client picker),
+    // since some clients report a generic/incorrect MIME type for a given
+    // extension. MIME type is only the fallback when there's no extension.
+    if (ext) return ALLOWED_SYLLABUS_EXTENSIONS.includes(ext);
+    return !!fileType && ALLOWED_SYLLABUS_MIME_TYPES.includes(fileType);
+  }
+
   // UPDATED ROUTE: Fetch Syllabus Structure
   app.get("/course-syllabus/:classId", requireAuth, async (req, res) => {
     try {
@@ -18472,9 +18507,77 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   // flag is wrong or missing.
   const WEEK_NUMBER_PATTERN = /\bwk\.?\s*no\.?|\bweek\s*no\.?|\bweeks?\b/i;
 
+  // ─── Document-type gate ─────────────────────────────────────────────────
+  // The "Week No." check above is too weak on its own: a single-week
+  // "Student Activity Sheet" (SAS) that just happens to say "Week 2" once in
+  // its header would still pass it, and would then get force-fit into a
+  // one-module "syllabus" structure. This deterministic, pre-AI check catches
+  // that class of false positive before spending an AI call on it, by
+  // requiring either the word "syllabus" somewhere in the document, or a real
+  // multi-week schedule (several distinct week numbers, not just one).
+  const SYLLABUS_WORD_PATTERN = /\bsyllabus\b/i;
+  // Document types that are commonly confused with a syllabus but never are
+  // one — reject these outright unless the file also says "syllabus".
+  const NON_SYLLABUS_DOCUMENT_MARKERS = [
+    /\bstudent\s+activity\s+sheet(s)?\b/i,
+    /\blearning\s+activity\s+sheet(s)?\b/i,
+    /\blesson\s+plan\b/i,
+    /\battendance\s+sheet\b/i,
+    /\bexamination\s+(paper|booklet)\b/i,
+  ];
+  // A genuine semester-long syllabus lists many weeks; anything below this
+  // is more likely a single lesson/activity sheet than a full syllabus.
+  const MIN_DISTINCT_WEEKS_REQUIRED = 3;
+
+  function countDistinctWeekNumbers(text) {
+    const weekNumbers = new Set();
+    for (const m of text.matchAll(/\bweek(?:s)?\.?\s*(?:no\.?)?\s*(\d{1,2})\b/gi)) {
+      weekNumbers.add(m[1]);
+    }
+    return weekNumbers.size;
+  }
+
+  // Cheap, deterministic pre-check run BEFORE the expensive Gemini structure
+  // extraction. Throws InvalidSyllabusError to reject obviously-wrong
+  // document types early; returns silently (deferring to the AI check) when
+  // there's no extractable text to look at, e.g. a scanned/image-only PDF.
+  async function assertLooksLikeSyllabusDocument(buffer, mimeType, fileName) {
+    let text = "";
+    try {
+      const extracted = await extractTextFromFile(buffer, mimeType, fileName);
+      text = typeof extracted === "string" ? extracted : (extracted?.extractedText || "");
+    } catch (e) {
+      console.warn("Document-type text extraction failed, skipping keyword gate:", e.message);
+      return;
+    }
+
+    if (!text || text.length < 20) return; // nothing to check — let the AI decide
+
+    const hasSyllabusWord = SYLLABUS_WORD_PATTERN.test(text);
+    const matchedNonSyllabusMarker = NON_SYLLABUS_DOCUMENT_MARKERS.find((p) => p.test(text));
+
+    if (matchedNonSyllabusMarker && !hasSyllabusWord) {
+      console.warn(`Rejected non-syllabus document type for ${fileName}: matched ${matchedNonSyllabusMarker}`);
+      throw new InvalidSyllabusError(
+        "This looks like a different kind of document (e.g. a Student Activity Sheet or lesson plan), not a Course Syllabus. Please upload the actual course syllabus."
+      );
+    }
+
+    if (!hasSyllabusWord && countDistinctWeekNumbers(text) < MIN_DISTINCT_WEEKS_REQUIRED) {
+      console.warn(`Rejected ${fileName}: no "syllabus" text and fewer than ${MIN_DISTINCT_WEEKS_REQUIRED} distinct week numbers found.`);
+      throw new InvalidSyllabusError(
+        "This file doesn't look like a full Course Syllabus — it doesn't show a multi-week course schedule. Please upload the actual course syllabus."
+      );
+    }
+  }
+
   // REPLACE the existing extractSyllabusStructure function with this:
   async function extractSyllabusStructure(buffer, mimeType, fileName) {
     if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+
+    // Deterministic document-type gate before the (expensive) AI call.
+    await assertLooksLikeSyllabusDocument(buffer, mimeType, fileName);
+
     
     const model = geminiGameAI.getGenerativeModel({
       model: GEMINI_GAME_MODEL,
