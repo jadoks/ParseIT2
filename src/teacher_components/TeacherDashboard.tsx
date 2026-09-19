@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -16,7 +17,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { launchImageLibrary } from 'react-native-image-picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // 🔥 IMPORT GLOBAL API SERVICE INSTEAD OF LOCAL FETCH LOGIC
@@ -176,18 +176,17 @@ const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // exports still tag PNG files this way, and without it a perfectly valid
 // PNG could get wrongly rejected if its filename/extension is also missing
 // or unusual (e.g. no extension at all, common for clipboard-pasted images).
-const ALLOWED_BANNER_MIME_TYPES = ['image/jpeg', 'image/png', 'image/x-png', 'image/webp'];
+const ALLOWED_BANNER_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/x-png', 'image/webp'];
 const ALLOWED_BANNER_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 
-// launchImageLibrary uses the native OS photo picker on iOS/Android, which
-// already restricts selection to images at the OS level. But on web it
-// falls back to a plain <input type="file" accept="image/*">, and `accept`
-// is only a hint — the browser lets the user pick "All files" and choose
-// anything. On top of that, browsers don't have a registered MIME type for
-// some extensions (e.g. .js/.tsx), so `asset.type` can come back empty. We
-// must NOT let a missing type skip validation ("fail open"); check the
-// extension too and only accept the file if we have positive evidence it's
-// an allowed image ("fail closed").
+// The banner is picked with expo-document-picker (same as the Admin "Add
+// Class" modal), which reports `name`, `mimeType` and `size` on every
+// platform, including web. `type: ['image/*']` is only a hint — on web the
+// browser still lets the user pick "All files" — and browsers have no
+// registered MIME type for some extensions (e.g. .js/.tsx), so `mimeType` can
+// come back empty. We must NOT let a missing type skip validation ("fail
+// open"); check the extension too and only accept the file if we have
+// positive evidence it's an allowed image ("fail closed").
 const isAllowedBannerAsset = (
   mimeType: string | null | undefined,
   fileName: string | null | undefined
@@ -213,10 +212,21 @@ const isAllowedBannerAsset = (
 // "image/png" before it's stored/sent to the server, so the file's stored
 // contentType is always the standard one regardless of which variant the
 // source device/tool reported.
-const normalizeBannerMimeType = (mimeType: string | null | undefined): string => {
+const normalizeBannerMimeType = (
+  mimeType: string | null | undefined,
+  fileName?: string | null
+): string => {
   const normalized = (mimeType || '').trim().toLowerCase();
   if (normalized === 'image/x-png') return 'image/png';
-  return normalized || 'image/jpeg';
+  // "image/jpg" isn't a registered MIME type; the standard one is image/jpeg.
+  if (normalized === 'image/jpg') return 'image/jpeg';
+  if (normalized) return normalized;
+
+  // No MIME reported: derive it from the extension instead of assuming JPEG.
+  const name = (fileName || '').trim().toLowerCase();
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
 };
 const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -716,26 +726,45 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     setEditScheduleBlocks([createEmptyScheduleBlock()]);
   };
 
+  // Shared by Create Class and Edit Class. Mirrors the Admin AddClassModal's
+  // handlePickBanner: expo-document-picker + the same JPG/PNG/WEBP + 5MB rules.
+  // Returns null when cancelled or rejected (a toast is shown for rejections).
+  const pickBannerImage = async (): Promise<{ uri: string; name: string; mimeType: string } | null> => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return null;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) { showToast('No file was selected.', 'error'); return null; }
+      if (!isAllowedBannerAsset(asset.mimeType, asset.name)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return null; }
+      if (asset.size && asset.size > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return null; }
+
+      return {
+        uri: asset.uri,
+        name: asset.name || 'teacher-banner.jpg',
+        mimeType: normalizeBannerMimeType(asset.mimeType, asset.name),
+      };
+    } catch (error) {
+      console.error('Banner pick error:', error);
+      showToast('Unable to open file picker.', 'error');
+      return null;
+    }
+  };
+
   const handlePickBanner = async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: 1 });
-    if (result.didCancel) return;
-    if (result.errorCode) { showToast(result.errorMessage || 'Unable to pick image.', 'error'); return; }
-    const asset = result.assets?.[0];
-    const uri = asset?.uri;
-    if (!isAllowedBannerAsset(asset?.type, asset?.fileName)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
-    if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return; }
-    if (uri) { setClassBanner(uri); setClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setClassBannerMimeType(normalizeBannerMimeType(asset.type)); }
+    const picked = await pickBannerImage();
+    if (!picked) return;
+    setClassBanner(picked.uri); setClassBannerFileName(picked.name); setClassBannerMimeType(picked.mimeType);
   };
 
   const handlePickEditBanner = async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: 1 });
-    if (result.didCancel) return;
-    if (result.errorCode) { showToast(result.errorMessage || 'Unable to pick image.', 'error'); return; }
-    const asset = result.assets?.[0];
-    const uri = asset?.uri;
-    if (!isAllowedBannerAsset(asset?.type, asset?.fileName)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
-    if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return; }
-    if (uri) { setEditClassBanner(uri); setEditClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setEditClassBannerMimeType(normalizeBannerMimeType(asset.type)); }
+    const picked = await pickBannerImage();
+    if (!picked) return;
+    setEditClassBanner(picked.uri); setEditClassBannerFileName(picked.name); setEditClassBannerMimeType(picked.mimeType);
   };
 
   const toggleYear = (yearId: string) => {
