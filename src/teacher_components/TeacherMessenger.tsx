@@ -117,6 +117,19 @@ type ClassScheduleEntry = {
   room?: string;
 };
 
+type RoomMemberDetail = {
+  name: string;
+  userId?: string;
+  studentId?: string;
+  role?: string;
+};
+
+type AddableRoomMember = {
+  userId: string;
+  name: string;
+  role?: string;
+};
+
 type Conversation = {
   id: string;
   name: string;
@@ -130,8 +143,11 @@ type Conversation = {
   isCreatedRoom?: boolean;
   roomName?: string | null;
   members?: string[];
-  memberDetails?: { name: string; studentId?: string }[];
+  memberDetails?: RoomMemberDetail[];
   admin?: string;
+  ownerId?: string | null;
+  ownerUid?: string | null;
+  isLocalOnly?: boolean;
   classId?: string;
   section?: string;
   schedule?: ClassScheduleEntry[];
@@ -334,7 +350,9 @@ const conversationChanged = (a: Conversation, b: Conversation): boolean => {
     a.unreadCount !== b.unreadCount ||
     a.isNewClassChat !== b.isNewClassChat ||
     toMillis(a.lastMessageAt) !== toMillis(b.lastMessageAt) ||
-    a.avatarStoragePath !== b.avatarStoragePath  // 👈 ADD THIS
+    a.avatarStoragePath !== b.avatarStoragePath ||  // 👈 ADD THIS
+    (a.members || []).join('\u0001') !== (b.members || []).join('\u0001') ||
+    a.ownerId !== b.ownerId
   );
 };
 
@@ -416,6 +434,22 @@ const Messenger = ({
 
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
+  // ── Discussion-room member management ────────────────────────────────────
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [addableMembers, setAddableMembers] = useState<AddableRoomMember[]>([]);
+  const [addableLoading, setAddableLoading] = useState(false);
+  const [addableError, setAddableError] = useState('');
+  const [membersToAdd, setMembersToAdd] = useState<string[]>([]);
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
+  // userId of the member the admin tapped "remove" on (inline confirm)
+  const [memberPendingRemoval, setMemberPendingRemoval] = useState<string | null>(null);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [isLeavingRoom, setIsLeavingRoom] = useState(false);
+  // Rooms the user just left (id -> timestamp). A poll that was already in
+  // flight when they tapped Leave could still return the room; this keeps it
+  // from popping back for a moment. Short-lived so being re-added still works.
+  const leftRoomsRef = useRef<Map<string, number>>(new Map());
   const [showInfoMenu, setShowInfoMenu] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [roomNameError, setRoomNameError] = useState('');
@@ -583,7 +617,10 @@ const Messenger = ({
           throw new Error(data?.error || 'Failed to load conversations.');
 
         const incoming: Conversation[] = (
-          Array.isArray(data) ? data : []
+          (Array.isArray(data) ? data : []).filter(
+            (item: any) =>
+              Date.now() - (leftRoomsRef.current.get(item.id) || 0) > 15000
+          )
         ).map((item: any) => ({
           id: item.id,
           classId: item.classId,
@@ -604,6 +641,8 @@ const Messenger = ({
           isClassChat: item.type === 'class',
           isNewClassChat: !!item.isNewClassChat,
           roomName: item.roomName || null,
+          ownerId: item.ownerId || null,
+          ownerUid: item.ownerUid || null,
           admin:
             item.instructorName ||
             item.ownerName ||
@@ -616,11 +655,29 @@ const Messenger = ({
             ? item.participants.map((p: any) => ({
                 name: p?.name || '',
                 studentId: p?.studentId || p?.id || p?.userId || '',
+                userId: p?.userId || p?.userUid || '',
+                role: p?.role || '',
               })).filter((p: { name: string }) => p.name)
             : [],
           section: item.section,
           schedule: Array.isArray(item.schedule) ? item.schedule : [],
         }));
+
+        // If the room we're viewing is no longer returned by the server, the
+        // admin removed us from it — close it instead of leaving a dead chat.
+        // (Rooms created moments ago are flagged isLocalOnly and are exempt
+        // until the server has confirmed them.)
+        const openConversation = selectedRef.current;
+        if (
+          openConversation &&
+          openConversation.isRoom &&
+          !openConversation.isLocalOnly &&
+          !incoming.some((c) => c.id === openConversation.id)
+        ) {
+          setSelected(null);
+          onConversationActiveChange?.(false);
+          showToast('You were removed from that discussion room.', 'error');
+        }
 
         setConversations((prev) => {
           const prevMap: Record<string, Conversation> = {};
@@ -629,7 +686,7 @@ const Messenger = ({
           const merged = incoming.map((next) => {
           const existing = prevMap[next.id];
           if (!existing) return next;
-          if (!conversationChanged(existing, next)) return existing;
+          if (!conversationChanged(existing, next) && !existing.isLocalOnly) return existing;
           // Only adopt avatar fields from `next` if the picture actually changed.
           const avatarUnchanged = existing.avatarStoragePath === next.avatarStoragePath;
           return {
@@ -641,7 +698,7 @@ const Messenger = ({
 
           const serverIds = new Set(incoming.map((c) => c.id));
           prev
-            .filter((c) => c.isCreatedRoom && !serverIds.has(c.id))
+            .filter((c) => c.isLocalOnly && !serverIds.has(c.id))
             .forEach((c) => merged.push(c));
 
           // Sort by most recent activity (last message, then updated, then created)
@@ -688,7 +745,7 @@ const Messenger = ({
           if (!prev) return prev;
           const updated = incoming.find((c) => c.id === prev.id);
           if (!updated) return prev;
-          if (!conversationChanged(prev, updated)) return prev;
+          if (!conversationChanged(prev, updated) && !prev.isLocalOnly) return prev;
           return { ...updated, isCreatedRoom: prev.isCreatedRoom };
         });
 
@@ -961,6 +1018,26 @@ const Messenger = ({
       )
     );
   }, [selected?.id, markConversationAsRead]);
+
+  // The room admin is the person who created the room. Only they can remove
+  // members (the server enforces this too — this just controls the UI).
+  const isSelectedRoomAdmin = useMemo(() => {
+    if (!selected?.isRoom) return false;
+    const myIds = [currentUser, currentUserUid].filter(Boolean);
+    if (selected.ownerId || selected.ownerUid) {
+      return myIds.some((id) => id === selected.ownerId || id === selected.ownerUid);
+    }
+    // Older rooms without stored owner ids: fall back to the admin's name.
+    return !!currentUserName && selected.admin === currentUserName;
+  }, [
+    selected?.id,
+    selected?.isRoom,
+    selected?.ownerId,
+    selected?.ownerUid,
+    selected?.admin,
+    currentUser,
+    currentUserName,
+  ]);
 
   const selectedConversationMembers =
     selected?.members && selected.members.length > 0 ? selected.members : [];
@@ -1684,7 +1761,191 @@ const Messenger = ({
 
   const handleOpenMembersModal = () => {
     setShowInfoMenu(false);
+    setMemberPendingRemoval(null);
     setShowMembersModal(true);
+  };
+
+  // ── Add / remove members of a discussion room ─────────────────────────────
+  // Rules (also enforced by the server):
+  //   • Anyone in the room can add members.
+  //   • New members can only come from the main class conversation.
+  //   • Only the room admin can remove members.
+  const patchConversation = useCallback(
+    (conversationId: string, patch: (c: Conversation) => Conversation) => {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conversationId ? patch(c) : c))
+      );
+      setSelected((prev) =>
+        prev && prev.id === conversationId ? patch(prev) : prev
+      );
+    },
+    []
+  );
+
+  const loadAddableMembers = useCallback(async (conversationId: string) => {
+    setAddableLoading(true);
+    setAddableError('');
+    try {
+      const response = await apiFetch(
+        `${API_BASE_URL}/messenger-room-addable-members/${encodeURIComponent(conversationId)}`
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to load class members.');
+      }
+      setAddableMembers(Array.isArray(result?.data) ? result.data : []);
+    } catch (error: any) {
+      setAddableMembers([]);
+      setAddableError(error?.message || 'Failed to load class members.');
+    } finally {
+      setAddableLoading(false);
+    }
+  }, []);
+
+  const handleOpenAddMembersModal = () => {
+    if (!selected?.isRoom) return;
+    setShowInfoMenu(false);
+    setShowMembersModal(false);
+    setMembersToAdd([]);
+    setAddableMembers([]);
+    setShowAddMembersModal(true);
+    loadAddableMembers(selected.id);
+  };
+
+  const toggleMemberToAdd = useCallback((userId: string) => {
+    setMembersToAdd((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  }, []);
+
+  const handleConfirmAddMembers = async () => {
+    if (!selected?.isRoom || membersToAdd.length === 0 || isAddingMembers) return;
+
+    const roomId = selected.id;
+    setIsAddingMembers(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/messenger-room-add-members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: roomId, userIds: membersToAdd }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to add members.');
+      }
+
+      const added: AddableRoomMember[] = Array.isArray(result?.data?.added)
+        ? result.data.added
+        : [];
+
+      // Reflect the change right away instead of waiting for the next poll.
+      patchConversation(roomId, (c) => ({
+        ...c,
+        members: [...(c.members || []), ...added.map((m) => m.name)],
+        memberDetails: [
+          ...(c.memberDetails || []),
+          ...added.map((m) => ({
+            name: m.name,
+            userId: m.userId,
+            studentId: m.userId,
+            role: m.role,
+          })),
+        ],
+      }));
+
+      showToast(
+        added.length === 1
+          ? `${added[0].name} was added to the room.`
+          : `${added.length} members were added to the room.`,
+        'success'
+      );
+      setMembersToAdd([]);
+      setShowAddMembersModal(false);
+      setShowMembersModal(true);
+    } catch (error: any) {
+      console.error('Add room members error:', error);
+      showToast(error?.message || 'Failed to add members.', 'error');
+      // The class list may have changed under us — refresh it.
+      loadAddableMembers(roomId);
+      setMembersToAdd([]);
+    } finally {
+      setIsAddingMembers(false);
+    }
+  };
+
+  const handleConfirmRemoveMember = async (userId: string, name: string) => {
+    if (!selected?.isRoom || !userId || isRemovingMember) return;
+
+    const roomId = selected.id;
+    setIsRemovingMember(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/messenger-room-remove-member`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: roomId, userId }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to remove member.');
+      }
+
+      patchConversation(roomId, (c) => {
+        const details = c.memberDetails || [];
+        const idx = details.findIndex((d) => d.userId === userId);
+        if (idx < 0) {
+          return { ...c, members: (c.members || []).filter((m) => m !== name) };
+        }
+        const nextDetails = details.filter((_, i) => i !== idx);
+        return { ...c, memberDetails: nextDetails, members: nextDetails.map((d) => d.name) };
+      });
+
+      showToast(`${name} was removed from the room.`, 'success');
+    } catch (error: any) {
+      console.error('Remove room member error:', error);
+      showToast(error?.message || 'Failed to remove member.', 'error');
+    } finally {
+      setMemberPendingRemoval(null);
+      setIsRemovingMember(false);
+    }
+  };
+
+  // Leaving a room: any member except the room admin can leave (server enforces).
+  const handleOpenLeaveConfirm = () => {
+    if (!selected?.isRoom || isSelectedRoomAdmin) return;
+    setShowInfoMenu(false);
+    setShowMembersModal(false);
+    setShowLeaveConfirm(true);
+  };
+
+  const handleConfirmLeaveRoom = async () => {
+    if (!selected?.isRoom || isLeavingRoom) return;
+
+    const roomId = selected.id;
+    setIsLeavingRoom(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/messenger-room-leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: roomId }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to leave the room.');
+      }
+
+      leftRoomsRef.current.set(roomId, Date.now());
+      setShowLeaveConfirm(false);
+      setConversations((prev) => prev.filter((c) => c.id !== roomId));
+      setSelected(null);
+      onConversationActiveChange?.(false);
+      showToast('You left the discussion room.', 'success');
+    } catch (error: any) {
+      console.error('Leave room error:', error);
+      setShowLeaveConfirm(false);
+      showToast(error?.message || 'Failed to leave the room.', 'error');
+    } finally {
+      setIsLeavingRoom(false);
+    }
   };
 
   const handleCreateRoom = async () => {
@@ -1770,6 +2031,9 @@ const Messenger = ({
         roomName: trimmedRoomName,
         members: roomMembers,
         admin: currentUserName,
+        ownerId: currentUser,
+        ownerUid: currentUserUid,
+        isLocalOnly: true, // dropped as soon as the server returns the room
         classId: selected.classId,
         section: selected.section,
         schedule: selected.schedule,
@@ -2659,6 +2923,20 @@ const Messenger = ({
                 />
                 <Text style={styles.infoActionCardText}>See Members</Text>
               </TouchableOpacity>
+              {selected?.isCreatedRoom && (
+                <TouchableOpacity
+                  style={styles.infoActionCard}
+                  activeOpacity={0.85}
+                  onPress={handleOpenAddMembersModal}
+                >
+                  <MaterialCommunityIcons
+                    name="account-plus-outline"
+                    size={18}
+                    color="#222"
+                  />
+                  <Text style={styles.infoActionCardText}>Add Member</Text>
+                </TouchableOpacity>
+              )}
               {!selected?.isCreatedRoom && (
                 <TouchableOpacity
                   style={styles.infoActionCard}
@@ -2671,6 +2949,22 @@ const Messenger = ({
                     color="#222"
                   />
                   <Text style={styles.infoActionCardText}>Create Room</Text>
+                </TouchableOpacity>
+              )}
+              {selected?.isCreatedRoom && !isSelectedRoomAdmin && (
+                <TouchableOpacity
+                  style={styles.infoActionCard}
+                  activeOpacity={0.85}
+                  onPress={handleOpenLeaveConfirm}
+                >
+                  <MaterialCommunityIcons
+                    name="exit-run"
+                    size={18}
+                    color="#d32f2f"
+                  />
+                  <Text style={[styles.infoActionCardText, { color: '#d32f2f' }]}>
+                    Leave Room
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -2957,10 +3251,44 @@ const Messenger = ({
                   ) : null}
                 </View>
               )}
+              {selected?.isRoom && (
+                <View style={styles.professionalSection}>
+                  <TouchableOpacity
+                    style={[
+                      styles.professionalPrimaryButton,
+                      { width: '100%', marginBottom: 8 },
+                    ]}
+                    activeOpacity={0.9}
+                    onPress={handleOpenAddMembersModal}
+                  >
+                    <MaterialCommunityIcons name="account-plus-outline" size={16} color="#fff" />
+                    <Text style={styles.professionalPrimaryButtonText}>Add Member</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.professionalHelperText}>
+                    {isSelectedRoomAdmin
+                      ? 'Anyone in the room can add classmates. As the room admin, you can also remove members.'
+                      : 'Anyone in the room can add classmates. Only the room admin can remove members.'}
+                  </Text>
+                </View>
+              )}
               <View style={styles.professionalMemberList}>
                 {selectedConversationMembers.map((member, index) => {
                   const isAdmin = member === selected?.admin;
                   const isCurrentUser = member === currentUserName;
+                  const memberDetail =
+                    selected?.memberDetails?.[index]?.name === member
+                      ? selected.memberDetails[index]
+                      : selected?.memberDetails?.find((d) => d.name === member);
+                  const memberUserId = memberDetail?.userId || '';
+                  // Only the room admin can remove, and never themselves.
+                  const canRemoveMember =
+                    !!selected?.isRoom &&
+                    isSelectedRoomAdmin &&
+                    !isAdmin &&
+                    !isCurrentUser &&
+                    !!memberUserId;
+                  const isPendingRemoval =
+                    canRemoveMember && memberPendingRemoval === memberUserId;
                   const detail = selected?.memberDetails?.find((d) => d.name === member);
                   const studentId = detail?.studentId;
                   return (
@@ -3005,11 +3333,289 @@ const Messenger = ({
                           </View>
                         </View>
                       </View>
+                      {canRemoveMember ? (
+                        isPendingRemoval ? (
+                          <View style={styles.memberRemoveConfirmRow}>
+                            <TouchableOpacity
+                              style={styles.memberRemoveCancelButton}
+                              activeOpacity={0.8}
+                              disabled={isRemovingMember}
+                              onPress={() => setMemberPendingRemoval(null)}
+                            >
+                              <Text style={styles.memberRemoveCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.memberRemoveConfirmButton,
+                                isRemovingMember && styles.professionalPrimaryButtonDisabled,
+                              ]}
+                              activeOpacity={0.85}
+                              disabled={isRemovingMember}
+                              onPress={() => handleConfirmRemoveMember(memberUserId, member)}
+                            >
+                              <Text style={styles.memberRemoveConfirmText}>
+                                {isRemovingMember ? 'Removing…' : 'Remove'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.memberRemoveIconButton}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={() => setMemberPendingRemoval(memberUserId)}
+                          >
+                            <MaterialCommunityIcons
+                              name="account-remove-outline"
+                              size={20}
+                              color="#d32f2f"
+                            />
+                          </TouchableOpacity>
+                        )
+                      ) : null}
                     </View>
                   );
                 })}
               </View>
+              {selected?.isRoom && !isSelectedRoomAdmin ? (
+                <TouchableOpacity
+                  style={styles.leaveRoomButton}
+                  activeOpacity={0.85}
+                  onPress={handleOpenLeaveConfirm}
+                >
+                  <MaterialCommunityIcons name="exit-run" size={16} color="#d32f2f" />
+                  <Text style={styles.leaveRoomButtonText}>Leave Room</Text>
+                </TouchableOpacity>
+              ) : selected?.isRoom ? (
+                <Text style={[styles.professionalHelperText, { marginTop: 14 }]}>
+                  As the room admin you can't leave this room.
+                </Text>
+              ) : null}
             </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  const renderAddMembersModal = () => {
+    const modalWidth = Math.min(
+      width - (isMobile ? 24 : 40),
+      isDesktop ? 430 : 360
+    );
+    const modalMaxHeight = Math.min(
+      height * (isMobile ? 0.78 : 0.72),
+      520
+    );
+    const safeLeft = Math.max(
+      8,
+      Math.min(anchor.x, width - modalWidth - 8)
+    );
+    const safeTop = Math.max(
+      8,
+      Math.min(anchor.y, height - modalMaxHeight - 16)
+    );
+    const selectedCount = membersToAdd.length;
+    const closeAddModal = () => {
+      if (isAddingMembers) return;
+      setShowAddMembersModal(false);
+    };
+
+    return (
+      <Modal
+        transparent
+        visible={showAddMembersModal}
+        animationType="fade"
+        onRequestClose={closeAddModal}
+      >
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={closeAddModal}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    { width: modalWidth, maxHeight: modalMaxHeight },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
+            ]}
+          >
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Add Members</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  Choose people from the main class conversation.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.professionalCloseButton}
+                onPress={closeAddModal}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
+              {addableLoading ? (
+                <Text style={styles.professionalHelperText}>
+                  Loading class members…
+                </Text>
+              ) : addableError ? (
+                <View>
+                  <Text style={styles.professionalErrorText}>{addableError}</Text>
+                  <TouchableOpacity
+                    style={styles.memberRemoveCancelButton}
+                    activeOpacity={0.8}
+                    onPress={() => selected && loadAddableMembers(selected.id)}
+                  >
+                    <Text style={styles.memberRemoveCancelText}>Try again</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : addableMembers.length === 0 ? (
+                <Text style={styles.professionalHelperText}>
+                  Everyone in the main class conversation is already in this room.
+                </Text>
+              ) : (
+                <View style={styles.professionalMemberList}>
+                  {addableMembers.map((member) => {
+                    const checked = membersToAdd.includes(member.userId);
+                    return (
+                      <TouchableOpacity
+                        key={member.userId}
+                        style={[
+                          styles.professionalMemberRow,
+                          checked && styles.professionalMemberRowActive,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => toggleMemberToAdd(member.userId)}
+                      >
+                        <View style={styles.professionalMemberInfo}>
+                          <View style={styles.professionalMemberAvatar}>
+                            <MaterialCommunityIcons
+                              name="account"
+                              size={16}
+                              color="#666"
+                            />
+                          </View>
+                          <View style={styles.professionalMemberTextWrap}>
+                            <Text style={styles.professionalMemberName}>
+                              {member.name}
+                            </Text>
+                            <Text style={styles.professionalMemberMeta}>
+                              {member.role === 'teacher'
+                                ? 'Teacher'
+                                : checked
+                                ? 'Selected'
+                                : 'Tap to select'}
+                            </Text>
+                          </View>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={
+                            checked
+                              ? 'checkbox-marked-circle'
+                              : 'checkbox-blank-circle-outline'
+                          }
+                          size={22}
+                          color={checked ? '#d32f2f' : '#b8b8b8'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+            <View style={styles.addMembersFooter}>
+              <TouchableOpacity
+                style={[
+                  styles.professionalPrimaryButton,
+                  { width: '100%' },
+                  (selectedCount === 0 || isAddingMembers) &&
+                    styles.professionalPrimaryButtonDisabled,
+                ]}
+                activeOpacity={0.9}
+                disabled={selectedCount === 0 || isAddingMembers}
+                onPress={handleConfirmAddMembers}
+              >
+                <MaterialCommunityIcons name="account-plus-outline" size={16} color="#fff" />
+                <Text style={styles.professionalPrimaryButtonText}>
+                  {isAddingMembers
+                    ? 'Adding…'
+                    : selectedCount > 0
+                    ? `Add ${selectedCount} ${selectedCount === 1 ? 'member' : 'members'}`
+                    : 'Select members to add'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  const renderLeaveRoomModal = () => {
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), 340);
+    const closeLeaveModal = () => {
+      if (isLeavingRoom) return;
+      setShowLeaveConfirm(false);
+    };
+    return (
+      <Modal
+        transparent
+        visible={showLeaveConfirm}
+        animationType="fade"
+        onRequestClose={closeLeaveModal}
+      >
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={closeLeaveModal}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[styles.professionalModalCard, { width: modalWidth, padding: 18 }]}
+          >
+            <Text style={styles.professionalModalTitle}>Leave this room?</Text>
+            <Text style={[styles.professionalModalSubtitle, { marginTop: 6, marginBottom: 16 }]}>
+              You won't see this room or its messages anymore. Anyone still in the
+              room can add you back.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.leaveConfirmCancel, { flex: 1 }]}
+                activeOpacity={0.8}
+                disabled={isLeavingRoom}
+                onPress={closeLeaveModal}
+              >
+                <Text style={styles.memberRemoveCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.leaveConfirmButton,
+                  { flex: 1 },
+                  isLeavingRoom && styles.professionalPrimaryButtonDisabled,
+                ]}
+                activeOpacity={0.85}
+                disabled={isLeavingRoom}
+                onPress={handleConfirmLeaveRoom}
+              >
+                <Text style={styles.memberRemoveConfirmText}>
+                  {isLeavingRoom ? 'Leaving…' : 'Leave'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -3136,6 +3742,8 @@ const Messenger = ({
         {renderInfoMenu()}
         {renderCreateRoomModal()}
         {renderMembersModal()}
+        {renderAddMembersModal()}
+        {renderLeaveRoomModal()}
         {renderImagePreviewModal()}
       </View>
     );
@@ -3646,6 +4254,75 @@ const styles = StyleSheet.create({
     color: '#222',
   },
   professionalMemberMeta: { fontFamily: FONT_BODY, marginTop: 2, fontSize: 11, color: '#7a7a7a' },
+  professionalPrimaryButtonDisabled: { opacity: 0.5 },
+  addMembersFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  memberRemoveIconButton: { padding: 6 },
+  memberRemoveConfirmRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  memberRemoveCancelButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+    marginTop: 8,
+  },
+  memberRemoveCancelText: {
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#444',
+    fontWeight: '600',
+  },
+  memberRemoveConfirmButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#d32f2f',
+  },
+  memberRemoveConfirmText: {
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  leaveRoomButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 44,
+    marginTop: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f2b2b2',
+    backgroundColor: '#fff7f7',
+  },
+  leaveRoomButtonText: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    color: '#d32f2f',
+    fontWeight: '600',
+  },
+  leaveConfirmCancel: {
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leaveConfirmButton: {
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#d32f2f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   conversationMetaCard: {
     marginBottom: 12,
     padding: 12,

@@ -9992,6 +9992,500 @@ app.get(
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Discussion-room membership
+  //
+  // Rules enforced here (server side, so they can't be bypassed from the client):
+  //   1. New members can ONLY come from the MAIN class conversation.
+  //   2. ANY current member of the room may add members (admin or not).
+  //   3. ONLY the room admin (the creator / room owner) may remove members.
+  //
+  // Unlike the older messenger routes, these use requireAuth and derive the
+  // caller's identity from the verified auth token — never from the body.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async function resolveMessengerCaller(req) {
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) return null;
+
+    const data = profile.data || {};
+    const userId = normalizeOptionalText(
+      data.studentId || data.teacherId || data.adminId || profile.id
+    );
+    const name =
+      `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
+      normalizeOptionalText(data.name) ||
+      "Someone";
+
+    return { authUid: req.user.uid, userId, name, role: profile.role };
+  }
+
+  // Rooms created by students store the student's id in BOTH ownerId/userId and
+  // ownerUid/userUid (the client sends the same value for both), so an id can
+  // legitimately appear in either field. Match on either.
+  function participantMatchesCaller(participant, caller) {
+    if (!participant || !caller) return false;
+    return Boolean(
+      (caller.userId &&
+        (participant.userId === caller.userId ||
+          participant.userUid === caller.userId)) ||
+        (caller.authUid && participant.userUid === caller.authUid)
+    );
+  }
+
+  function isRoomAdmin(room, caller) {
+    if (!room || !caller) return false;
+    if (
+      (caller.userId &&
+        (room.ownerId === caller.userId || room.ownerUid === caller.userId)) ||
+      (caller.authUid && room.ownerUid === caller.authUid)
+    ) {
+      return true;
+    }
+    // Legacy rooms with no owner ids stored: fall back to the owner's name.
+    return Boolean(
+      !room.ownerId &&
+        !room.ownerUid &&
+        room.ownerName &&
+        room.ownerName === caller.name
+    );
+  }
+
+  // Is `candidate` (from the main class conversation) already in `existing`?
+  // Ids win; a name match only counts for legacy participants stored by name
+  // alone (no ids), so two different students with the same name aren't merged.
+  function isSameRoomParticipant(existing, candidate) {
+    if (!existing || !candidate) return false;
+    if (existing.userId || existing.userUid) {
+      return Boolean(
+        (candidate.userId &&
+          (existing.userId === candidate.userId ||
+            existing.userUid === candidate.userId)) ||
+          (candidate.userUid && existing.userUid === candidate.userUid)
+      );
+    }
+    const existingName = (normalizeOptionalText(existing.name) || "").toLowerCase();
+    const candidateName = (normalizeOptionalText(candidate.name) || "").toLowerCase();
+    return Boolean(existingName) && existingName === candidateName;
+  }
+
+  function joinNamesForMessage(names) {
+    const list = names.filter(Boolean);
+    if (list.length <= 1) return list[0] || "";
+    if (list.length === 2) return `${list[0]} and ${list[1]}`;
+    return `${list.slice(0, -1).join(", ")}, and ${list[list.length - 1]}`;
+  }
+
+  function roomHttpError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
+  }
+
+  // Class members who are in the MAIN class conversation but not yet in this
+  // room — i.e. the people the caller is allowed to add.
+  app.get(
+    "/messenger-room-addable-members/:conversationId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const caller = await resolveMessengerCaller(req);
+        if (!caller) {
+          return res.status(403).json({ error: "User profile not found." });
+        }
+
+        const roomSnap = await db
+          .collection("messengerConversations")
+          .doc(req.params.conversationId)
+          .get();
+
+        if (!roomSnap.exists) {
+          return res.status(404).json({ error: "Room not found." });
+        }
+
+        const room = roomSnap.data() || {};
+        if (room.type !== "room") {
+          return res
+            .status(400)
+            .json({ error: "Members can only be added to discussion rooms." });
+        }
+
+        const roomParticipants = Array.isArray(room.participants)
+          ? room.participants
+          : [];
+
+        if (!roomParticipants.some((p) => participantMatchesCaller(p, caller))) {
+          return res
+            .status(403)
+            .json({ error: "Only members of this room can add new members." });
+        }
+
+        const mainDoc = await findMainClassConversationDoc(room.classId);
+        const mainParticipants = mainDoc
+          ? Array.isArray(mainDoc.data()?.participants)
+            ? mainDoc.data().participants
+            : []
+          : [];
+
+        const seen = new Set();
+        const members = [];
+
+        for (const candidate of mainParticipants) {
+          const userId = normalizeOptionalText(candidate?.userId);
+          const name = normalizeOptionalText(candidate?.name);
+          // Need an id to add someone reliably.
+          if (!userId || !name || seen.has(userId)) continue;
+          seen.add(userId);
+
+          if (roomParticipants.some((p) => isSameRoomParticipant(p, candidate))) {
+            continue;
+          }
+
+          members.push({
+            userId,
+            name,
+            role: candidate.role === "teacher" ? "teacher" : "student",
+          });
+        }
+
+        members.sort((a, b) => a.name.localeCompare(b.name));
+
+        return res.json({ success: true, data: members });
+      } catch (error) {
+        if (!error.status) console.error("Room addable members error:", error); // 4xx = expected rejection, not worth a stack trace
+        return res.status(error.status || 500).json({
+          error: error.message || "Failed to load class members.",
+        });
+      }
+    }
+  );
+
+  app.post("/messenger-room-add-members", requireAuth, async (req, res) => {
+    try {
+      const conversationId = normalizeOptionalText(req.body?.conversationId);
+      const requestedIds = Array.from(
+        new Set(
+          (Array.isArray(req.body?.userIds) ? req.body.userIds : [])
+            .map((id) => normalizeOptionalText(id))
+            .filter(Boolean)
+        )
+      );
+
+      if (!conversationId || requestedIds.length === 0) {
+        return res.status(400).json({
+          error: "conversationId and at least one member are required.",
+        });
+      }
+      if (requestedIds.length > 200) {
+        return res
+          .status(400)
+          .json({ error: "Too many members selected at once." });
+      }
+
+      const caller = await resolveMessengerCaller(req);
+      if (!caller) {
+        return res.status(403).json({ error: "User profile not found." });
+      }
+
+      const roomRef = db.collection("messengerConversations").doc(conversationId);
+
+      // Resolve the main class conversation up front (queries can't run inside
+      // a transaction); its document is re-read inside the transaction below.
+      const roomPreview = await roomRef.get();
+      if (!roomPreview.exists) {
+        return res.status(404).json({ error: "Room not found." });
+      }
+      const mainDoc = await findMainClassConversationDoc(
+        roomPreview.data()?.classId
+      );
+      if (!mainDoc) {
+        return res.status(404).json({
+          error: "The main class conversation for this room was not found.",
+        });
+      }
+
+      const result = await db.runTransaction(async (tx) => {
+        const [roomSnap, mainSnap] = await Promise.all([
+          tx.get(roomRef),
+          tx.get(mainDoc.ref),
+        ]);
+
+        if (!roomSnap.exists) throw roomHttpError(404, "Room not found.");
+
+        const room = roomSnap.data() || {};
+        if (room.type !== "room") {
+          throw roomHttpError(
+            400,
+            "Members can only be added to discussion rooms."
+          );
+        }
+
+        const roomParticipants = Array.isArray(room.participants)
+          ? room.participants
+          : [];
+
+        // Rule 2: any member of the room may add — admin or not.
+        if (!roomParticipants.some((p) => participantMatchesCaller(p, caller))) {
+          throw roomHttpError(
+            403,
+            "Only members of this room can add new members."
+          );
+        }
+
+        // Rule 1: candidates must be in the MAIN class conversation.
+        const mainParticipants = Array.isArray(mainSnap.data()?.participants)
+          ? mainSnap.data().participants
+          : [];
+
+        const toAdd = [];
+        let alreadyMembers = 0;
+        let notInClass = 0;
+
+        for (const userId of requestedIds) {
+          const source = mainParticipants.find((p) => p?.userId === userId);
+          if (!source || !normalizeOptionalText(source.name)) {
+            notInClass++;
+            continue;
+          }
+          if (
+            roomParticipants.some((p) => isSameRoomParticipant(p, source)) ||
+            toAdd.some((p) => p.userId === source.userId)
+          ) {
+            alreadyMembers++;
+            continue;
+          }
+          toAdd.push({
+            userUid: source.userUid || null,
+            userId: source.userId,
+            name: normalizeOptionalText(source.name),
+            role: source.role === "teacher" ? "teacher" : "student",
+          });
+        }
+
+        if (toAdd.length === 0) {
+          throw roomHttpError(
+            notInClass > 0 ? 400 : 409,
+            notInClass > 0
+              ? "Only members of the main class conversation can be added."
+              : "The selected people are already in this room."
+          );
+        }
+
+        const text = `${caller.name} added ${joinNamesForMessage(
+          toAdd.map((p) => p.name)
+        )} to the room.`;
+
+        tx.update(roomRef, {
+          participants: [...roomParticipants, ...toAdd],
+          lastMessage: text,
+          lastMessageSender: "system",
+          // Attribute to the adder so it doesn't show up as unread for them.
+          lastMessageSenderId: caller.userId,
+          lastMessageSenderUid: caller.authUid,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        tx.set(roomRef.collection("messages").doc(), {
+          type: "system",
+          text,
+          classId: room.classId || null,
+          createdAt: FieldValue.serverTimestamp(),
+          createdByRole: "system",
+          senderUid: caller.authUid,
+          senderId: caller.userId,
+          senderName: caller.name,
+        });
+
+        return { added: toAdd, alreadyMembers, notInClass };
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          added: result.added.map((p) => ({
+            userId: p.userId,
+            name: p.name,
+            role: p.role,
+          })),
+          alreadyMembers: result.alreadyMembers,
+          notInClass: result.notInClass,
+        },
+      });
+    } catch (error) {
+      if (!error.status) console.error("Room add members error:", error); // 4xx = expected rejection, not worth a stack trace
+      return res.status(error.status || 500).json({
+        error: error.message || "Failed to add members to the room.",
+      });
+    }
+  });
+
+  app.post("/messenger-room-remove-member", requireAuth, async (req, res) => {
+    try {
+      const conversationId = normalizeOptionalText(req.body?.conversationId);
+      const targetUserId = normalizeOptionalText(req.body?.userId);
+
+      if (!conversationId || !targetUserId) {
+        return res
+          .status(400)
+          .json({ error: "conversationId and userId are required." });
+      }
+
+      const caller = await resolveMessengerCaller(req);
+      if (!caller) {
+        return res.status(403).json({ error: "User profile not found." });
+      }
+
+      const roomRef = db.collection("messengerConversations").doc(conversationId);
+
+      const removed = await db.runTransaction(async (tx) => {
+        const roomSnap = await tx.get(roomRef);
+        if (!roomSnap.exists) throw roomHttpError(404, "Room not found.");
+
+        const room = roomSnap.data() || {};
+        if (room.type !== "room") {
+          throw roomHttpError(
+            400,
+            "Members can only be removed from discussion rooms."
+          );
+        }
+
+        // Rule 3: only the room admin may remove members.
+        if (!isRoomAdmin(room, caller)) {
+          throw roomHttpError(403, "Only the room admin can remove members.");
+        }
+
+        const participants = Array.isArray(room.participants)
+          ? room.participants
+          : [];
+
+        const target = participants.find(
+          (p) => p?.userId === targetUserId || p?.userUid === targetUserId
+        );
+        if (!target) {
+          throw roomHttpError(404, "That person is not in this room.");
+        }
+
+        // The admin can't remove themselves — that would orphan the room.
+        const targetAsUser = { userId: targetUserId, authUid: target.userUid };
+        if (
+          isRoomAdmin(room, targetAsUser) ||
+          participantMatchesCaller(target, caller)
+        ) {
+          throw roomHttpError(400, "The room admin can't be removed.");
+        }
+
+        const remaining = participants.filter((p) => p !== target);
+        const targetName = normalizeOptionalText(target.name) || "A member";
+        const text = `${caller.name} removed ${targetName} from the room.`;
+
+        tx.update(roomRef, {
+          participants: remaining,
+          lastMessage: text,
+          lastMessageSender: "system",
+          lastMessageSenderId: caller.userId,
+          lastMessageSenderUid: caller.authUid,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        tx.set(roomRef.collection("messages").doc(), {
+          type: "system",
+          text,
+          classId: room.classId || null,
+          createdAt: FieldValue.serverTimestamp(),
+          createdByRole: "system",
+          senderUid: caller.authUid,
+          senderId: caller.userId,
+          senderName: caller.name,
+        });
+
+        return { userId: target.userId || targetUserId, name: targetName };
+      });
+
+      return res.json({ success: true, data: removed });
+    } catch (error) {
+      if (!error.status) console.error("Room remove member error:", error); // 4xx = expected rejection, not worth a stack trace
+      return res.status(error.status || 500).json({
+        error: error.message || "Failed to remove member from the room.",
+      });
+    }
+  });
+
+  // A member leaves a discussion room on their own. The room admin can't leave:
+  // they're the only one allowed to remove members, so the room would be left
+  // with nobody able to manage it. (Anyone in the room can add them back.)
+  app.post("/messenger-room-leave", requireAuth, async (req, res) => {
+    try {
+      const conversationId = normalizeOptionalText(req.body?.conversationId);
+      if (!conversationId) {
+        return res.status(400).json({ error: "conversationId is required." });
+      }
+
+      const caller = await resolveMessengerCaller(req);
+      if (!caller) {
+        return res.status(403).json({ error: "User profile not found." });
+      }
+
+      const roomRef = db.collection("messengerConversations").doc(conversationId);
+
+      await db.runTransaction(async (tx) => {
+        const roomSnap = await tx.get(roomRef);
+        if (!roomSnap.exists) throw roomHttpError(404, "Room not found.");
+
+        const room = roomSnap.data() || {};
+        if (room.type !== "room") {
+          throw roomHttpError(400, "Only discussion rooms can be left.");
+        }
+
+        const participants = Array.isArray(room.participants)
+          ? room.participants
+          : [];
+
+        if (!participants.some((p) => participantMatchesCaller(p, caller))) {
+          throw roomHttpError(404, "You're not a member of this room.");
+        }
+
+        if (isRoomAdmin(room, caller)) {
+          throw roomHttpError(400, "The room admin can't leave the room.");
+        }
+
+        const remaining = participants.filter(
+          (p) => !participantMatchesCaller(p, caller)
+        );
+        const text = `${caller.name} left the room.`;
+
+        tx.update(roomRef, {
+          participants: remaining,
+          lastMessage: text,
+          lastMessageSender: "system",
+          lastMessageSenderId: caller.userId,
+          lastMessageSenderUid: caller.authUid,
+          lastMessageAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        tx.set(roomRef.collection("messages").doc(), {
+          type: "system",
+          text,
+          classId: room.classId || null,
+          createdAt: FieldValue.serverTimestamp(),
+          createdByRole: "system",
+          senderUid: caller.authUid,
+          senderId: caller.userId,
+          senderName: caller.name,
+        });
+      });
+
+      return res.json({ success: true });
+    } catch (error) {
+      if (!error.status) console.error("Room leave error:", error); // 4xx = expected rejection, not worth a stack trace
+      return res.status(error.status || 500).json({
+        error: error.message || "Failed to leave the room.",
+      });
+    }
+  });
+
   // Update your /class-materials/:classId route
   app.get("/class-materials/:classId", requireAuth, async (req, res) => {
     try {
