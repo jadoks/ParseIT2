@@ -218,27 +218,6 @@ function PasswordRequirementsChecklist({ password }: { password: string }) {
   );
 }
 
-/**
- * Small dark pill shown beside the password fields on small screens: a red ✗
- * until the rule is met, then a green ✓ (mirrors the reference design).
- */
-function ValidityPill({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <View
-      style={styles.mPill}
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={`${label}: ${ok ? 'valid' : 'not valid yet'}`}
-    >
-      <Ionicons
-        name={ok ? 'checkmark' : 'close'}
-        size={20}
-        color={ok ? '#4ADE80' : '#F87171'}
-      />
-    </View>
-  );
-}
-
 // ─── BirthdayField (matches AddStudentModal exactly) ─────────────────────────
 
 function BirthdayField({
@@ -1612,11 +1591,10 @@ export default function Register({
               <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
             </TouchableOpacity>
           </View>
-          <ValidityPill ok={isPasswordValid(password)} label="Password" />
         </View>
         {/* Rules only show while they're useful: when the field is active, or
-            typed-in but still failing. Once every rule passes, the pill turns
-            green and the list gets out of the way. */}
+            typed-in but still failing. Once every rule passes, the list gets
+            out of the way. */}
         {(isPasswordFocused || (password.length > 0 && !isPasswordValid(password))) && (
           <PasswordRequirementsChecklist password={password} />
         )}
@@ -1648,10 +1626,11 @@ export default function Register({
               <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
             </TouchableOpacity>
           </View>
-          <ValidityPill ok={isConfirmPasswordMatching} label="Confirm password" />
         </View>
-        {confirmPassword.length > 0 && !isConfirmPasswordMatching && (
-          <Text style={styles.mHintError}>Passwords do not match</Text>
+        {confirmPassword.length > 0 && (
+          <Text style={[styles.mHintError, isConfirmPasswordMatching && styles.mHintValid]}>
+            {isConfirmPasswordMatching ? '✓ Passwords match' : 'Passwords do not match'}
+          </Text>
         )}
       </View>
     </>
@@ -1829,7 +1808,7 @@ export default function Register({
               bounces={false}
             >
               <AuthWaveHeader
-                variant="compact"
+                variant="layered"
                 title="Sign up"
                 onLogoPress={handleGoToLanding}
               />
@@ -2266,14 +2245,8 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  // ✗ / ✓ pill beside the password fields
-  mPill: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
+  mHintValid: {
+    color: '#16A34A',
   },
   mHintError: {
     fontFamily: FONT_BODY,
