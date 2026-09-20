@@ -2100,7 +2100,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#D32F2F',
   },
-  mFooter: { paddingTop: 32 },
+  mFooter: { paddingTop: 35 },
   mPrimaryButton: {
     width: '100%',
     height: 54,
