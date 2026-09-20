@@ -8166,7 +8166,7 @@ MANUAL LESSON CREATION MODAL
               >
                 <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
               </TouchableOpacity>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, marginRight: 10 }}>
                 {/* Same large-screen vs. small-screen dropdown as CustomDropdown
                     in Honors.tsx: bottom-sheet Modal on small screens, inline
                     menu below the field on large screens. */}
