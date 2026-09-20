@@ -4231,7 +4231,7 @@ useEffect(() => {
   const renderLessonFormFields = () => (
     <>
       <Text style={styles.sectionLabel}>Lesson Title</Text>
-      <TextInput
+      <TextInput placeholderTextColor="#999"
         style={[styles.inputBox, isDuplicateLessonTitle && styles.errorBorder]}
         value={newLessonTitle}
         onChangeText={setNewLessonTitle}
@@ -4240,58 +4240,58 @@ useEffect(() => {
       {isDuplicateLessonTitle &&
         renderInputError('A lesson with this title already exists in this module (generated or manual). Please use a different title.')}
       <Text style={styles.sectionLabel}>Description</Text>
-      <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
+      <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
       {lessonMode === 'text' ? (
         <>
           <Text style={styles.sasFormSectionDivider}>Student Activity Sheet — every section below is required</Text>
 
           <Text style={styles.sectionLabel}>Intended Learning Outcomes (one per line)</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonObjectivesText} onChangeText={setNewLessonObjectivesText} multiline placeholder={"Define C Programming.\nExplain the importance of learning C Programming."} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonObjectivesText} onChangeText={setNewLessonObjectivesText} multiline placeholder={"Define C Programming.\nExplain the importance of learning C Programming."} />
 
           <Text style={styles.sectionLabel}>Materials (one per line)</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonMaterialsText} onChangeText={setNewLessonMaterialsText} multiline placeholder={"Computer\nSmartphone\nStudent Activity Sheet"} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonMaterialsText} onChangeText={setNewLessonMaterialsText} multiline placeholder={"Computer\nSmartphone\nStudent Activity Sheet"} />
 
           <Text style={styles.sectionLabel}>References (one per line)</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonReferencesText} onChangeText={setNewLessonReferencesText} multiline placeholder={"Author, Title, Year"} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonReferencesText} onChangeText={setNewLessonReferencesText} multiline placeholder={"Author, Title, Year"} />
 
           <Text style={styles.sectionLabel}>SDG Integration — one per line: "SDG name | description"</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonSdgText} onChangeText={setNewLessonSdgText} multiline placeholder={"SDG # 4 – Quality Education | Ensures inclusive and equitable quality education"} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonSdgText} onChangeText={setNewLessonSdgText} multiline placeholder={"SDG # 4 – Quality Education | Ensures inclusive and equitable quality education"} />
 
           <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
 
           <Text style={styles.sectionLabel}>Resource Links — optional, one per line: "Label | URL"</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 60 }]} value={newLessonPrepResourcesText} onChangeText={setNewLessonPrepResourcesText} multiline placeholder={"Download Dev C++ | https://sourceforge.net/projects/orwelldevcpp/"} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 60 }]} value={newLessonPrepResourcesText} onChangeText={setNewLessonPrepResourcesText} multiline placeholder={"Download Dev C++ | https://sourceforge.net/projects/orwelldevcpp/"} />
 
           <Text style={styles.sectionLabel}>Warm-up Activity Title</Text>
-          <TextInput style={styles.inputBox} value={newLessonPrepActivityTitle} onChangeText={setNewLessonPrepActivityTitle} placeholder='e.g. "Making a Cup of Coffee: Human vs Computer"' />
+          <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonPrepActivityTitle} onChangeText={setNewLessonPrepActivityTitle} placeholder='e.g. "Making a Cup of Coffee: Human vs Computer"' />
 
           <Text style={styles.sectionLabel}>Warm-up Activity Instructions</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonPrepInstructions} onChangeText={setNewLessonPrepInstructions} multiline placeholder={"Ask students: \"How do you make a cup of coffee?\"\n1. Get a cup.\n2. Put coffee in the cup."} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonPrepInstructions} onChangeText={setNewLessonPrepInstructions} multiline placeholder={"Ask students: \"How do you make a cup of coffee?\"\n1. Get a cup.\n2. Put coffee in the cup."} />
 
           <Text style={styles.sectionLabel}>Guide Questions (one per line)</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonPrepGuideQuestionsText} onChangeText={setNewLessonPrepGuideQuestionsText} multiline placeholder={"Did you follow a sequence of steps?\nIs this similar to an algorithm?"} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonPrepGuideQuestionsText} onChangeText={setNewLessonPrepGuideQuestionsText} multiline placeholder={"Did you follow a sequence of steps?\nIs this similar to an algorithm?"} />
 
           <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonPrepTransition} onChangeText={setNewLessonPrepTransition} multiline placeholder="Last meeting, we learned... Today, we will learn..." />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonPrepTransition} onChangeText={setNewLessonPrepTransition} multiline placeholder="Last meeting, we learned... Today, we will learn..." />
 
           <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
 
           <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
 
           <Text style={styles.sectionLabel}>Key Terms — one per line: "Term | Meaning"</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonKeyTermsText} onChangeText={setNewLessonKeyTermsText} multiline placeholder={"Program | A set of instructions given to a computer\nCompiler | A tool that translates source code into machine code"} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonKeyTermsText} onChangeText={setNewLessonKeyTermsText} multiline placeholder={"Program | A set of instructions given to a computer\nCompiler | A tool that translates source code into machine code"} />
 
           <Text style={styles.sectionLabel}>Take Aways (one per line)</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonTakeawaysText} onChangeText={setNewLessonTakeawaysText} multiline placeholder={"C Programming was developed by Dennis Ritchie in 1972.\nEvery C program starts with the main() function."} />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonTakeawaysText} onChangeText={setNewLessonTakeawaysText} multiline placeholder={"C Programming was developed by Dennis Ritchie in 1972.\nEvery C program starts with the main() function."} />
 
           <Text style={styles.sasFormSectionDivider}>Practice &amp; Performance</Text>
 
           <Text style={styles.sectionLabel}>Guided Practice</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonGuidedPractice} onChangeText={setNewLessonGuidedPractice} multiline placeholder="1. Write a main() function\n2. Use printf to print Hello, C!" />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonGuidedPractice} onChangeText={setNewLessonGuidedPractice} multiline placeholder="1. Write a main() function\n2. Use printf to print Hello, C!" />
 
           <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
-          <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for the independent performance task..." />
+          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for the independent performance task..." />
         </>
       ) : (
         <>
@@ -5563,7 +5563,7 @@ useEffect(() => {
           key={oIndex}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}
         >
-          <TextInput
+          <TextInput placeholderTextColor="#999"
             style={[
               styles.inputBox,
               { flex: 1, marginBottom: 0, borderColor: isCorrect ? '#2E7D32' : '#DDD' },
@@ -5600,14 +5600,14 @@ useEffect(() => {
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Pair ${qIndex + 1}`)}
             <Text style={styles.sectionLabel}>Term</Text>
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.question}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)}
               placeholder="HTML"
             />
             <Text style={styles.sectionLabel}>Definition</Text>
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.answer}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)}
@@ -5621,7 +5621,7 @@ useEffect(() => {
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Item ${qIndex + 1}`)}
             <Text style={styles.sectionLabel}>Sentence (Use '___' for the blank)</Text>
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.sentence || q.question || ''}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'sentence', val)}
@@ -5629,7 +5629,7 @@ useEffect(() => {
               multiline
             />
             <Text style={styles.sectionLabel}>Missing Word / Correct Answer</Text>
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.answer || ''}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)}
@@ -5642,7 +5642,7 @@ useEffect(() => {
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Flashcard ${qIndex + 1}`)}
             <Text style={styles.sectionLabel}>Front of Card (Question / Prompt)</Text>
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.question}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)}
@@ -5650,7 +5650,7 @@ useEffect(() => {
               multiline
             />
             <Text style={styles.sectionLabel}>Back of Card (Answer)</Text>
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.answer}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)}
@@ -5666,7 +5666,7 @@ useEffect(() => {
             {renderHeader(
               `${gameType === 'boss_battle' ? 'Boss Battle Question' : 'Question'} ${qIndex + 1}`
             )}
-            <TextInput
+            <TextInput placeholderTextColor="#999"
               style={styles.inputBox}
               value={q.question}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)}
@@ -5724,8 +5724,8 @@ useEffect(() => {
                             <Ionicons name="close-circle" size={20} color="#999" />
                           </TouchableOpacity>
                         </View>
-                        <TextInput style={styles.inputBox} placeholder="Title" value={l.title} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.title`, v)} />
-                        <TextInput style={[styles.textAreaBox, { minHeight: 60 }]} placeholder="Description" value={l.description} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.description`, v)} multiline />
+                        <TextInput placeholderTextColor="#999" style={styles.inputBox} placeholder="Title" value={l.title} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.title`, v)} />
+                        <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 60 }]} placeholder="Description" value={l.description} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.description`, v)} multiline />
 
                         <Text style={styles.sasFormSectionDivider}>Student Activity Sheet — every section required</Text>
 
@@ -5758,7 +5758,7 @@ useEffect(() => {
 
                         <View style={{ marginTop: 12 }}>
                           <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
-                          <TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="AI content..." value={l.discussion || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.discussion`, v)} multiline />
+                          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="AI content..." value={l.discussion || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.discussion`, v)} multiline />
                         </View>
 
                         <Text style={styles.sectionLabel}>Key Terms — "Term | Meaning" per line</Text>
@@ -5772,7 +5772,7 @@ useEffect(() => {
 
                         <View style={{ marginTop: 12 }}>
                           <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
-                          <TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="Scenario..." value={l.activity || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.activity`, v)} multiline />
+                          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="Scenario..." value={l.activity || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.activity`, v)} multiline />
                         </View>
                       </View>
                     ))}
