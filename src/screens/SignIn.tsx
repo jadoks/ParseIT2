@@ -2040,17 +2040,15 @@ const styles = StyleSheet.create({
   // ── Small-screen layout: wave header + soft fields ────────────────────────
   mRoot: { flex: 1, backgroundColor: '#FFFFFF' },
   mScrollContent: { flexGrow: 1 },
-  // Top group (fields) and footer (button) are pushed apart so the action
-  // button sits at the bottom of the screen, like the reference design.
+  // Fields and footer flow naturally one after the other (no space-between),
+  // so the Sign In button stays close to the fields on tall screens.
   mBody: {
-    flexGrow: 1,
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
     paddingHorizontal: 24,
     paddingTop: 6,
     paddingBottom: 28,
-    justifyContent: 'space-between',
   },
   mSubtitle: {
     fontFamily: FONT_BODY,
@@ -2102,7 +2100,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#D32F2F',
   },
-  mFooter: { paddingTop: 28 },
+  mFooter: { paddingTop: 32 },
   mPrimaryButton: {
     width: '100%',
     height: 54,
