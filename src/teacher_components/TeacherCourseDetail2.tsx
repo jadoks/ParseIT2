@@ -572,6 +572,139 @@ const getTodayDateKey = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+// ─── LessonModeDropdown ──────────────────────────────────────────────────────
+// Mirrors CustomDropdown in Honors.tsx (same UI + behavior), with a separate
+// UI per screen size:
+//   • small screens (isMobile)  → white bordered field that opens a bottom-
+//     sheet Modal (handle, title + close button, highlighted selected row,
+//     checkmark). A Modal always sits above the screen, so it can't be
+//     clipped or blocked by a surrounding ScrollView.
+//   • large screens             → same field that opens a plain inline menu
+//     just below it (simple white list, no checkmark/highlight).
+// Selecting an option closes the dropdown; tapping the field toggles it.
+type LessonDropdownOption = { value: string; label: string };
+
+const LESSON_MODE_OPTIONS: LessonDropdownOption[] = [
+  { value: 'text', label: 'Text Content' },
+  { value: 'file', label: 'Upload File' },
+];
+
+function LessonModeDropdown({
+  value,
+  options,
+  onSelect,
+  visible,
+  onToggle,
+  isMobile,
+  label,
+}: {
+  value: string;
+  options: LessonDropdownOption[];
+  onSelect: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  isMobile: boolean;
+  label?: string;
+}) {
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? value;
+
+  return (
+    <View style={styles.lessonDropdownContainer}>
+      <TouchableOpacity
+        style={[styles.lessonDropdownButton, isMobile && styles.lessonDropdownButtonMobile]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`${label || 'Select an option'}: ${selectedLabel}`}
+      >
+        <Text style={styles.lessonDropdownButtonText} numberOfLines={1}>
+          {selectedLabel}
+        </Text>
+        <Ionicons name={visible ? 'chevron-up' : 'chevron-down'} size={16} color="#000" />
+      </TouchableOpacity>
+
+      {isMobile ? (
+        <Modal
+          visible={visible}
+          transparent
+          animationType="fade"
+          onRequestClose={onToggle}
+          statusBarTranslucent
+        >
+          <TouchableOpacity
+            style={styles.lessonDropdownModalOverlay}
+            activeOpacity={1}
+            onPress={onToggle}
+          >
+            {/* Swallow taps on the sheet itself so they don't close the modal */}
+            <TouchableOpacity
+              style={styles.lessonDropdownModalSheet}
+              activeOpacity={1}
+              onPress={() => {}}
+            >
+              <View style={styles.lessonDropdownModalHandle} />
+
+              <View style={styles.lessonDropdownModalHeader}>
+                <Text style={styles.lessonDropdownModalTitle}>{label || 'Select an option'}</Text>
+                <TouchableOpacity onPress={onToggle} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#3B332E" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.lessonDropdownModalScroll}
+                showsVerticalScrollIndicator={false}
+              >
+                {options.map((option) => {
+                  const isSelected = option.value === value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.lessonDropdownModalItem,
+                        isSelected && styles.lessonDropdownModalItemSelected,
+                      ]}
+                      onPress={() => onSelect(option.value)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.lessonDropdownModalItemText,
+                          isSelected && styles.lessonDropdownModalItemTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      {isSelected ? (
+                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      ) : visible ? (
+        <View style={styles.lessonInlineDropdownMenu}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {options.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={styles.lessonDropdownItem}
+                onPress={() => onSelect(option.value)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.lessonDropdownItemText}>{option.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 type GenerationUsageMap = Record<string, { date: string; count: number }>;
 
 const readGenerationUsage = async (): Promise<GenerationUsageMap> => {
@@ -8034,107 +8167,22 @@ MANUAL LESSON CREATION MODAL
                 <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
-                <View style={styles.lessonModeDropdownWrap}>
-                  <TouchableOpacity
-                    style={styles.lessonModeDropdownTrigger}
-                    onPress={() => setShowLessonModeDropdown((v) => !v)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.lessonModeDropdownText} numberOfLines={1}>
-                      {lessonMode === 'file' ? 'Upload File' : 'Text Content'}
-                    </Text>
-                    <Ionicons name={showLessonModeDropdown ? 'chevron-up' : 'chevron-down'} size={16} color="#D32F2F" />
-                  </TouchableOpacity>
-
-                  {/* ✅ NEW: same large-screen vs. small-screen dropdown
-                      pattern as CustomDropdown in Honors.tsx — on mobile the
-                      options open in a real top-level Modal (bottom sheet)
-                      so they're never clipped/un-tappable behind the
-                      screen's ScrollView, while on larger screens they stay
-                      as the existing inline absolutely-positioned menu. */}
-                  {isMobile ? (
-                    <Modal
-                      visible={showLessonModeDropdown}
-                      transparent
-                      animationType="fade"
-                      onRequestClose={() => setShowLessonModeDropdown(false)}
-                      statusBarTranslucent
-                    >
-                      <TouchableOpacity
-                        style={styles.lessonModeDropdownModalOverlay}
-                        activeOpacity={1}
-                        onPress={() => setShowLessonModeDropdown(false)}
-                      >
-                        {/* Swallow taps on the sheet itself so they don't close the modal */}
-                        <TouchableOpacity
-                          style={styles.lessonModeDropdownModalSheet}
-                          activeOpacity={1}
-                          onPress={() => {}}
-                        >
-                          <View style={styles.lessonModeDropdownModalHandle} />
-                          <View style={styles.lessonModeDropdownModalHeader}>
-                            <Text style={styles.lessonModeDropdownModalTitle}>Lesson Content Type</Text>
-                            <TouchableOpacity onPress={() => setShowLessonModeDropdown(false)} hitSlop={8}>
-                              <Ionicons name="close" size={22} color="#3B332E" />
-                            </TouchableOpacity>
-                          </View>
-                          <ScrollView
-                            style={styles.lessonModeDropdownModalScroll}
-                            showsVerticalScrollIndicator={false}
-                          >
-                            {([
-                              { key: 'text', label: 'Text Content' },
-                              { key: 'file', label: 'Upload File' },
-                            ] as const).map((opt) => {
-                              const isSelected = lessonMode === opt.key;
-                              return (
-                                <TouchableOpacity
-                                  key={opt.key}
-                                  style={[
-                                    styles.lessonModeDropdownModalItem,
-                                    isSelected && styles.lessonModeDropdownModalItemSelected,
-                                  ]}
-                                  onPress={() => { setLessonMode(opt.key); setShowLessonModeDropdown(false); }}
-                                  activeOpacity={0.8}
-                                >
-                                  <Text
-                                    style={[
-                                      styles.lessonModeDropdownModalItemText,
-                                      isSelected && styles.lessonModeDropdownModalItemTextSelected,
-                                    ]}
-                                  >
-                                    {opt.label}
-                                  </Text>
-                                  {isSelected ? <Ionicons name="checkmark" size={18} color="#D32F2F" /> : null}
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </ScrollView>
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    </Modal>
-                  ) : showLessonModeDropdown ? (
-                    <View style={styles.lessonModeDropdownMenu}>
-                      <TouchableOpacity
-                        style={[styles.lessonModeDropdownItem, lessonMode === 'text' && styles.lessonModeDropdownItemActive]}
-                        onPress={() => { setLessonMode('text'); setShowLessonModeDropdown(false); }}
-                      >
-                        <Text style={[styles.lessonModeDropdownItemText, lessonMode === 'text' && styles.lessonModeDropdownItemTextActive]}>
-                          Text Content
-                        </Text>
-                        {lessonMode === 'text' && <Ionicons name="checkmark" size={16} color="#D32F2F" />}
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.lessonModeDropdownItem, lessonMode === 'file' && styles.lessonModeDropdownItemActive]}
-                        onPress={() => { setLessonMode('file'); setShowLessonModeDropdown(false); }}
-                      >
-                        <Text style={[styles.lessonModeDropdownItemText, lessonMode === 'file' && styles.lessonModeDropdownItemTextActive]}>
-                          Upload File
-                        </Text>
-                        {lessonMode === 'file' && <Ionicons name="checkmark" size={16} color="#D32F2F" />}
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
+                {/* Same large-screen vs. small-screen dropdown as CustomDropdown
+                    in Honors.tsx: bottom-sheet Modal on small screens, inline
+                    menu below the field on large screens. */}
+                <View style={isMobile ? undefined : styles.lessonDropdownSlotLarge}>
+                  <LessonModeDropdown
+                    value={lessonMode}
+                    options={LESSON_MODE_OPTIONS}
+                    onSelect={(v) => {
+                      setLessonMode(v as 'text' | 'file');
+                      setShowLessonModeDropdown(false);
+                    }}
+                    visible={showLessonModeDropdown}
+                    onToggle={() => setShowLessonModeDropdown((v) => !v)}
+                    isMobile={isMobile}
+                    label="Lesson Content Type"
+                  />
                 </View>
               </View>
               <TouchableOpacity
@@ -10171,24 +10219,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#F5F5F5',
   },
-  lessonModeDropdownWrap: {
-    alignSelf: 'flex-start',
-    position: 'relative',
+  // Lesson Content Type dropdown — styles mirror CustomDropdown in Honors.tsx.
+  lessonDropdownSlotLarge: {
+    width: 240,
+    maxWidth: '100%',
   },
-  lessonModeDropdownTrigger: {
+  lessonDropdownContainer: {
+    position: 'relative',
+    width: '100%',
+    zIndex: 4000,
+    elevation: 0,
+  },
+  lessonDropdownButton: {
+    width: '100%',
+    height: 46,
+    borderWidth: 1,
+    borderColor: '#B8AFA7',
+    borderRadius: 16,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-    maxWidth: 180,
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    zIndex: 4001,
+    elevation: 0,
   },
-  lessonModeDropdownText: { fontFamily: FONT_BODY,
+  lessonDropdownButtonMobile: {
+    height: 48,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+  },
+  lessonDropdownButtonText: { fontFamily: FONT_BODY,
+    fontSize: 14,
     color: '#111',
     fontWeight: '700',
-    fontSize: 13,
+    flexShrink: 1,
+    marginRight: 8,
   },
   lessonModeDropdownBackdrop: {
     position: 'absolute',
@@ -10198,55 +10264,40 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 10,
   },
-  lessonModeDropdownMenu: {
+  // Large-screen menu: plain inline list under the field.
+  lessonInlineDropdownMenu: {
     position: 'absolute',
-    top: '100%',
+    top: 50,
     left: 0,
-    marginTop: 6,
+    width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    minWidth: 190,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 10,
-    zIndex: 30,
+    borderColor: '#CFCFCF',
     overflow: 'hidden',
+    zIndex: 5000,
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
   },
-  lessonModeDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+  lessonDropdownItem: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  lessonModeDropdownItemActive: {
-    backgroundColor: '#FFF5F5',
-  },
-  lessonModeDropdownItemText: { fontFamily: FONT_BODY,
-    color: '#333',
-    fontWeight: '600',
+  lessonDropdownItemText: { fontFamily: FONT_BODY,
     fontSize: 13,
+    color: '#000',
   },
-  lessonModeDropdownItemTextActive: {
-    color: '#D32F2F',
-    fontWeight: WEIGHT_EMPHASIS,
-  },
-  // ✅ NEW: mobile "Lesson Content Type" bottom-sheet Modal, styled to match
-  // CustomDropdown's dropdownModal* styles in Honors.tsx. Rendered by RN's
-  // Modal component so it always sits above the screen's ScrollView/cards —
-  // avoids the dropdown being clipped or un-tappable on small screens.
-  lessonModeDropdownModalOverlay: {
+  // Small-screen bottom-sheet Modal.
+  lessonDropdownModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
-  lessonModeDropdownModalSheet: {
+  lessonDropdownModalSheet: {
     width: '100%',
     maxHeight: '70%',
     backgroundColor: '#FFFFFF',
@@ -10256,7 +10307,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
   },
-  lessonModeDropdownModalHandle: {
+  lessonDropdownModalHandle: {
     alignSelf: 'center',
     width: 40,
     height: 4,
@@ -10264,7 +10315,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#DDD6CE',
     marginBottom: 12,
   },
-  lessonModeDropdownModalHeader: {
+  lessonDropdownModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -10273,15 +10324,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0EBE4',
   },
-  lessonModeDropdownModalTitle: { fontFamily: FONT_TITLE,
+  lessonDropdownModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 15,
     fontWeight: WEIGHT_TITLE,
     color: '#3B332E',
   },
-  lessonModeDropdownModalScroll: {
+  lessonDropdownModalScroll: {
     maxHeight: 320,
   },
-  lessonModeDropdownModalItem: {
+  lessonDropdownModalItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -10289,16 +10340,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 16,
   },
-  lessonModeDropdownModalItemSelected: {
+  lessonDropdownModalItemSelected: {
     backgroundColor: '#FDECEC',
   },
-  lessonModeDropdownModalItemText: { fontFamily: FONT_BODY,
+  lessonDropdownModalItemText: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '600',
     color: '#111',
   },
-  lessonModeDropdownModalItemTextSelected: {
-    color: '#D32F2F',
+  lessonDropdownModalItemTextSelected: {
+    color: '#B71C1C',
     fontWeight: WEIGHT_EMPHASIS,
   },
   lessonPreviewBottomBar: {
