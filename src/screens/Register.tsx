@@ -22,6 +22,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { FONT_BODY, FONT_TITLE } from '../theme/typography';
+import AuthWaveHeader from './Authwaveheader'; // small-screen wave header (same folder as this file)
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
@@ -217,6 +218,27 @@ function PasswordRequirementsChecklist({ password }: { password: string }) {
   );
 }
 
+/**
+ * Small dark pill shown beside the password fields on small screens: a red ✗
+ * until the rule is met, then a green ✓ (mirrors the reference design).
+ */
+function ValidityPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <View
+      style={styles.mPill}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${label}: ${ok ? 'valid' : 'not valid yet'}`}
+    >
+      <Ionicons
+        name={ok ? 'checkmark' : 'close'}
+        size={20}
+        color={ok ? '#4ADE80' : '#F87171'}
+      />
+    </View>
+  );
+}
+
 // ─── BirthdayField (matches AddStudentModal exactly) ─────────────────────────
 
 function BirthdayField({
@@ -224,12 +246,15 @@ function BirthdayField({
   onChange,
   isMobile,
   maxDate,
+  mobileLayout = false,
 }: {
   value: Date | null;
   onChange: (date: Date) => void;
   isMobile: boolean;
   /** Latest selectable date (e.g. the date that satisfies the minimum age). */
   maxDate: Date;
+  /** Use the soft filled field look of the small-screen (wave header) layout. */
+  mobileLayout?: boolean;
 }) {
   const [showNativePicker, setShowNativePicker] = useState(false);
   const [showWebModal, setShowWebModal] = useState(false);
@@ -288,9 +313,9 @@ function BirthdayField({
 
   return (
     <>
-      <Text style={bdStyles.fieldLabel}>Birthday</Text>
+      <Text style={mobileLayout ? bdStyles.mLabel : bdStyles.fieldLabel}>Birthday</Text>
       <TouchableOpacity
-        style={bdStyles.selectField}
+        style={[bdStyles.selectField, mobileLayout && bdStyles.mSelectField]}
         activeOpacity={0.85}
         onPress={openPicker}
       >
@@ -547,6 +572,26 @@ function BirthdayField({
 // ─── BirthdayField styles (copied 1-to-1 from AddStudentModal, plus scroll fix) ─
 
 const bdStyles = StyleSheet.create({
+  // Small-screen (wave header) variants of the label + field
+  mLabel: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  mSelectField: {
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    backgroundColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 1,
+  },
   fieldLabel: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
@@ -1263,17 +1308,32 @@ export default function Register({
   const minBirthdayAge = userType === 'teacher' ? MIN_TEACHER_AGE : MIN_STUDENT_AGE;
   const birthdayMaxDate = latestBirthdayFor(minBirthdayAge);
 
+  // Small-screen action button: reads "idle" (grey) until every field passes
+  // the same rules handleRegister enforces, then turns brand red. It stays
+  // tappable so handleRegister can still explain what's missing via the toast.
+  const isMobileFormReady =
+    !!userId.trim() &&
+    !!firstName.trim() &&
+    !!lastName.trim() &&
+    isValidName(firstName) &&
+    isValidName(lastName) &&
+    !!email.trim() &&
+    isValidEmail(email) &&
+    !getBirthdayError(birthday, minBirthdayAge) &&
+    isPasswordValid(password) &&
+    isConfirmPasswordMatching;
+
   // ── Shared form fields (used inside either layout) ─────────────────────────
   const RoleSelector = (
-    <View style={[styles.roleSelectionRow, isLargeScreen && styles.roleSelectionRowLargeSplit]}>
+    <View style={[styles.roleSelectionRow, isLargeScreen && styles.roleSelectionRowLargeSplit, !isLargeScreen && styles.mRoleRow]}>
       <View style={styles.roleSelectionContainer}>
-        <Text style={[styles.roleSelectionLabel, isLargeScreen && styles.roleSelectionLabelLeft]}>
+        <Text style={[styles.roleSelectionLabel, isLargeScreen ? styles.roleSelectionLabelLeft : styles.mLabel]}>
           Choose Your Role
         </Text>
 
-        <View style={styles.rolePillContainer}>
+        <View style={[styles.rolePillContainer, !isLargeScreen && styles.mRolePill]}>
           <TouchableOpacity
-            style={[styles.rolePillButton, userType === 'student' && styles.activeRolePillButton]}
+            style={[styles.rolePillButton, !isLargeScreen && styles.mRoleButton, userType === 'student' && styles.activeRolePillButton]}
             onPress={() => setUserType('student')}
             disabled={isLoading}
             activeOpacity={0.85}
@@ -1290,10 +1350,10 @@ export default function Register({
             </View>
           </TouchableOpacity>
 
-          <View style={styles.rolePillDivider} />
+          <View style={[styles.rolePillDivider, !isLargeScreen && styles.mRoleDivider]} />
 
           <TouchableOpacity
-            style={[styles.rolePillButton, userType === 'teacher' && styles.activeRolePillButton]}
+            style={[styles.rolePillButton, !isLargeScreen && styles.mRoleButton, userType === 'teacher' && styles.activeRolePillButton]}
             onPress={() => setUserType('teacher')}
             disabled={isLoading}
             activeOpacity={0.85}
@@ -1445,15 +1505,15 @@ export default function Register({
       </View>
     </>
   ) : (
-    // ── SMALL SCREEN: single column ───────────────────────────────
+    // ── SMALL SCREEN: soft fields, name pair on one row, ✗/✓ password pills ──
     <>
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>User ID</Text>
-        <View style={[styles.inputWrapper, isUserIdFocused && styles.inputWrapperFocused]}>
+      <View style={styles.mField}>
+        <Text style={styles.mLabel}>User ID</Text>
+        <View style={[styles.mInputWrap, isUserIdFocused && styles.mInputWrapFocused]}>
           <TextInput
-            style={styles.inputWithIcon}
+            style={styles.mInput}
             placeholder="1234567"
-            placeholderTextColor="#9E9E9E"
+            placeholderTextColor="#9CA3AF"
             value={userId}
             onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
             keyboardType="number-pad"
@@ -1464,45 +1524,47 @@ export default function Register({
         </View>
       </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>First Name</Text>
-        <View style={[styles.inputWrapper, isFirstNameFocused && styles.inputWrapperFocused]}>
-          <TextInput
-            style={styles.inputWithIcon}
-            placeholder="John"
-            placeholderTextColor="#9E9E9E"
-            value={firstName}
-            onChangeText={(t) => setFirstName(sanitizeNameInput(t))}
-            editable={!isLoading}
-            onFocus={() => setIsFirstNameFocused(true)}
-            onBlur={() => setIsFirstNameFocused(false)}
-          />
+      <View style={styles.mNameRow}>
+        <View style={styles.mNameCol}>
+          <Text style={styles.mLabel}>First Name</Text>
+          <View style={[styles.mInputWrap, isFirstNameFocused && styles.mInputWrapFocused]}>
+            <TextInput
+              style={styles.mInput}
+              placeholder="John"
+              placeholderTextColor="#9CA3AF"
+              value={firstName}
+              onChangeText={(t) => setFirstName(sanitizeNameInput(t))}
+              editable={!isLoading}
+              onFocus={() => setIsFirstNameFocused(true)}
+              onBlur={() => setIsFirstNameFocused(false)}
+            />
+          </View>
+        </View>
+
+        <View style={styles.mNameCol}>
+          <Text style={styles.mLabel}>Last Name</Text>
+          <View style={[styles.mInputWrap, isLastNameFocused && styles.mInputWrapFocused]}>
+            <TextInput
+              style={styles.mInput}
+              placeholder="Doe"
+              placeholderTextColor="#9CA3AF"
+              value={lastName}
+              onChangeText={(t) => setLastName(sanitizeNameInput(t))}
+              editable={!isLoading}
+              onFocus={() => setIsLastNameFocused(true)}
+              onBlur={() => setIsLastNameFocused(false)}
+            />
+          </View>
         </View>
       </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>Last Name</Text>
-        <View style={[styles.inputWrapper, isLastNameFocused && styles.inputWrapperFocused]}>
+      <View style={styles.mField}>
+        <Text style={styles.mLabel}>Email</Text>
+        <View style={[styles.mInputWrap, isEmailFocused && styles.mInputWrapFocused]}>
           <TextInput
-            style={styles.inputWithIcon}
-            placeholder="Doe"
-            placeholderTextColor="#9E9E9E"
-            value={lastName}
-            onChangeText={(t) => setLastName(sanitizeNameInput(t))}
-            editable={!isLoading}
-            onFocus={() => setIsLastNameFocused(true)}
-            onBlur={() => setIsLastNameFocused(false)}
-          />
-        </View>
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>Email</Text>
-        <View style={[styles.inputWrapper, isEmailFocused && styles.inputWrapperFocused]}>
-          <TextInput
-            style={styles.inputWithIcon}
+            style={styles.mInput}
             placeholder="john.doe@gmail.com"
-            placeholderTextColor="#9E9E9E"
+            placeholderTextColor="#9CA3AF"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -1514,55 +1576,82 @@ export default function Register({
         </View>
       </View>
 
-      <View style={styles.formGroup}>
-        <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} maxDate={birthdayMaxDate} />
+      <View style={styles.mField}>
+        <BirthdayField
+          value={birthday}
+          onChange={setBirthday}
+          isMobile={isMobile}
+          maxDate={birthdayMaxDate}
+          mobileLayout
+        />
       </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>Password</Text>
-        <View style={[styles.passwordContainer, isPasswordFocused && styles.passwordContainerFocused]}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="********"
-            placeholderTextColor="#9E9E9E"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            editable={!isLoading}
-            onFocus={() => setIsPasswordFocused(true)}
-            onBlur={() => setIsPasswordFocused(false)}
-          />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
-            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-          </TouchableOpacity>
+      <View style={styles.mField}>
+        <Text style={styles.mLabel}>Password</Text>
+        <View style={styles.mFieldRow}>
+          <View style={[styles.mInputWrap, styles.mFlex1, isPasswordFocused && styles.mInputWrapFocused]}>
+            <TextInput
+              style={styles.mInput}
+              placeholder="********"
+              placeholderTextColor="#9CA3AF"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              editable={!isLoading}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.iconButton}
+              disabled={isLoading}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+            </TouchableOpacity>
+          </View>
+          <ValidityPill ok={isPasswordValid(password)} label="Password" />
         </View>
-        <PasswordRequirementsChecklist password={password} />
+        {/* Rules only show while they're useful: when the field is active, or
+            typed-in but still failing. Once every rule passes, the pill turns
+            green and the list gets out of the way. */}
+        {(isPasswordFocused || (password.length > 0 && !isPasswordValid(password))) && (
+          <PasswordRequirementsChecklist password={password} />
+        )}
       </View>
 
-      <View style={styles.formGroup}>
-        <Text style={styles.fieldLabel}>Confirm Password</Text>
-        <View style={[styles.passwordContainer, isConfirmPasswordFocused && styles.passwordContainerFocused]}>
-          <TextInput
-            style={styles.passwordInput}
-            placeholder="********"
-            placeholderTextColor="#9E9E9E"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry={!showConfirmPassword}
-            autoCapitalize="none"
-            editable={!isLoading}
-            onFocus={() => setIsConfirmPasswordFocused(true)}
-            onBlur={() => setIsConfirmPasswordFocused(false)}
-          />
-          <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
-            <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-          </TouchableOpacity>
+      <View style={styles.mField}>
+        <Text style={styles.mLabel}>Confirm Password</Text>
+        <View style={styles.mFieldRow}>
+          <View style={[styles.mInputWrap, styles.mFlex1, isConfirmPasswordFocused && styles.mInputWrapFocused]}>
+            <TextInput
+              style={styles.mInput}
+              placeholder="********"
+              placeholderTextColor="#9CA3AF"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+              autoCapitalize="none"
+              editable={!isLoading}
+              onFocus={() => setIsConfirmPasswordFocused(true)}
+              onBlur={() => setIsConfirmPasswordFocused(false)}
+            />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              style={styles.iconButton}
+              disabled={isLoading}
+              accessibilityRole="button"
+              accessibilityLabel={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+            >
+              <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+            </TouchableOpacity>
+          </View>
+          <ValidityPill ok={isConfirmPasswordMatching} label="Confirm password" />
         </View>
-        {confirmPassword.length > 0 && (
-          <Text style={[styles.passwordHint, isConfirmPasswordMatching && styles.passwordHintValid]}>
-            {isConfirmPasswordMatching ? '✓ Passwords match' : 'Passwords do not match'}
-          </Text>
+        {confirmPassword.length > 0 && !isConfirmPasswordMatching && (
+          <Text style={styles.mHintError}>Passwords do not match</Text>
         )}
       </View>
     </>
@@ -1606,6 +1695,54 @@ export default function Register({
 
       <TouchableOpacity style={styles.backButton} onPress={handleGoToSignIn} disabled={isLoading}>
         <Text style={styles.backButtonText}>Already have an account? Sign In</Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  const MobileTermsAndSubmit = (
+    <>
+      <Text style={styles.mTerms}>
+        By tapping Sign Up, you agree to create an account and to ParseIT Hub's{' '}
+        <Text
+          style={styles.termsLink}
+          onPress={() => {
+            setPolicyView('terms');
+            setPolicyModalVisible(true);
+          }}
+        >
+          Terms of Service
+        </Text>{' '}
+        and{' '}
+        <Text
+          style={styles.termsLink}
+          onPress={() => {
+            setPolicyView('privacy');
+            setPolicyModalVisible(true);
+          }}
+        >
+          Privacy Policy
+        </Text>
+      </Text>
+
+      <TouchableOpacity
+        style={[
+          styles.mPrimaryButton,
+          !isMobileFormReady && styles.mPrimaryButtonIdle,
+          isLoading && styles.disabledButton,
+        ]}
+        onPress={handleRegister}
+        activeOpacity={0.9}
+        disabled={isLoading}
+      >
+        <Text style={styles.mPrimaryButtonText}>
+          {isLoading ? 'Creating Account...' : 'Sign Up'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.mSwitchRow} onPress={handleGoToSignIn} disabled={isLoading}>
+        <Text style={styles.mSwitchText}>
+          Already have an account? <Text style={styles.mSwitchLink}>Sign In</Text>
+        </Text>
       </TouchableOpacity>
     </>
   );
@@ -1679,37 +1816,32 @@ export default function Register({
           </View>
         </View>
       ) : (
-        // ── SMALL SCREEN: full-screen layout (no background image / floating card) ───
-        <View style={styles.fullScreenContainer}>
+        // ── SMALL SCREEN: wave header + soft fields ──────────────────────
+        <View style={styles.mRoot}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.screen}
           >
             <ScrollView
-              contentContainerStyle={styles.fullScreenScrollContent}
+              contentContainerStyle={styles.mScrollContent}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
             >
-              <View style={styles.fullScreenWrapper}>
-                <TouchableOpacity
-                  style={styles.brandBlock}
-                  onPress={handleGoToLanding}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.logoFloatingContainer}>
-                    <Image
-                      source={require('../../assets/images/logo.png')}
-                      style={styles.logoImage}
-                      resizeMode="contain"
-                    />
-                  </View>
-                </TouchableOpacity>
-
-                <Text style={styles.heading}>Create your Account</Text>
-                <Text style={styles.subheading}>Join ParseIT Hub and start your smarter learning journey.</Text>
-
-                {RoleSelector}
-                {FormFields}
-                {TermsAndSubmit}
+              <AuthWaveHeader
+                variant="compact"
+                title="Sign up"
+                onLogoPress={handleGoToLanding}
+              />
+              <View style={styles.mBody}>
+                <View>
+                  <Text style={styles.mSubtitle}>
+                    Join ParseIT Hub and start your smarter learning journey.
+                  </Text>
+                  {RoleSelector}
+                  {FormFields}
+                </View>
+                <View style={styles.mFooter}>{MobileTermsAndSubmit}</View>
               </View>
             </ScrollView>
           </KeyboardAvoidingView>
@@ -2071,6 +2203,127 @@ const styles = StyleSheet.create({
   registerButtonText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
   backButton: { marginTop: 16, alignItems: 'center' },
   backButtonText: { color: '#D32F2F', fontSize: 14, fontWeight: '700' },
+
+  // ── Small-screen layout: wave header + soft fields ────────────────────────
+  mRoot: { flex: 1, backgroundColor: '#FFFFFF' },
+  mScrollContent: { flexGrow: 1 },
+  // Fields on top, action block pinned to the bottom of the screen.
+  mBody: {
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 6,
+    paddingBottom: 28,
+    justifyContent: 'space-between',
+  },
+  mSubtitle: {
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#6B7280',
+    marginBottom: 20,
+  },
+  mLabel: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+    textAlign: 'left',
+  },
+  mField: { marginBottom: 16 },
+  mNameRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  mNameCol: { flex: 1 },
+  mFieldRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mFlex1: { flex: 1 },
+  mInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    paddingLeft: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  mInputWrapFocused: {
+    borderColor: '#D32F2F',
+    backgroundColor: '#FFFFFF',
+  },
+  mInput: {
+    fontFamily: FONT_BODY,
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+    paddingVertical: 14,
+    paddingRight: 8,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  // ✗ / ✓ pill beside the password fields
+  mPill: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mHintError: {
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D32F2F',
+    marginTop: 6,
+    marginLeft: 2,
+  },
+  // Role selector: softer segmented control on small screens
+  mRoleRow: { marginBottom: 16 },
+  mRolePill: { borderWidth: 0, borderRadius: 12, padding: 4, backgroundColor: '#F3F4F6' },
+  mRoleButton: { paddingVertical: 11, borderRadius: 9 },
+  mRoleDivider: { width: 0, marginHorizontal: 0 },
+  mFooter: { paddingTop: 16 },
+  mTerms: {
+    fontFamily: FONT_BODY,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: '#6B7280',
+    marginBottom: 14,
+  },
+  mPrimaryButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#D32F2F',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  // "Not ready yet" look (grey) — mirrors the disabled Confirm button in the reference.
+  mPrimaryButtonIdle: {
+    backgroundColor: '#8A919E',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  mPrimaryButtonText: {
+    fontFamily: FONT_BODY,
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  mSwitchRow: { marginTop: 18, alignItems: 'center', paddingVertical: 4 },
+  mSwitchText: { fontFamily: FONT_BODY, fontSize: 14, color: '#6B7280' },
+  mSwitchLink: { color: '#D32F2F', fontWeight: '700' },
 
   // ✅ Toast portal — matches Community/Dashboard/ClassesScreen/SignIn; lets
   // touches pass through to whatever's behind, except the toast itself.

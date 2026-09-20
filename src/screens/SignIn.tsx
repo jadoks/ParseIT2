@@ -20,6 +20,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import { auth } from '../../firebaseConfig';
 import { FONT_BODY, FONT_TITLE } from '../theme/typography';
+import AuthWaveHeader from './Authwaveheader'; // small-screen wave header (same folder as this file)
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard, ClassesScreen) instead of the bespoke
@@ -911,6 +912,105 @@ const SignIn = ({
     </>
   );
 
+  // ── SMALL-SCREEN form (wave-header layout) ───────────────────────────────
+  // The button reads as "idle" (grey) until both fields have something in
+  // them, then turns brand red. It stays tappable so handleLogIn can still
+  // explain what's missing via the toast — flip to `disabled` if you prefer.
+  const isReadyToSignIn = id.trim().length > 0 && password.trim().length > 0;
+
+  const MobileFormFields = (
+    <>
+      <View>
+        <Text style={styles.mSubtitle}>Enter your credentials to continue.</Text>
+
+        <View style={styles.mField}>
+          <Text style={styles.mLabel}>ID Number</Text>
+          <View style={[styles.mInputWrap, isIdFocused && styles.mInputWrapFocused]}>
+            <TextInput
+              style={styles.mInput}
+              placeholder="Enter your numeric ID"
+              placeholderTextColor="#9CA3AF"
+              value={id}
+              onChangeText={(text) => setId(text.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+              editable={!isLoading}
+              onFocus={() => setIsIdFocused(true)}
+              onBlur={() => setIsIdFocused(false)}
+            />
+          </View>
+        </View>
+
+        <View style={styles.mField}>
+          <Text style={styles.mLabel}>Password</Text>
+          <View style={[styles.mInputWrap, isPasswordFocused && styles.mInputWrapFocused]}>
+            <TextInput
+              style={styles.mInput}
+              placeholder="Enter your password"
+              placeholderTextColor="#9CA3AF"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              editable={!isLoading}
+              returnKeyType="go"
+              onSubmitEditing={handleLogIn}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.iconButton}
+              disabled={isLoading}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <Icon
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color="#7A7A7A"
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleForgotPassword}
+          disabled={isLoading}
+          style={styles.mForgotWrap}
+        >
+          <Text style={styles.mForgot}>Forgot Password?</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.mFooter}>
+        <TouchableOpacity
+          style={[
+            styles.mPrimaryButton,
+            !isReadyToSignIn && styles.mPrimaryButtonIdle,
+            isLoading && styles.disabledButton,
+          ]}
+          onPress={handleLogIn}
+          activeOpacity={0.9}
+          disabled={isLoading}
+        >
+          <Text style={styles.mPrimaryButtonText}>
+            {isLoading ? 'Signing in...' : 'Sign In'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.mSwitchRow}
+          onPress={handleGoToRegister}
+          disabled={isLoading}
+        >
+          <Text style={styles.mSwitchText}>
+            Don't have an account? <Text style={styles.mSwitchLink}>Sign Up</Text>
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
   return (
     <Animated.View
       style={[
@@ -980,38 +1080,24 @@ const SignIn = ({
           </View>
         </View>
       ) : (
-        // ── SMALL SCREEN: full-screen layout (no background image / floating card) ───
-        <View style={styles.fullScreenContainer}>
+        // ── SMALL SCREEN: wave header + soft fields ──────────────────────
+        <View style={styles.mRoot}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.screen}
           >
             <ScrollView
-              contentContainerStyle={styles.fullScreenScrollContent}
+              contentContainerStyle={styles.mScrollContent}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
             >
-              <View style={styles.fullScreenWrapper}>
-                <TouchableOpacity
-                  style={styles.brandBlock}
-                  onPress={handleGoToLanding}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.logoFloatingContainer}>
-                    <Image
-                      source={require('../../assets/images/logo.png')}
-                      style={styles.logoImage}
-                      resizeMode="contain"
-                    />
-                  </View>
-                </TouchableOpacity>
-
-                <Text style={styles.heading}>Sign in to your account</Text>
-                <Text style={styles.subheading}>
-                  Enter your credentials to continue.
-                </Text>
-
-                {FormFields}
-              </View>
+              <AuthWaveHeader
+                variant="layered"
+                title="Sign in"
+                onLogoPress={handleGoToLanding}
+              />
+              <View style={styles.mBody}>{MobileFormFields}</View>
             </ScrollView>
           </KeyboardAvoidingView>
         </View>
@@ -1950,6 +2036,101 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
+
+  // ── Small-screen layout: wave header + soft fields ────────────────────────
+  mRoot: { flex: 1, backgroundColor: '#FFFFFF' },
+  mScrollContent: { flexGrow: 1 },
+  // Top group (fields) and footer (button) are pushed apart so the action
+  // button sits at the bottom of the screen, like the reference design.
+  mBody: {
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 6,
+    paddingBottom: 28,
+    justifyContent: 'space-between',
+  },
+  mSubtitle: {
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#6B7280',
+    marginBottom: 22,
+  },
+  mField: { marginBottom: 16 },
+  mLabel: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  mInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    paddingLeft: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  mInputWrapFocused: {
+    borderColor: '#D32F2F',
+    backgroundColor: '#FFFFFF',
+  },
+  mInput: {
+    fontFamily: FONT_BODY,
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+    paddingVertical: 14,
+    paddingRight: 8,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  mForgotWrap: { alignSelf: 'flex-end', paddingVertical: 4 },
+  mForgot: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#D32F2F',
+  },
+  mFooter: { paddingTop: 28 },
+  mPrimaryButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#D32F2F',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  // "Not ready yet" look (grey) — mirrors the disabled Confirm button in the reference.
+  mPrimaryButtonIdle: {
+    backgroundColor: '#8A919E',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  mPrimaryButtonText: {
+    fontFamily: FONT_BODY,
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  mSwitchRow: { marginTop: 18, alignItems: 'center', paddingVertical: 4 },
+  mSwitchText: { fontFamily: FONT_BODY, fontSize: 14, color: '#6B7280' },
+  mSwitchLink: { color: '#D32F2F', fontWeight: '700' },
 
   // ✅ Toast portal — matches Community/Dashboard/ClassesScreen; lets touches
   // pass through to whatever's behind, except the toast itself.
