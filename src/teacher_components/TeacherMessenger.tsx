@@ -2845,7 +2845,7 @@ const Messenger = ({
     );
     const modalMaxHeight = Math.min(
       height * (isMobile ? 0.52 : 0.48),
-      320
+      400
     );
     const safeLeft = Math.max(
       8,
@@ -2901,7 +2901,10 @@ const Messenger = ({
                 <MaterialCommunityIcons name="close" size={18} color="#333" />
               </TouchableOpacity>
             </View>
-            <View style={styles.professionalModalScrollContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
 
               <TouchableOpacity
             style={styles.infoActionCard}
@@ -2967,7 +2970,7 @@ const Messenger = ({
                   </Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
