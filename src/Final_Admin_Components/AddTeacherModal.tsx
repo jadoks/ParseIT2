@@ -288,7 +288,7 @@ function BirthdayField({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Ionicons name="calendar-outline" size={22} color="#DC2626" />
+                  <Ionicons name="calendar-outline" size={22} color="#8B0000" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={styles.modalTitle}>Select Birthday</Text>
@@ -348,7 +348,7 @@ function BirthdayField({
                             <Ionicons
                               name="checkmark-circle"
                               size={18}
-                              color="#DC2626"
+                              color="#8B0000"
                             />
                           )}
                         </TouchableOpacity>
@@ -388,7 +388,7 @@ function BirthdayField({
                             <Ionicons
                               name="checkmark-circle"
                               size={18}
-                              color="#DC2626"
+                              color="#8B0000"
                             />
                           )}
                         </TouchableOpacity>
@@ -436,7 +436,7 @@ function BirthdayField({
                             <Ionicons
                               name="checkmark-circle"
                               size={18}
-                              color="#DC2626"
+                              color="#8B0000"
                             />
                           )}
                         </TouchableOpacity>
@@ -605,7 +605,7 @@ export default function AddTeacherModal({
                 <FontAwesome5
                   name="chalkboard-teacher"
                   size={20}
-                  color="#DC2626"
+                  color="#8B0000"
                 />
               </View>
 
@@ -639,7 +639,7 @@ export default function AddTeacherModal({
                 <Ionicons
                   name="person-circle-outline"
                   size={18}
-                  color="#DC2626"
+                  color="#8B0000"
                 />
                 <Text style={styles.modalSectionTitle}>Teacher Details</Text>
               </View>
@@ -775,7 +775,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
 
@@ -784,7 +784,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -804,7 +804,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -827,7 +827,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -881,8 +881,8 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -892,7 +892,7 @@ const styles = StyleSheet.create({
   // Gives a visible highlighted border on the whole rounded container
   // instead of relying on the browser's default (clipped) outline.
   inputFieldFocused: {
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderWidth: 1.5,
   },
 
@@ -912,8 +912,8 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -936,8 +936,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     overflow: "hidden",
   },
 
@@ -952,8 +952,8 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 14,
@@ -972,7 +972,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
 
@@ -986,8 +986,8 @@ const styles = StyleSheet.create({
     maxHeight: 260,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
   },
 
   dropdownItem: {
@@ -1000,11 +1000,11 @@ const styles = StyleSheet.create({
 
   dropdownItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: "#FAE9E9",
+    borderBottomColor: "#F5E9E9",
   },
 
   dropdownItemActive: {
-    backgroundColor: "#FFF7F7",
+    backgroundColor: "#FAF5F5",
   },
 
   dropdownItemText: {
@@ -1016,7 +1016,7 @@ const styles = StyleSheet.create({
   },
 
   dropdownItemTextActive: {
-    color: "#DC2626",
+    color: "#8B0000",
     fontWeight: "700",
   },
 
@@ -1025,7 +1025,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: "#F8E3E3",
+    borderTopColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "flex-end",
   },
@@ -1035,8 +1035,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1052,7 +1052,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",

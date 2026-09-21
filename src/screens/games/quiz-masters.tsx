@@ -916,7 +916,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
         <View style={styles.flashcardContainer}>
           {!isFlashcardAnswerVisible ? (
             <View style={styles.flashcardFront}>
-              <Ionicons name="help-circle-outline" size={40} color="#D32F2F" />
+              <Ionicons name="help-circle-outline" size={40} color="#8B0000" />
               <Text style={styles.flashcardQuestion}>{currentFlashcard.question}</Text>
             </View>
           ) : (
@@ -1225,7 +1225,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     paddingHorizontal: 16,
     paddingVertical: 14,
     paddingTop: 50,
@@ -1245,7 +1245,7 @@ const styles = StyleSheet.create({
   gameContainer: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   progressText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#555' },
-  scoreText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F' },
+  scoreText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
   questionCard: {
     backgroundColor: '#FFF',
     padding: 24,
@@ -1276,7 +1276,7 @@ const styles = StyleSheet.create({
   feedbackSubtext: { fontFamily: FONT_BODY, fontSize: 14, color: '#555', marginBottom: 16, textAlign: 'center' },
   feedbackMessage: { fontFamily: FONT_BODY, textAlign: 'center', color: '#2196F3', fontWeight: WEIGHT_EMPHASIS, marginTop: 12, marginBottom: 12 },
   nextButton: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 16,
@@ -1339,7 +1339,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 8,
     borderBottomWidth: 2,
-    borderBottomColor: '#D32F2F',
+    borderBottomColor: '#8B0000',
   },
   memoryCard: {
     backgroundColor: '#FFF',
@@ -1368,19 +1368,19 @@ const styles = StyleSheet.create({
   },
   memoryCardSelectedLetter: { fontFamily: FONT_BODY, 
     marginLeft: 8,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
     fontSize: 14,
   },
   memoryCardLetter: { fontFamily: FONT_BODY, 
     fontWeight: WEIGHT_EMPHASIS,
-    color: '#D32F2F',
+    color: '#8B0000',
     marginBottom: 4,
     fontSize: 16,
   },
   summaryHeader: { alignItems: 'center', marginBottom: 24, padding: 20 },
   summaryTitle: { fontFamily: FONT_TITLE, fontSize: 24, fontWeight: WEIGHT_TITLE, color: '#222', marginTop: 12 },
-  summaryScore: { fontFamily: FONT_BODY, fontSize: 28, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F', marginTop: 8 },
+  summaryScore: { fontFamily: FONT_BODY, fontSize: 28, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', marginTop: 8 },
   summaryPercentage: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: WEIGHT_EMPHASIS, color: '#555', marginTop: 4 },
   summarySubtext: { fontFamily: FONT_BODY, fontSize: 14, color: '#777', marginTop: 8, textAlign: 'center' },
   reviewTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#222', marginBottom: 12, paddingHorizontal: 16 },
@@ -1424,11 +1424,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   saveBtnText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   headerSection: { alignItems: 'center', marginBottom: 24, marginTop: 10 },
-  eyebrow: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 13, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  eyebrow: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
   title: { fontFamily: FONT_TITLE, fontSize: 26, fontWeight: WEIGHT_TITLE, color: '#222', textAlign: 'center', marginBottom: 8 },
   subtitle: { fontFamily: FONT_BODY, fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22 },
   modeGrid: { gap: 14, paddingHorizontal: 16 },

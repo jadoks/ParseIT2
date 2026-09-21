@@ -442,7 +442,7 @@ const Game = ({
     <>
       <View style={styles.settingsCard}>
         <View style={styles.settingsHeader}>
-          <Ionicons name="settings-outline" size={22} color="#D32F2F" />
+          <Ionicons name="settings-outline" size={22} color="#8B0000" />
           <Text style={styles.settingsTitle}>Quiz Settings</Text>
         </View>
         <Text style={styles.settingsSubtitle}>
@@ -481,7 +481,7 @@ const Game = ({
                   style={[styles.gameTypeChip, isSelected && styles.gameTypeChipSelected]}
                   onPress={() => setGameType(opt.value)}
                 >
-                  <Ionicons name={opt.icon} size={16} color={isSelected ? "#FFF" : "#D32F2F"} style={{ marginRight: 6 }} />
+                  <Ionicons name={opt.icon} size={16} color={isSelected ? "#FFF" : "#8B0000"} style={{ marginRight: 6 }} />
                   <Text style={[styles.gameTypeText, isSelected && styles.gameTypeTextSelected]}>{opt.label}</Text>
                 </Pressable>
               );
@@ -503,7 +503,7 @@ const Game = ({
             <Text style={[styles.dropdownTriggerText, !selectedClassName && styles.placeholderText]}>
               {selectedClassName || '-- Select a class --'}
             </Text>
-            <Ionicons name={isClassDropdownOpen ? "chevron-up" : "chevron-down"} size={20} color="#D32F2F" />
+            <Ionicons name={isClassDropdownOpen ? "chevron-up" : "chevron-down"} size={20} color="#8B0000" />
           </TouchableOpacity>
         </View>
 
@@ -528,7 +528,7 @@ const Game = ({
                           <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}>{course.name}</Text>
                           <Text style={styles.dropdownItemSub}>{course.materials.length} materials available</Text>
                         </View>
-                        {isSelected && <Ionicons name="checkmark-circle" size={22} color="#D32F2F" />}
+                        {isSelected && <Ionicons name="checkmark-circle" size={22} color="#8B0000" />}
                       </TouchableOpacity>
                     );
                   })
@@ -566,7 +566,7 @@ const Game = ({
                       <Ionicons
                         name={isSelected ? "document-text" : "document-text-outline"}
                         size={16}
-                        color={isSelected ? "#FFF" : "#D32F2F"}
+                        color={isSelected ? "#FFF" : "#8B0000"}
                         style={{ marginRight: 6 }}
                       />
                       <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>
@@ -970,8 +970,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   gameTypeChipSelected: { 
-    backgroundColor: '#D32F2F', 
-    borderColor: '#D32F2F' 
+    backgroundColor: '#8B0000', 
+    borderColor: '#8B0000' 
   },
   gameTypeText: { fontFamily: FONT_BODY, 
     fontSize: 13, 
@@ -1050,9 +1050,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     backgroundColor: '#FAFAFA',
   },
-  dropdownItemSelected: { backgroundColor: '#FFF1F1', borderWidth: 1, borderColor: '#FFD7D7' },
+  dropdownItemSelected: { backgroundColor: '#F7EDED', borderWidth: 1, borderColor: '#EBD4D4' },
   dropdownItemText: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS, color: '#333' },
-  dropdownItemTextSelected: { color: '#D32F2F' },
+  dropdownItemTextSelected: { color: '#8B0000' },
   dropdownItemSub: { fontFamily: FONT_BODY, fontSize: 12, color: '#888', marginTop: 2, fontWeight: WEIGHT_EMPHASIS },
   emptyState: { padding: 30, alignItems: 'center' },
   emptyText: { fontFamily: FONT_BODY, color: '#999', fontSize: 14 },
@@ -1077,23 +1077,23 @@ const styles = StyleSheet.create({
   marginBottom: 8,
 },
 clearSelectionText: { fontFamily: FONT_BODY,
-  color: '#D32F2F',
+  color: '#8B0000',
   fontSize: 13,
   fontWeight: WEIGHT_EMPHASIS,
 },
-  materialChipSelected: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  materialChipSelected: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
   materialTitle: { fontFamily: FONT_TITLE, fontSize: 13, fontWeight: WEIGHT_TITLE, color: '#444', flexShrink: 1 },
   materialTitleSelected: { color: '#FFF' },
   noMaterialsBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
   noMaterials: { fontFamily: FONT_BODY, color: '#999', fontSize: 14, fontStyle: 'italic' },
 
   generateButton: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 16,
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#D32F2F',
+    shadowColor: '#8B0000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 10,

@@ -261,7 +261,7 @@ function ExpiryDateField({
                 {month}
               </Text>
               {active && !disabled && (
-                <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+                <Ionicons name="checkmark-circle" size={18} color="#8B0000" />
               )}
             </TouchableOpacity>
           );
@@ -312,7 +312,7 @@ function ExpiryDateField({
                 {day}
               </Text>
               {active && !disabled && (
-                <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+                <Ionicons name="checkmark-circle" size={18} color="#8B0000" />
               )}
             </TouchableOpacity>
           );
@@ -355,7 +355,7 @@ function ExpiryDateField({
                 {year}
               </Text>
               {active && (
-                <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+                <Ionicons name="checkmark-circle" size={18} color="#8B0000" />
               )}
             </TouchableOpacity>
           );
@@ -414,7 +414,7 @@ function ExpiryDateField({
                   <Ionicons
                     name="calendar-outline"
                     size={isMobile ? 18 : 22}
-                    color="#DC2626"
+                    color="#8B0000"
                   />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
@@ -720,7 +720,7 @@ function ExpiryTimeField({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Ionicons name="time-outline" size={22} color="#DC2626" />
+                  <Ionicons name="time-outline" size={22} color="#8B0000" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={styles.modalTitle}>Select Expiry Time</Text>
@@ -1262,9 +1262,9 @@ export default function ShareAnnouncement({
             activeOpacity={0.8}
             onPress={openManageModal}
           >
-            <Ionicons name="megaphone-outline" size={18} color="#B71C1C" />
+            <Ionicons name="megaphone-outline" size={18} color="#8B0000" />
             <Text style={styles.manageLinkText}>See All My Announcements</Text>
-            <Ionicons name="chevron-forward" size={16} color="#B71C1C" />
+            <Ionicons name="chevron-forward" size={16} color="#8B0000" />
           </TouchableOpacity>
 
           <View
@@ -1477,7 +1477,7 @@ export default function ShareAnnouncement({
 
             {isLoadingAnnouncements ? (
               <View style={styles.manageStateBox}>
-                <ActivityIndicator size="large" color="#B71C1C" />
+                <ActivityIndicator size="large" color="#8B0000" />
                 <Text style={styles.manageStateText}>
                   Loading your announcements...
                 </Text>
@@ -1685,7 +1685,7 @@ export default function ShareAnnouncement({
                   activeOpacity={0.85}
                   onPress={() => setShowEditAudienceModal(true)}
                 >
-                  <Ionicons name="people-outline" size={16} color="#B71C1C" />
+                  <Ionicons name="people-outline" size={16} color="#8B0000" />
                   <Text style={styles.changeClassesBtnText}>Change Target Classes</Text>
                 </TouchableOpacity>
               </View>
@@ -1898,11 +1898,11 @@ const styles = StyleSheet.create({
   selectorOutlineBox: { borderWidth: 1.5, borderColor: '#718096', borderRadius: 14, padding: 15, marginBottom: 35, backgroundColor: '#FFF' },
   bgGrid: { marginTop: 10 },
   bgOption: { width: '100%', height: 80, borderRadius: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
-  bgOptionSelected: { borderColor: '#B71C1C', borderWidth: 3 },
+  bgOptionSelected: { borderColor: '#8B0000', borderWidth: 3 },
   bgImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   checkOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(183, 28, 28, 0.3)', justifyContent: 'center', alignItems: 'center' },
 
-  submitBtn: { backgroundColor: '#B71C1C', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+  submitBtn: { backgroundColor: '#8B0000', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: '#FFF', fontSize: 18, fontWeight: WEIGHT_EMPHASIS, fontFamily },
 
@@ -1916,11 +1916,11 @@ const styles = StyleSheet.create({
   targetSection: { marginBottom: 18 },
   targetSectionTitle: { fontSize: 15, fontWeight: WEIGHT_TITLE, color: '#222', marginBottom: 10, fontFamily },
 
-  checkRow: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#E5CACA', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 },
-  compactCheckRow: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: '#E5CACA', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11, paddingVertical: 8, marginBottom: 7 },
-  checkRowActive: { borderColor: '#D32F2F', backgroundColor: '#FFF7F7' },
-  checkboxBase: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: '#D8B4B4', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  checkboxChecked: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  checkRow: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#E8CCCC', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 },
+  compactCheckRow: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: '#E8CCCC', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11, paddingVertical: 8, marginBottom: 7 },
+  checkRowActive: { borderColor: '#8B0000', backgroundColor: '#FAF5F5' },
+  checkboxBase: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: '#E2BFBF', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  checkboxChecked: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
   checkTextWrapper: { flex: 1 },
   checkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#202124', fontFamily },
   compactCheckText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#202124', fontFamily },
@@ -1937,7 +1937,7 @@ const styles = StyleSheet.create({
   modalButtonRow: { flexDirection: 'row', gap: 10, alignSelf: 'stretch' },
   cancelBtn: { flex: 1, backgroundColor: '#F3F4F6', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   cancelBtnText: { color: '#374151', fontWeight: WEIGHT_EMPHASIS, fontSize: 14, fontFamily },
-  confirmBtn: { flex: 1, backgroundColor: '#B71C1C', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  confirmBtn: { flex: 1, backgroundColor: '#8B0000', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   confirmBtnText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14, fontFamily },
 
   // ─── DATE/TIME PICKER STYLES ───────────────────────────────────────────────────
@@ -1950,7 +1950,7 @@ const styles = StyleSheet.create({
   // ✅ RENAMED to avoid duplicate key error
   pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(43, 17, 17, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
 
-  webDateModalCard: { width: '100%', maxWidth: 860, maxHeight: '88%', backgroundColor: '#FFFFFF', borderRadius: 28, borderWidth: 1, borderColor: '#F3D4D4', overflow: 'hidden' },
+  webDateModalCard: { width: '100%', maxWidth: 860, maxHeight: '88%', backgroundColor: '#FFFFFF', borderRadius: 28, borderWidth: 1, borderColor: '#EBD4D4', overflow: 'hidden' },
   // Time-only modal (hour/minute + AM/PM) needs far less width than the
   // full calendar-grid date modal it shares a base style with — narrower
   // on large screens; falls back to full-width mobile sizing below.
@@ -1958,10 +1958,10 @@ const styles = StyleSheet.create({
   // ✅ NEW: mobile card sizing for the Date picker modal
   webDateModalCardMobile: { maxWidth: '100%', maxHeight: '92%', borderRadius: 20 },
 
-  modalHeader: { paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F8E3E3', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  modalHeader: { paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F3E6E6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   modalHeaderLeft: { flex: 1, flexDirection: 'row', paddingRight: 16 },
   modalHeaderTextWrap: { flex: 1 },
-  modalIconBox: { width: 52, height: 52, borderRadius: 18, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  modalIconBox: { width: 52, height: 52, borderRadius: 18, backgroundColor: '#F1E0E0', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   // ✅ NEW: smaller icon box on mobile
   modalIconBoxMobile: { width: 40, height: 40, borderRadius: 16, marginRight: 10 },
   modalTitle: { fontFamily: FONT_TITLE, fontSize: 22, fontWeight: WEIGHT_TITLE, color: '#2B1111', marginBottom: 4 },
@@ -1970,7 +1970,7 @@ const styles = StyleSheet.create({
   modalSubtitle: { fontFamily: FONT_BODY, fontSize: 14, lineHeight: 21, color: '#8A6F6F' },
   // ✅ NEW: smaller subtitle on mobile
   modalSubtitleMobile: { fontFamily: FONT_BODY, fontSize: 12.5, lineHeight: 17 },
-  modalCloseButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FFF5F5', alignItems: 'center', justifyContent: 'center' },
+  modalCloseButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FAF5F5', alignItems: 'center', justifyContent: 'center' },
 
   // ✅ Merged Time field (typed HH:MM + AM/PM), replacing the old separate
   // scrollable Hour / Minute columns — same pattern used for the Due Date &
@@ -1980,13 +1980,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 54,
     borderWidth: 1,
-    borderColor: '#F1CACA',
+    borderColor: '#E8CCCC',
     borderRadius: 14,
-    backgroundColor: '#FFF9F9',
+    backgroundColor: '#FAF5F5',
     paddingHorizontal: 14,
     justifyContent: 'center',
   },
-  timeTextInputWrapFocused: { borderColor: '#DC2626', borderWidth: 1.5 },
+  timeTextInputWrapFocused: { borderColor: '#8B0000', borderWidth: 1.5 },
   timeTextInput: { fontFamily: FONT_BODY,
     fontSize: 16,
     color: '#2B1111',
@@ -1997,13 +1997,13 @@ const styles = StyleSheet.create({
   meridiemToggle: {
     flexDirection: 'row',
     borderWidth: 1,
-    borderColor: '#F1CACA',
+    borderColor: '#E8CCCC',
     borderRadius: 14,
-    backgroundColor: '#FFF9F9',
+    backgroundColor: '#FAF5F5',
     overflow: 'hidden',
   },
   meridiemBtn: { paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center' },
-  meridiemBtnActive: { backgroundColor: '#DC2626' },
+  meridiemBtnActive: { backgroundColor: '#8B0000' },
   meridiemBtnText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#B98A8A' },
   meridiemBtnTextActive: { color: '#FFFFFF' },
 
@@ -2024,31 +2024,31 @@ const styles = StyleSheet.create({
   // ✅ NEW: Day and Year sit side by side in the same row
   mobileDayYearRow: { flexDirection: 'row', gap: 14 },
 
-  webDateList: { maxHeight: 260, borderRadius: 16, borderWidth: 1, borderColor: '#F1CACA', backgroundColor: '#FFF9F9' },
+  webDateList: { maxHeight: 260, borderRadius: 16, borderWidth: 1, borderColor: '#E8CCCC', backgroundColor: '#FAF5F5' },
   // ✅ NEW: shorter individual list height on mobile since 3 lists stack
   webDateListMobile: { maxHeight: 150 },
   dropdownItem: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: '#FAE9E9' },
-  dropdownItemActive: { backgroundColor: '#FFF7F7' },
+  dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: '#F5E9E9' },
+  dropdownItemActive: { backgroundColor: '#FAF5F5' },
   dropdownItemText: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: '#5F3B3B', fontWeight: WEIGHT_EMPHASIS, paddingRight: 10 },
-  dropdownItemTextActive: { color: '#DC2626', fontWeight: WEIGHT_EMPHASIS },
+  dropdownItemTextActive: { color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
 
-  modalFooter: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 22, borderTopWidth: 1, borderTopColor: '#F8E3E3', flexDirection: 'row', justifyContent: 'flex-end' },
-  modalSecondaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, borderWidth: 1, borderColor: '#E7C0C0', backgroundColor: '#FFF7F7', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  modalFooter: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 22, borderTopWidth: 1, borderTopColor: '#F3E6E6', flexDirection: 'row', justifyContent: 'flex-end' },
+  modalSecondaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, borderWidth: 1, borderColor: '#E2BFBF', backgroundColor: '#FAF5F5', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   modalSecondaryButtonText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#7A4A4A' },
-  modalPrimaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+  modalPrimaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#8B0000', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   modalPrimaryButtonText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#FFFFFF', marginLeft: 8 },
 
   // ─── SEE ALL / MANAGE ANNOUNCEMENTS ────────────────────────────────────────
-  manageLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderColor: '#F3D0D0', backgroundColor: '#FFF7F7', marginBottom: 24 },
-  manageLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#B71C1C', fontFamily },
+  manageLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderColor: '#EBD4D4', backgroundColor: '#FAF5F5', marginBottom: 24 },
+  manageLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', fontFamily },
 
   manageModalCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: '#FFF', borderRadius: 18, padding: 20 },
   manageModalCardMobile: { maxHeight: '90%' },
 
   manageStateBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 20 },
   manageStateText: { marginTop: 10, fontSize: 13.5, color: '#6B7280', textAlign: 'center', fontFamily, lineHeight: 19 },
-  retryBtn: { marginTop: 14, backgroundColor: '#B71C1C', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 16 },
+  retryBtn: { marginTop: 14, backgroundColor: '#8B0000', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 16 },
   retryBtnText: { color: '#FFF', fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily },
 
   manageListContent: { paddingBottom: 6 },
@@ -2072,8 +2072,8 @@ const styles = StyleSheet.create({
   deleteActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#F3D0D0', backgroundColor: '#FFF5F5' },
   deleteActionText: { fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS, color: '#B71C1C', fontFamily },
 
-  changeClassesBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: '#F3D0D0', backgroundColor: '#FFF7F7' },
-  changeClassesBtnText: { fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS, color: '#B71C1C', fontFamily },
+  changeClassesBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: '#EBD4D4', backgroundColor: '#FAF5F5' },
+  changeClassesBtnText: { fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', fontFamily },
   editAudienceSummary: { fontSize: 13, color: '#444', lineHeight: 18, fontFamily },
 
   // ─── DELETE CONFIRMATION ────────────────────────────────────────────────────

@@ -197,7 +197,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
   };
 
   const getRecommendationColor = (type: RecommendationType) => {
-    if (type === 'review') return '#D32F2F';
+    if (type === 'review') return '#8B0000';
     if (type === 'practice') return '#F57C00';
     return '#2E7D32';
   };
@@ -689,7 +689,7 @@ const styles = StyleSheet.create({
   },
   weakScoreText: { fontFamily: FONT_BODY,
     fontSize: 12,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '700',
     marginTop: -4,
     marginBottom: 10,
@@ -793,13 +793,13 @@ const styles = StyleSheet.create({
     color: '#222',
   },
   dropdownDangerText: {
-    color: '#D32F2F',
+    color: '#8B0000',
   },
   dropdownIconRed: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#E53935',
+    backgroundColor: '#8B0000',
     justifyContent: 'center',
     alignItems: 'center',
   },

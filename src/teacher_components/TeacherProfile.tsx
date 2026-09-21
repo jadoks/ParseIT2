@@ -1195,7 +1195,7 @@ const Profile: React.FC<ProfileProps> = ({
                   <MaterialCommunityIcons
                     name="pencil"
                     size={isSmallPhone ? 13 : 14}
-                    color="#D32F2F"
+                    color="#8B0000"
                   />
                   <Text
                     style={[
@@ -2032,14 +2032,14 @@ const styles = StyleSheet.create({
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F4DCDC',
+    backgroundColor: '#F1E0E0',
     alignSelf: 'flex-start',
   },
   editBtnDisabled: {
     opacity: 0.7,
   },
   editText: {
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '600',
   },
   divider: {
@@ -2479,7 +2479,7 @@ askText: {
   postAnswerButton: {
     alignSelf: 'flex-start',
     marginTop: 12,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 14,
   },
   postAnswerButtonText: {

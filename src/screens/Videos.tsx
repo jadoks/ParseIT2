@@ -521,7 +521,7 @@ const Videos = ({
 
             {commentsLoading ? (
               <View style={styles.commentsLoadingWrap}>
-                <ActivityIndicator size="small" color="#D32F2F" />
+                <ActivityIndicator size="small" color="#8B0000" />
               </View>
             ) : currentComments.length === 0 ? (
               <Text style={styles.noComments}>No comments yet.</Text>
@@ -691,7 +691,7 @@ const Videos = ({
 
       {loading ? (
         <View style={styles.stateWrap}>
-          <ActivityIndicator size="large" color="#D32F2F" />
+          <ActivityIndicator size="large" color="#8B0000" />
           <Text style={styles.stateText}>Loading videos...</Text>
         </View>
       ) : error ? (
@@ -770,8 +770,8 @@ const styles = StyleSheet.create({
   feedTextBlock: { flex: 1 },
   feedTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#111', lineHeight: 22 },
   feedMeta: { fontFamily: FONT_BODY, marginTop: 2, color: '#606060', fontSize: 13 },
-  smallSaveBtn: { marginLeft: 8, backgroundColor: '#e60a0a0b', borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
-  smallSaveBtnText: { color: '#e60a0a' },
+  smallSaveBtn: { marginLeft: 8, backgroundColor: '#8B00000B', borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
+  smallSaveBtnText: { color: '#8B0000' },
   watchPage: { flex: 1, backgroundColor: '#fff' },
   watchContent: { paddingBottom: 40 },
   topBar: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' },
@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
   errorFallback: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', padding: 20 },
   errorFallbackTitle: { fontFamily: FONT_TITLE, color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
   errorFallbackText: { fontFamily: FONT_BODY, color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
-  watchOnYoutubeBtn: { backgroundColor: '#DA1318', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  watchOnYoutubeBtn: { backgroundColor: '#8B0000', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
   watchOnYoutubeText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: 'bold', fontSize: 16 },
 
   videoMetaSection: { paddingHorizontal: 14, paddingTop: 14 },
@@ -806,7 +806,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#111', marginBottom: 12 },
   commentComposer: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   commentInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 22, paddingHorizontal: 14, paddingVertical: 10, marginRight: 10, color: '#111', backgroundColor: '#fff' },
-  commentPostBtn: { backgroundColor: '#DA1318', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  commentPostBtn: { backgroundColor: '#8B0000', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   commentPostBtnDisabled: { opacity: 0.6 },
   commentPostBtnText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: WEIGHT_EMPHASIS },
   commentsLoadingWrap: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
@@ -824,7 +824,7 @@ const styles = StyleSheet.create({
   editActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
   editCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
   editCancelText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#111', fontSize: 13 },
-  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#DA1318' },
+  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#8B0000' },
   editSaveText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#fff', fontSize: 13 },
   
   // 👇 UPDATED CROSS-PLATFORM STYLES

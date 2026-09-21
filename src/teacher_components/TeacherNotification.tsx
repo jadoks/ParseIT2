@@ -219,7 +219,7 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
   };
 
   const getNotificationIcon = (type: NotificationType, read: boolean) => {
-    const color = read ? '#666' : '#D32F2F';
+    const color = read ? '#666' : '#8B0000';
 
     switch (type) {
       case 'submitted-assignment':
@@ -594,11 +594,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(211,47,47,0.08)',
+    backgroundColor: 'rgba(139,0,0,0.08)',
   },
 
   markAllText: { fontFamily: FONT_BODY,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '600',
     fontSize: 13,
   },
@@ -663,15 +663,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(211,47,47,0.08)',
+    backgroundColor: 'rgba(139,0,0,0.08)',
     borderWidth: 1,
-    borderColor: '#FFD7D7',
+    borderColor: '#EBD4D4',
   },
 
   seeAllButtonText: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '600',
-    color: '#D32F2F',
+    color: '#8B0000',
   },
 
   card: {
@@ -685,8 +685,8 @@ const styles = StyleSheet.create({
   },
 
   unreadCard: {
-    backgroundColor: '#FFF5F5',
-    borderColor: '#FFD7D7',
+    backgroundColor: '#FAF5F5',
+    borderColor: '#EBD4D4',
   },
 
   iconWrapper: {
@@ -754,7 +754,7 @@ const styles = StyleSheet.create({
   metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#FAF5F5',
     borderRadius: 14,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -787,14 +787,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 999,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     marginRight: 6,
   },
 
   unreadText: { fontFamily: FONT_BODY,
     fontSize: 12,
     fontWeight: '600',
-    color: '#D32F2F',
+    color: '#8B0000',
   },
 
   emptyState: {

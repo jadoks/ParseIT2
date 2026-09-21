@@ -377,9 +377,9 @@ function InlineMaterialViewer({
         activeOpacity={0.8}
       >
         {isRefreshing ? (
-          <ActivityIndicator size="small" color="#D32F2F" />
+          <ActivityIndicator size="small" color="#8B0000" />
         ) : (
-          <MaterialCommunityIcons name="refresh" size={16} color="#D32F2F" />
+          <MaterialCommunityIcons name="refresh" size={16} color="#8B0000" />
         )}
         <Text style={inlineViewerStyles.refreshBarText}>
           {isRefreshing ? "Refreshing link..." : "Preview looks broken? Tap to refresh"}
@@ -392,7 +392,7 @@ function InlineMaterialViewer({
     if (isRefreshing) {
       return (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
-          <ActivityIndicator size="large" color="#D32F2F" />
+          <ActivityIndicator size="large" color="#8B0000" />
           <Text style={{ marginTop: 10, color: '#666' }}>Refreshing link...</Text>
         </View>
       );
@@ -406,7 +406,7 @@ function InlineMaterialViewer({
           </Text>
           <TouchableOpacity 
             onPress={() => tryRefreshUrl(false)} 
-            style={{ marginTop: 10, padding: 8, backgroundColor: '#D32F2F', borderRadius: 4 }}
+            style={{ marginTop: 10, padding: 8, backgroundColor: '#8B0000', borderRadius: 4 }}
           >
             <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Try Again</Text>
           </TouchableOpacity>
@@ -446,7 +446,7 @@ function InlineMaterialViewer({
   if (isRefreshing) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
-        <ActivityIndicator size="large" color="#D32F2F" />
+        <ActivityIndicator size="large" color="#8B0000" />
         <Text style={{ marginTop: 10, color: '#666' }}>Refreshing link...</Text>
       </View>
     );
@@ -479,7 +479,7 @@ function InlineMaterialViewer({
           startInLoadingState
           renderLoading={() => (
             <View style={inlineViewerStyles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#D32F2F" />
+              <ActivityIndicator size="large" color="#8B0000" />
               <Text style={inlineViewerStyles.loadingText}>Loading document...</Text>
             </View>
           )}
@@ -503,7 +503,7 @@ function InlineMaterialViewer({
       {canRefresh && (
         <TouchableOpacity
           onPress={() => tryRefreshUrl(false)}
-          style={{ marginTop: 6, padding: 8, backgroundColor: '#D32F2F', borderRadius: 4 }}
+          style={{ marginTop: 6, padding: 8, backgroundColor: '#8B0000', borderRadius: 4 }}
         >
           <Text style={{ color: '#FFF', fontWeight: 'bold' }}>
             {isRefreshing ? 'Refreshing...' : 'Refresh Link'}
@@ -534,14 +534,14 @@ const inlineViewerStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "#FFF3F3",
+    backgroundColor: "#F8F0F0",
     borderBottomWidth: 1,
-    borderBottomColor: "#F3D4D4",
+    borderBottomColor: "#EBD4D4",
   },
   refreshBarText: { fontFamily: FONT_BODY,
     fontSize: 12,
     fontWeight: WEIGHT_EMPHASIS,
-    color: "#D32F2F",
+    color: "#8B0000",
   },
 });
 
@@ -1122,7 +1122,7 @@ const fetchModules = useCallback(async (silent = false) => {
 
   const getRecommendationColor = (assignment: AssignmentItem) => {
     const r = getRecommendationType(assignment);
-    if (r === "review") return "#D32F2F";
+    if (r === "review") return "#8B0000";
     if (r === "practice") return "#F57C00";
     return "#999";
   };
@@ -2297,7 +2297,7 @@ const fetchModules = useCallback(async (silent = false) => {
       onPress={() => handleOpenMaterialPreview(item)}
     >
       <View style={styles.materialIcon}>
-        <Ionicons name={getMaterialIconName(item.type)} size={24} color="#D32F2F" />
+        <Ionicons name={getMaterialIconName(item.type)} size={24} color="#8B0000" />
       </View>
       <View style={styles.materialInfo}>
         <Text style={styles.materialTitle}>{item.title}</Text>
@@ -2458,7 +2458,7 @@ const fetchModules = useCallback(async (silent = false) => {
       contentContainerStyle={styles.screenScrollContent}
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
+        <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#8B0000']} tintColor="#8B0000" />
       }
     >
       {/* ── Course Header (Google Classroom–style banner) ── */}
@@ -2561,7 +2561,7 @@ const fetchModules = useCallback(async (silent = false) => {
             <Ionicons
               name="layers-outline"
               size={16}
-              color={activeTab === "modules" ? "#D32F2F" : "#999"}
+              color={activeTab === "modules" ? "#8B0000" : "#999"}
             />
             <Text style={[styles.tabText, activeTab === "modules" && styles.tabTextActive]}>
               Course Resources ({modules.length})
@@ -2585,7 +2585,7 @@ const fetchModules = useCallback(async (silent = false) => {
             <Ionicons
               name="checkmark-circle-outline"
               size={16}
-              color={activeTab === "assignments" ? "#D32F2F" : "#999"}
+              color={activeTab === "assignments" ? "#8B0000" : "#999"}
             />
             <Text style={[styles.tabText, activeTab === "assignments" && styles.tabTextActive]}>
               Assignments ({safeCourse.assignments.length})
@@ -2632,7 +2632,7 @@ const fetchModules = useCallback(async (silent = false) => {
               ) : (
                 <View style={{ backgroundColor: '#F9F9F9', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <Ionicons name="document-text-outline" size={24} color="#D32F2F" />
+                    <Ionicons name="document-text-outline" size={24} color="#8B0000" />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: '#111' }} numberOfLines={1}>
                         {currentSyllabus.fileName || 'Syllabus Document'}
@@ -2674,7 +2674,7 @@ const fetchModules = useCallback(async (silent = false) => {
             {/* Modules List */}
             {isLoadingModules ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#D32F2F" />
+                <ActivityIndicator size="large" color="#8B0000" />
                 <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading resources...</Text>
               </View>
             ) : modules.length > 0 ? (
@@ -2698,10 +2698,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     }}>
                       <TouchableOpacity
                         onPress={() => setExpandedModules(p => ({ ...p, [mod.id]: !isExpanded }))}
-                        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
+                        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FAF5F5' : '#FFF' }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#8B0000', alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons name="layers-outline" size={20} color="#FFF" />
                           </View>
                           <View style={{ flex: 1 }}>
@@ -2717,7 +2717,7 @@ const fetchModules = useCallback(async (silent = false) => {
                             </View>
                           </View>
                         </View>
-                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#8B0000" />
                       </TouchableOpacity>
                       {isExpanded && (
                         <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
@@ -2798,7 +2798,7 @@ const fetchModules = useCallback(async (silent = false) => {
                         : getMaterialIconName(selectedMaterial?.type ?? "document")
                     }
                     size={11}
-                    color="#D32F2F"
+                    color="#8B0000"
                   />
                   <Text style={styles.viewerTypeText}>
                     {isPresentation
@@ -2839,7 +2839,7 @@ const fetchModules = useCallback(async (silent = false) => {
             />
           ) : selectedMaterial?.type === "video" && selectedMaterialUrl ? (
             <View style={styles.viewerExternalPrompt}>
-              <Ionicons name="videocam-outline" size={56} color="#D32F2F" />
+              <Ionicons name="videocam-outline" size={56} color="#8B0000" />
               <Text style={styles.viewerExternalTitle}>Video Material</Text>
               <Text style={styles.viewerExternalText}>
                 Videos open in your device's media player or browser.
@@ -2955,7 +2955,7 @@ const fetchModules = useCallback(async (silent = false) => {
             contentContainerStyle={styles.lessonPreviewScrollContent}
           >
             {isLessonLoading ? (
-              <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 40 }} />
+              <ActivityIndicator size="large" color="#8B0000" style={{ marginVertical: 40 }} />
             ) : selectedLesson ? (
               <View style={styles.lessonPreviewPageWrap}>
                 <View style={[styles.lessonPreviewPage, isLargeScreen && styles.lessonPreviewPageWeb]}>
@@ -2966,7 +2966,7 @@ const fetchModules = useCallback(async (silent = false) => {
                       <Ionicons
                         name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
                         size={11}
-                        color="#D32F2F"
+                        color="#8B0000"
                       />
                       <Text style={styles.docPageBadgeText}>
                         {selectedLesson.isGenerated
@@ -3000,9 +3000,9 @@ const fetchModules = useCallback(async (silent = false) => {
                         setSelectedMaterial(materialViewData);
                       }}
                       style={{
-                        backgroundColor: '#FFF5F5',
+                        backgroundColor: '#FAF5F5',
                         borderWidth: 2,
-                        borderColor: '#D32F2F',
+                        borderColor: '#8B0000',
                         borderStyle: 'dashed',
                         borderRadius: 16,
                         padding: 24,
@@ -3013,8 +3013,8 @@ const fetchModules = useCallback(async (silent = false) => {
                       }}
                       activeOpacity={0.8}
                     >
-                      <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
-                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
+                      <Ionicons name="document-text-outline" size={48} color="#8B0000" />
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#8B0000' }}>
                         {selectedLesson.fileName || 'View Attached File'}
                       </Text>
                       <Text style={{ fontSize: 13, color: '#666' }}>
@@ -3182,7 +3182,7 @@ const fetchModules = useCallback(async (silent = false) => {
             <ScrollView
               contentContainerStyle={styles.detailContainer}
               refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
+                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#8B0000']} tintColor="#8B0000" />
               }
             >
               {selectedAssignment && (
@@ -3199,7 +3199,7 @@ const fetchModules = useCallback(async (silent = false) => {
                           assignment's comments/content are being refreshed. */}
                       {isRefreshingOpenedAssignment && (
                         <View style={styles.openRefreshBadge}>
-                          <ActivityIndicator size="small" color="#D32F2F" />
+                          <ActivityIndicator size="small" color="#8B0000" />
                           <Text style={styles.openRefreshBadgeText}>Syncing latest...</Text>
                         </View>
                       )}
@@ -3231,7 +3231,7 @@ const fetchModules = useCallback(async (silent = false) => {
                           </View>
                           <View style={styles.infoMetaCard}>
                             <Text style={styles.infoMetaCardLabel}>Due</Text>
-                            <Text style={[styles.infoMetaCardValue, { color: '#D32F2F' }]}>
+                            <Text style={[styles.infoMetaCardValue, { color: '#8B0000' }]}>
                               {formatDueDateForDisplay(selectedAssignment.dueDate)}
                             </Text>
                           </View>
@@ -3355,7 +3355,7 @@ const fetchModules = useCallback(async (silent = false) => {
                         <View>
                           {selectedAssignmentTeacherFiles.map((file) => (
                             <View key={file.id} style={styles.attachmentFileCard}>
-                              <Ionicons name="attach-outline" size={20} color="#D32F2F" />
+                              <Ionicons name="attach-outline" size={20} color="#8B0000" />
                               <View style={styles.fileInfo}>
                                 <Text style={styles.fileName}>{file.fileName}</Text>
                                 <Text style={styles.fileDetails}>
@@ -3513,7 +3513,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                 )}
                               </View>
                               <View style={styles.relatedMaterialOpenBadge}>
-                                <Ionicons name="eye-outline" size={13} color="#D32F2F" />
+                                <Ionicons name="eye-outline" size={13} color="#8B0000" />
                                 <Text style={styles.relatedMaterialOpenText}>View</Text>
                               </View>
                             </View>
@@ -3555,7 +3555,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                        }}
                                        style={{ marginLeft: 8 }}
                                      >
-                                       <Ionicons name="close" size={16} color="#D32F2F" />
+                                       <Ionicons name="close" size={16} color="#8B0000" />
                                      </TouchableOpacity>
                                    )}
                                  </TouchableOpacity>
@@ -3566,7 +3566,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                 <Ionicons
                                   name="document-text-outline"
                                   size={20}
-                                  color="#D32F2F"
+                                  color="#8B0000"
                                 />
                                 <View style={styles.fileInfo}>
                                   <Text style={styles.fileName}>{file.fileName}</Text>
@@ -3596,8 +3596,8 @@ const fetchModules = useCallback(async (silent = false) => {
                                       size={20}
                                       color={
                                         isAssignmentSubmitted(selectedAssignment)
-                                          ? "#D9A0A0"
-                                          : "#D32F2F"
+                                          ? "#C57F7F"
+                                          : "#8B0000"
                                       }
                                     />
                                   </TouchableOpacity>
@@ -3657,7 +3657,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                   disabled={isSubmittingAssignment}
                                   style={[
                                     styles.uploadButtonWide,
-                                    { backgroundColor: "#D32F2F" },
+                                    { backgroundColor: "#8B0000" },
                                     isSubmittingAssignment && styles.sendButtonDisabled,
                                   ]}
                                 >
@@ -3676,7 +3676,7 @@ const fetchModules = useCallback(async (silent = false) => {
                           return (
                             <View style={styles.uploadActionsRow}>
                               <View style={styles.lockedSubmissionBox}>
-                                <Ionicons name="lock-closed-outline" size={18} color="#D32F2F" />
+                                <Ionicons name="lock-closed-outline" size={18} color="#8B0000" />
                                 <View style={{ flex: 1 }}>
                                   <Text style={styles.lockedSubmissionTitle}>
                                     Submission closed
@@ -4036,7 +4036,7 @@ const fetchModules = useCallback(async (silent = false) => {
                 <MaterialCommunityIcons
                   name={previewFile?.fileType === 'text/uri-list' ? "link-variant" : "file-document-outline"}
                   size={11}
-                  color="#D32F2F"
+                  color="#8B0000"
                 />
                 <Text style={styles.previewTypeText}>
                   {previewFile?.fileType === 'text/uri-list' ? "LINK" : "FILE"}
@@ -4114,14 +4114,14 @@ const styles = StyleSheet.create({
   emptyScreenTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: WEIGHT_TITLE, color: "#222", marginBottom: 8 },
   emptyScreenText: { fontFamily: FONT_BODY, fontSize: 14, color: "#777", textAlign: "center", lineHeight: 22, marginBottom: 16 },
   emptyBackButton: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 16,
   },
   emptyBackButtonText: { fontFamily: FONT_BODY, color: "#FFF", fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   courseHeader: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     shadowColor: "#000",
     shadowOpacity: 0.12,
     shadowRadius: 10,
@@ -4140,10 +4140,10 @@ const styles = StyleSheet.create({
   bannerBox: {
     width: "100%",
     overflow: "hidden",
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
   },
   bannerFallback: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
   },
   bannerScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -4359,7 +4359,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 16,
-    backgroundColor: "#FDEAEA",
+    backgroundColor: "#F5E9E9",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -4387,10 +4387,10 @@ const styles = StyleSheet.create({
     borderBottomColor: "transparent",
     paddingVertical: 14,
   },
-  tabActive: { borderBottomColor: "#D32F2F" },
+  tabActive: { borderBottomColor: "#8B0000" },
   tabContent: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   tabText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: "#999" },
-  tabTextActive: { color: "#D32F2F" },
+  tabTextActive: { color: "#8B0000" },
   contentContainer: {
     paddingVertical: hp("2"),
     backgroundColor: "#FFFFFF",
@@ -4418,7 +4418,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 16,
-    backgroundColor: "#FFF1F1",
+    backgroundColor: "#F7EDED",
     justifyContent: "center",
     alignItems: "center",
     marginRight: wp("3"),
@@ -4426,7 +4426,7 @@ const styles = StyleSheet.create({
   materialInfo: { flex: 1 },
   materialTitle: { fontFamily: FONT_TITLE, fontSize: 14, fontWeight: WEIGHT_TITLE, color: "#000", marginBottom: 4 },
   materialType: { fontFamily: FONT_BODY, fontSize: 12, color: "#999" },
-  materialFileName: { fontFamily: FONT_BODY, fontSize: 12, color: "#D32F2F", marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
+  materialFileName: { fontFamily: FONT_BODY, fontSize: 12, color: "#8B0000", marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
   pdfPreviewBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -4464,7 +4464,7 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   statusText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, textTransform: "capitalize", fontSize: 12 },
   assignmentFooter: { borderTopWidth: 1, borderTopColor: "#E6E6E6", paddingTop: 8 },
-  dueDateText: { fontFamily: FONT_BODY, color: "#D32F2F", fontWeight: WEIGHT_EMPHASIS, fontSize: 13, marginBottom: 4 },
+  dueDateText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: WEIGHT_EMPHASIS, fontSize: 13, marginBottom: 4 },
   pointsText: { fontFamily: FONT_BODY, fontSize: 12, color: "#666", fontWeight: WEIGHT_EMPHASIS },
   relatedPreviewText: { fontFamily: FONT_BODY, fontSize: 12, color: "#666", marginTop: 8, lineHeight: 18 },
   masteredActivityBadge: {
@@ -4504,7 +4504,7 @@ const styles = StyleSheet.create({
   viewerModal: { flex: 1, backgroundColor: "#3c3c3c87" },
   viewerTopBar: {
     height: 62,
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
@@ -4542,7 +4542,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     alignSelf: "flex-start",
   },
-  viewerTypeText: { fontFamily: FONT_BODY, color: "#D32F2F", fontSize: 10, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 0.5 },
+  viewerTypeText: { fontFamily: FONT_BODY, color: "#8B0000", fontSize: 10, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 0.5 },
   viewerPdfPreviewBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -4577,7 +4577,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     borderRadius: 16,
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -4642,7 +4642,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
-  openRefreshBadgeText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F' },
+  openRefreshBadgeText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
   infoCardMobile: { padding: 16, paddingTop: 28 },
   assignmentModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
@@ -4711,7 +4711,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   infoMetaValue: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, fontWeight: "500", color: "#333", lineHeight: 20 },
-  infoMetaValueDue: { fontFamily: FONT_BODY, color: "#D32F2F", fontWeight: WEIGHT_EMPHASIS },
+  infoMetaValueDue: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: WEIGHT_EMPHASIS },
   infoInstructionBlock: {
     marginTop: 12,
     borderTopWidth: 1,
@@ -4737,7 +4737,7 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     marginBottom: 16,
     borderLeftWidth: 4,
-    borderLeftColor: "#D32F2F",
+    borderLeftColor: "#8B0000",
   },
   detailCourseName: { fontFamily: FONT_BODY, color: "#666", fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   detailMetaText: { fontFamily: FONT_BODY, color: "#555", fontSize: 12, fontWeight: WEIGHT_EMPHASIS, marginTop: 4 },
@@ -4809,26 +4809,26 @@ const styles = StyleSheet.create({
   relatedMaterialRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   relatedMaterialTitle: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_EMPHASIS, color: "#111", marginBottom: 4 },
   relatedMaterialMeta: { fontFamily: FONT_BODY, color: "#777", fontSize: 12, textTransform: "capitalize" },
-  relatedMaterialFileName: { fontFamily: FONT_BODY, fontSize: 12, color: "#D32F2F", marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
+  relatedMaterialFileName: { fontFamily: FONT_BODY, fontSize: 12, color: "#8B0000", marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
   relatedMaterialOpenBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#FFF1F1",
+    backgroundColor: "#F7EDED",
     borderRadius: 14,
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
   },
-  relatedMaterialOpenText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: WEIGHT_EMPHASIS, color: "#D32F2F" },
+  relatedMaterialOpenText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: WEIGHT_EMPHASIS, color: "#8B0000" },
   attachmentFileCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF7F7",
+    backgroundColor: "#FAF5F5",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 12,
     marginBottom: 8,
     gap: 10,
@@ -4849,13 +4849,13 @@ const styles = StyleSheet.create({
     minHeight: 34,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 5,
   },
-  fileOpenButtonDisabled: { backgroundColor: "#D9A0A0" },
+  fileOpenButtonDisabled: { backgroundColor: "#C57F7F" },
   fileOpenButtonText: { fontFamily: FONT_BODY, color: "#FFF", fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
   uploadActionsRow: { gap: 10, marginTop: 8 },
   linkSubmitBox: { gap: 8, marginTop: 8 },
@@ -4928,7 +4928,7 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   sendButton: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     borderRadius: 14,
     paddingVertical: 10,
     alignItems: "center",
@@ -4945,7 +4945,7 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: { fontFamily: FONT_BODY, color: "#444", fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   uploadButtonWide: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -4969,7 +4969,7 @@ const styles = StyleSheet.create({
   editActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
   editCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
   editCancelText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#111', fontSize: 13 },
-  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#DA1318' },
+  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#8B0000' },
   editSaveText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#fff', fontSize: 13 },
   commentPostBtnDisabled: { opacity: 0.6 },
   menuBackdrop: {
@@ -5125,7 +5125,7 @@ const styles = StyleSheet.create({
   moduleSectionTitle: { fontFamily: FONT_TITLE,
     fontSize: 14,
     fontWeight: WEIGHT_TITLE,
-    color: '#D32F2F',
+    color: '#8B0000',
     marginBottom: 8,
   },
   moduleSectionText: { fontFamily: FONT_BODY,
@@ -5148,17 +5148,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   lessonItem: {
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#FAF5F5',
     borderRadius: 16,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#F0B9B9',
+    borderColor: '#E8CCCC',
   },
   lessonTitle: { fontFamily: FONT_TITLE,
     fontSize: 13,
     fontWeight: WEIGHT_TITLE,
-    color: '#D32F2F',
+    color: '#8B0000',
     marginBottom: 4,
   },
   lessonDescription: { fontFamily: FONT_BODY,
@@ -5199,18 +5199,18 @@ const styles = StyleSheet.create({
   buttonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     minHeight: 46,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, textAlign: 'center'},
-  removeButton: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, paddingLeft: 8 },
+  removeButton: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, paddingLeft: 8 },
   previewModalContainer: { flex: 1, backgroundColor: '#3c3c3c87' },
   previewTopBar: {
     height: 62,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
@@ -5242,7 +5242,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     alignSelf: 'flex-start',
   },
-  previewTypeText: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 10, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 0.5 },
+  previewTypeText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 10, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 0.5 },
   previewOpenExtBtn: {
     width: 36,
     height: 36,
@@ -5273,14 +5273,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FCE8E8',
+    backgroundColor: '#F5E9E9',
     borderRadius: 14,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginBottom: 10,
   },
   docPageBadgeText: { fontFamily: FONT_BODY,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
     fontSize: 10,
     textTransform: 'uppercase',

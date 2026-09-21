@@ -553,7 +553,7 @@ export default function ModifyChatbotModal({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <MaterialCommunityIcons name="robot-happy-outline" size={22} color="#DC2626" />
+                  <MaterialCommunityIcons name="robot-happy-outline" size={22} color="#8B0000" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={styles.modalTitle}>Modify Chatbot</Text>
@@ -595,12 +595,12 @@ export default function ModifyChatbotModal({
             >
               {loading ? (
                 <View style={styles.centerState}>
-                  <ActivityIndicator size="large" color="#DC2626" />
+                  <ActivityIndicator size="large" color="#8B0000" />
                   <Text style={styles.centerStateText}>Loading training data...</Text>
                 </View>
               ) : filteredItems.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <MaterialCommunityIcons name="database-search-outline" size={34} color="#DC2626" />
+                  <MaterialCommunityIcons name="database-search-outline" size={34} color="#8B0000" />
                   <Text style={styles.emptyStateTitle}>No matching training data</Text>
                   <Text style={styles.emptyStateSubtitle}>
                     Try a different search or add new chatbot training entries.
@@ -966,7 +966,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
   modalHeader: {
@@ -974,7 +974,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -991,7 +991,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -1011,7 +1011,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1024,8 +1024,8 @@ const styles = StyleSheet.create({
     minHeight: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -1074,7 +1074,7 @@ const styles = StyleSheet.create({
   },
   trainingCard: {
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     backgroundColor: "#FFFDFD",
     borderRadius: 22,
     padding: 18,
@@ -1108,7 +1108,7 @@ const styles = StyleSheet.create({
     height: 40,
     paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1127,7 +1127,7 @@ const styles = StyleSheet.create({
     height: 42,
     paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1148,7 +1148,7 @@ const styles = StyleSheet.create({
     height: 54,
     paddingHorizontal: 16,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1179,8 +1179,8 @@ const styles = StyleSheet.create({
     minHeight: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     justifyContent: "center",
   },
@@ -1188,7 +1188,7 @@ const styles = StyleSheet.create({
   // focused. Gives a visible highlighted border on the whole rounded
   // container, matching the focus behavior used in Chatbot.tsx.
   inputFieldFocused: {
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderWidth: 1.5,
   },
   textInput: {
@@ -1213,8 +1213,8 @@ const styles = StyleSheet.create({
   previewBox: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFF8F8",
+    borderColor: "#EBD4D4",
+    backgroundColor: "#FAF5F5",
     padding: 14,
   },
   previewText: {
@@ -1235,9 +1235,9 @@ const styles = StyleSheet.create({
   tagChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF1F1",
+    backgroundColor: "#F7EDED",
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -1247,9 +1247,9 @@ const styles = StyleSheet.create({
   editableTagChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF1F1",
+    backgroundColor: "#F7EDED",
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     borderRadius: 999,
     paddingLeft: 14,
     paddingRight: 8,
@@ -1310,8 +1310,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1329,7 +1329,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1353,7 +1353,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 22,
   },
   confirmIconBox: {
@@ -1383,8 +1383,8 @@ const styles = StyleSheet.create({
   confirmPreviewBox: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFF8F8",
+    borderColor: "#EBD4D4",
+    backgroundColor: "#FAF5F5",
     padding: 14,
     marginBottom: 18,
   },
@@ -1413,8 +1413,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1449,8 +1449,8 @@ const styles = StyleSheet.create({
   autoSplitBadge: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#DC2626",
-    backgroundColor: "#FEE2E2",
+    color: "#8B0000",
+    backgroundColor: "#F1E0E0",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,

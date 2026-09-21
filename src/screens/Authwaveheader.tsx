@@ -1,12 +1,12 @@
 import React from 'react';
 import {
-    Image,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Image,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { FONT_TITLE } from '../theme/typography';
 
@@ -29,9 +29,9 @@ import { FONT_TITLE } from '../theme/typography';
  */
 
 // ── Palette (same reds / ink already used by SignIn + Register) ─────────────
-const BRAND = '#D32F2F';
-const BRAND_MID = '#A51717'; // halfway between BRAND and BRAND_DEEP
-const BRAND_DEEP = '#780000'; // the maroon already used for the logo shadow
+const BRAND = '#8B0000';
+const BRAND_MID = '#6E0000'; // halfway between BRAND and BRAND_DEEP
+const BRAND_DEEP = '#500000'; // the maroon already used for the logo shadow
 const INK = '#111827';
 
 type Variant = 'compact' | 'layered';

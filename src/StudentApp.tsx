@@ -3425,7 +3425,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         {isGeneratingActivity && (
           <View style={styles.generatingOverlay} pointerEvents="auto">
             <View style={styles.generatingCard}>
-              <ActivityIndicator size="large" color="#D32F2F" />
+              <ActivityIndicator size="large" color="#8B0000" />
               <Text style={styles.generatingTitle}>Generating Follow-Up Activity...</Text>
               <Text style={styles.generatingText}>
                 AI is reading your teacher's related course resources and creating
@@ -3524,9 +3524,9 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           <View style={styles.modalOverlay}>
             <View style={styles.logoutModalContainer}>
               <View style={{ alignItems: 'center', marginBottom: 15 }}>
-                <MaterialCommunityIcons name="exit-to-app" size={48} color="#D32F2F" />
+                <MaterialCommunityIcons name="exit-to-app" size={48} color="#8B0000" />
               </View>
-              <Text style={[styles.logoutModalTitle, { color: '#D32F2F' }]}>Leave Course</Text>
+              <Text style={[styles.logoutModalTitle, { color: '#8B0000' }]}>Leave Course</Text>
               <Text style={[styles.logoutModalSubtitle, { textAlign: 'left', marginTop: 10 }]}>
                 Are you sure you want to leave this class?{'\n\n'}
                 You will permanently lose access to:{'\n'}
@@ -3553,7 +3553,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
                 <Pressable
                   style={[
                     styles.logoutConfirmBtn, 
-                    { backgroundColor: '#D32F2F', flex: 1, opacity: isLeavingCourse ? 0.8 : 1 }
+                    { backgroundColor: '#8B0000', flex: 1, opacity: isLeavingCourse ? 0.8 : 1 }
                   ]}
                   disabled={isLeavingCourse}
                   onPress={confirmLeaveCourse}
@@ -3644,7 +3644,7 @@ const styles = StyleSheet.create({
   mobileDrawerPortal: { ...StyleSheet.absoluteFillObject, zIndex: 5000, elevation: 5000, flexDirection: 'row' },
   mobileBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
   mobileOverlay: { width: 250, height: '100%', backgroundColor: '#FFF', zIndex: 5001, elevation: 5001 },
-  floatingChatBtn: { position: 'absolute', bottom: 12, right: 20, zIndex: 20, width: 140, height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#D32F2F', borderRadius: 28, paddingHorizontal: 16 },
+  floatingChatBtn: { position: 'absolute', bottom: 12, right: 20, zIndex: 20, width: 140, height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#8B0000', borderRadius: 28, paddingHorizontal: 16 },
   floatingChatBtnSmall: { width: 56, height: 56, borderRadius: 28 },
   chatBtnImage: { width: 22, height: 22, resizeMode: 'contain', tintColor: '#FFFFFF' },
   chatBtnLabel: { fontSize: 12, fontWeight: '600', color: '#FFF' },
@@ -3662,7 +3662,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 10,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     justifyContent: 'center',
     alignItems: 'center',
   },

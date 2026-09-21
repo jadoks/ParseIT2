@@ -233,7 +233,7 @@ const Dashboard = ({
   };
 
   const getRecommendationColor = (type: RecommendationType) => {
-    if (type === 'review') return '#D32F2F';
+    if (type === 'review') return '#8B0000';
     return '#F57C00';
   };
 
@@ -436,7 +436,7 @@ const Dashboard = ({
   if (isInitialLoad) {
     return (
       <View style={styles.fullPageLoader}>
-        <ActivityIndicator size="large" color="#D32F2F" />
+        <ActivityIndicator size="large" color="#8B0000" />
         <Text style={styles.fullPageLoaderText}>Loading your dashboard...</Text>
       </View>
     );
@@ -609,7 +609,7 @@ const Dashboard = ({
                 styles.snapshotCard,
                 {
                   flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
-                  borderTopColor: '#D32F2F',
+                  borderTopColor: '#8B0000',
                 },
               ]}
             >
@@ -750,7 +750,7 @@ const Dashboard = ({
                         <TouchableOpacity
                           style={[
                             styles.smallActionBtn,
-                            { backgroundColor: '#D32F2F' },
+                            { backgroundColor: '#8B0000' },
                           ]}
                           disabled={isGeneratingActivity}
                           onPress={() => {
@@ -834,7 +834,7 @@ const Dashboard = ({
                 <Text
                   style={[
                     styles.lessonSubtitle,
-                    { fontSize: isMobile ? 12 : 13, marginTop: 6, color: '#D32F2F', fontWeight: '700' },
+                    { fontSize: isMobile ? 12 : 13, marginTop: 6, color: '#8B0000', fontWeight: '700' },
                   ]}
                 >
                   From assignment score: {nextBest.score ?? 'N/A'}%
@@ -1021,7 +1021,7 @@ const Dashboard = ({
               >
                 <View style={styles.joinDropdownHeader}>
                   <View style={styles.joinDropdownIconWrap}>
-                    <Ionicons name="school-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="school-outline" size={18} color="#8B0000" />
                   </View>
 
                   <View style={styles.joinDropdownHeaderText}>
@@ -1233,21 +1233,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   seeAllButton: {
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#F7EDED',
     borderWidth: 1,
-    borderColor: '#F3C6C6',
+    borderColor: '#E8CCCC',
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   seeAllButtonText: { fontFamily: FONT_BODY,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontSize: 13,
     fontWeight: WEIGHT_EMPHASIS,
   },
 
   joinClassButton: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1284,14 +1284,14 @@ const styles = StyleSheet.create({
   },
 
   sectionCard: {
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#FAF5F5',
     borderWidth: 1,
-    borderColor: '#F3C6C6',
+    borderColor: '#E8CCCC',
     marginBottom: 6,
   },
   sectionTitle: { fontFamily: FONT_TITLE,
     fontWeight: WEIGHT_TITLE,
-    color: '#B71C1C',
+    color: '#6B0000',
     marginBottom: 8,
   },
   sectionDescription: {
@@ -1306,7 +1306,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#F0D9D9',
+    borderColor: '#EBD4D4',
   },
   recommendationTitle: { fontFamily: FONT_TITLE,
     fontWeight: WEIGHT_TITLE,
@@ -1441,15 +1441,15 @@ const styles = StyleSheet.create({
   lessonCard: {
     backgroundColor: '#FFFFFF',
     borderLeftWidth: 5,
-    borderLeftColor: '#D32F2F',
+    borderLeftColor: '#8B0000',
     borderWidth: 1,
-    borderColor: '#F1D0D0',
+    borderColor: '#EBD4D4',
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 6,
   },
   lessonBadge: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1508,7 +1508,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 16,
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#F7EDED',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1570,10 +1570,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 11,
     borderRadius: 16,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   confirmButtonDisabled: {
-    backgroundColor: '#F0A7A7',
+    backgroundColor: '#C57F7F',
   },
   confirmButtonText: { fontFamily: FONT_BODY,
     color: '#FFFFFF',

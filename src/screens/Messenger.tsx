@@ -2177,7 +2177,7 @@ const Messenger = ({
             <MaterialCommunityIcons
               name="magnify"
               size={24}
-              color={localSearchQuery.trim() ? '#D32F2F' : '#888'}
+              color={localSearchQuery.trim() ? '#8B0000' : '#888'}
             />
           </TouchableOpacity>
         </View>
@@ -2621,7 +2621,7 @@ const Messenger = ({
                     <MaterialCommunityIcons
                       name={getFileIcon(item.fileType)}
                       size={32}
-                      color={item.fromMe ? '#fff' : '#d32f2f'}
+                      color={item.fromMe ? '#fff' : '#8B0000'}
                     />
                     <View style={styles.fileTextContainer}>
                       <Text
@@ -2820,7 +2820,7 @@ const Messenger = ({
               <MaterialCommunityIcons
                 name={getFileIcon(pendingFile.mimeType)}
                 size={32}
-                color="#d32f2f"
+                color="#8B0000"
               />
             </View>
           )}
@@ -2972,9 +2972,9 @@ const Messenger = ({
                   <MaterialCommunityIcons
                     name="exit-run"
                     size={18}
-                    color="#d32f2f"
+                    color="#8B0000"
                   />
-                  <Text style={[styles.infoActionCardText, { color: '#d32f2f' }]}>
+                  <Text style={[styles.infoActionCardText, { color: '#8B0000' }]}>
                     Leave Room
                   </Text>
                 </TouchableOpacity>
@@ -3159,7 +3159,7 @@ const Messenger = ({
                               : 'checkbox-blank-circle-outline'
                           }
                           size={22}
-                          color={checked ? '#d32f2f' : '#b8b8b8'}
+                          color={checked ? '#8B0000' : '#b8b8b8'}
                         />
                       </TouchableOpacity>
                     );
@@ -3367,7 +3367,7 @@ const Messenger = ({
                             <MaterialCommunityIcons
                               name="account-remove-outline"
                               size={20}
-                              color="#d32f2f"
+                              color="#8B0000"
                             />
                           </TouchableOpacity>
                         )
@@ -3382,7 +3382,7 @@ const Messenger = ({
                   activeOpacity={0.85}
                   onPress={handleOpenLeaveConfirm}
                 >
-                  <MaterialCommunityIcons name="exit-run" size={16} color="#d32f2f" />
+                  <MaterialCommunityIcons name="exit-run" size={16} color="#8B0000" />
                   <Text style={styles.leaveRoomButtonText}>Leave Room</Text>
                 </TouchableOpacity>
               ) : selected?.isRoom ? (
@@ -3529,7 +3529,7 @@ const Messenger = ({
                               : 'checkbox-blank-circle-outline'
                           }
                           size={22}
-                          color={checked ? '#d32f2f' : '#b8b8b8'}
+                          color={checked ? '#8B0000' : '#b8b8b8'}
                         />
                       </TouchableOpacity>
                     );
@@ -3850,7 +3850,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
-  convCardActive: { backgroundColor: '#fff6f6', borderColor: '#f1c3c0' },
+  convCardActive: { backgroundColor: '#FAF5F5', borderColor: '#E8CCCC' },
   convContent: { flex: 1, minWidth: 0 },
   convTopRow: {
     flexDirection: 'row',
@@ -3868,7 +3868,7 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#ea1111',
+    backgroundColor: '#8B0000',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 5,
@@ -3918,7 +3918,7 @@ const styles = StyleSheet.create({
   // 👇 NEW: highlighted-border focus state, matching inputWrapperFocused
   // in SignIn.tsx (red border on focus).
   fullScreenSearchInputContainerFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   fullScreenSearchInput: { fontFamily: FONT_BODY, 
@@ -4003,12 +4003,12 @@ const styles = StyleSheet.create({
   senderNameThem: { textAlign: 'left', marginLeft: 4 },
   bubble: {},
   bubbleThem: { backgroundColor: '#f0f2f5', borderTopLeftRadius: 6 },
-  bubbleMe: { backgroundColor: '#d94c43', borderTopRightRadius: 6 },
+  bubbleMe: { backgroundColor: '#8B0000', borderTopRightRadius: 6 },
   bubbleText: { color: '#111' },
   bubbleTextMe: { color: '#fff' },
   systemRow: { alignItems: 'center', marginBottom: 18 },
   systemBubble: {
-    backgroundColor: '#d9928d',
+    backgroundColor: '#C57F7F',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -4067,11 +4067,11 @@ const styles = StyleSheet.create({
   // 👇 NEW: highlighted-border focus state, matching passwordContainerFocused
   // in SignIn.tsx (red border + slightly thicker width on focus).
   inputFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   sendBtn: {
-    backgroundColor: '#ea1111',
+    backgroundColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
@@ -4199,7 +4199,7 @@ const styles = StyleSheet.create({
   // 👇 NEW: highlighted-border focus state, matching inputWrapperFocused
   // in SignIn.tsx (red border + slightly thicker width on focus).
   professionalInputFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   professionalInputStack: { width: '100%' },
@@ -4208,7 +4208,7 @@ const styles = StyleSheet.create({
     minWidth: 108,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: '#d32f2f',
+    backgroundColor: '#8B0000',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4234,8 +4234,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   professionalMemberRowActive: {
-    borderColor: '#f2b2b2',
-    backgroundColor: '#fff7f7',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
   },
   professionalMemberRowDisabled: { opacity: 0.92 },
   professionalMemberRowStatic: {
@@ -4319,13 +4319,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f2b2b2',
-    backgroundColor: '#fff7f7',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
   },
   leaveRoomButtonText: {
     fontFamily: FONT_BODY,
     fontSize: 13,
-    color: '#d32f2f',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
   },
   leaveConfirmCancel: {
@@ -4338,7 +4338,7 @@ const styles = StyleSheet.create({
   leaveConfirmButton: {
     height: 42,
     borderRadius: 14,
-    backgroundColor: '#d32f2f',
+    backgroundColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4346,9 +4346,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 12,
     borderRadius: 16,
-    backgroundColor: '#fff7f7',
+    backgroundColor: '#FAF5F5',
     borderWidth: 1,
-    borderColor: '#f5d0d0',
+    borderColor: '#E8CCCC',
   },
   conversationMetaTitle: { fontFamily: FONT_TITLE, 
     fontSize: 12,

@@ -114,7 +114,7 @@ function InlineMaterialViewer({
           startInLoadingState
           renderLoading={() => (
             <View style={previewViewerStyles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#D32F2F" />
+              <ActivityIndicator size="large" color="#8B0000" />
               <Text style={previewViewerStyles.loadingText}>Loading image...</Text>
             </View>
           )}
@@ -146,7 +146,7 @@ function InlineMaterialViewer({
         startInLoadingState
         renderLoading={() => (
           <View style={previewViewerStyles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#D32F2F" />
+            <ActivityIndicator size="large" color="#8B0000" />
             <Text style={previewViewerStyles.loadingText}>Loading document...</Text>
           </View>
         )}
@@ -734,7 +734,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
                 <MaterialCommunityIcons
                   name={isLink ? "link-variant" : "file-document-outline"}
                   size={16}
-                  color={isLink ? "#1a73e8" : "#D32F2F"}
+                  color={isLink ? "#1a73e8" : "#8B0000"}
                 />
               </View>
               <View style={styles.fileDetails}>
@@ -1389,7 +1389,7 @@ const handleDownloadPreview = async () => {
           accessibilityLabel={`${student.name}, ${getStatusText(status)}`}
         >
           <View style={styles.listItemAvatar}>
-            <MaterialCommunityIcons name="account" size={18} color={isSelected ? "#D32F2F" : "#9CA3AF"} />
+            <MaterialCommunityIcons name="account" size={18} color={isSelected ? "#8B0000" : "#9CA3AF"} />
           </View>
           <View style={styles.listItemTextWrap}>
             <Text style={[styles.listItemName, isSelected && styles.listItemNameActive]}>
@@ -1477,7 +1477,7 @@ const handleDownloadPreview = async () => {
         <View style={styles.studentCardTopRow}>
           <View style={styles.studentCardIdentity}>
             <View style={styles.avatarCircle}>
-              <MaterialCommunityIcons name="account" size={20} color="#D32F2F" />
+              <MaterialCommunityIcons name="account" size={20} color="#8B0000" />
             </View>
             <View style={styles.studentCardNameWrap}>
               <Text style={styles.studentCardName}>
@@ -1612,7 +1612,7 @@ const handleDownloadPreview = async () => {
               <MaterialCommunityIcons
                 name={isCollapsed ? "chevron-down" : "chevron-up"}
                 size={16}
-                color="#D32F2F"
+                color="#8B0000"
               />
             </View>
           )}
@@ -1622,7 +1622,7 @@ const handleDownloadPreview = async () => {
           <View>
             {isLoadingComments ? (
               <View style={{ paddingVertical: 16, alignItems: "center" }}>
-                <ActivityIndicator size="small" color="#D32F2F" />
+                <ActivityIndicator size="small" color="#8B0000" />
               </View>
             ) : studentComments.length > 0 ? (
               <View style={styles.bubbleList}>
@@ -1743,7 +1743,7 @@ const handleDownloadPreview = async () => {
     <View style={styles.detailPane}>
       <View style={styles.detailHeaderRow}>
         <View style={styles.avatarCircleLarge}>
-          <MaterialCommunityIcons name="account" size={28} color="#D32F2F" />
+          <MaterialCommunityIcons name="account" size={28} color="#8B0000" />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.detailName}>{student.name}</Text>
@@ -1777,7 +1777,7 @@ const handleDownloadPreview = async () => {
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
+          <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#8B0000"]} tintColor="#8B0000" />
         }
       >
       {/* ── Header ─ */}
@@ -1821,7 +1821,7 @@ const handleDownloadPreview = async () => {
               accessibilityRole="button"
               accessibilityLabel="Update assignment"
             >
-              <MaterialCommunityIcons name="pencil-outline" size={16} color="#D32F2F" />
+              <MaterialCommunityIcons name="pencil-outline" size={16} color="#8B0000" />
               <Text style={styles.updateButtonOutlinedText}>Update Assignment</Text>
             </TouchableOpacity>
           )}
@@ -1867,7 +1867,7 @@ const handleDownloadPreview = async () => {
             accessibilityLabel={`Preview assignment attachment ${file.fileName}`}
           >
             <View style={styles.assignmentAttachmentIconWrap}>
-              <MaterialCommunityIcons name="paperclip" size={16} color="#D32F2F" />
+              <MaterialCommunityIcons name="paperclip" size={16} color="#8B0000" />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.assignmentAttachmentLabel}>
@@ -1880,7 +1880,7 @@ const handleDownloadPreview = async () => {
               </Text>
             </View>
             <View style={styles.assignmentAttachmentPreviewBtn}>
-              <MaterialCommunityIcons name="eye-outline" size={14} color="#D32F2F" />
+              <MaterialCommunityIcons name="eye-outline" size={14} color="#8B0000" />
               <Text style={styles.assignmentAttachmentPreviewText}>Preview</Text>
             </View>
           </TouchableOpacity>
@@ -2093,7 +2093,7 @@ const handleDownloadPreview = async () => {
                 <MaterialCommunityIcons
                   name={previewItem?.isLink ? "link-variant" : "file-document-outline"}
                   size={11}
-                  color="#D32F2F"
+                  color="#8B0000"
                 />
                 <Text style={styles.previewTypeText}>
                   {previewItem?.isLink ? "LINK" : "FILE"}
@@ -2137,7 +2137,7 @@ const handleDownloadPreview = async () => {
           {/* ✅ UPDATED: Pass fileName and fileType to handle images natively */}
           {previewLoading ? (
             <View style={styles.previewLoadingWrap}>
-              <ActivityIndicator size="large" color="#D32F2F" />
+              <ActivityIndicator size="large" color="#8B0000" />
               <Text style={styles.previewLoadingText}>Loading preview...</Text>
             </View>
           ) : previewViewerUrl ? (
@@ -2219,15 +2219,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     borderWidth: 1.5,
-    borderColor: "#D32F2F",
+    borderColor: "#8B0000",
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 10,
     minHeight: 44,
   },
-  updateButtonOutlinedText: { fontFamily: FONT_BODY, color: "#D32F2F", fontWeight: "700", fontSize: 13 },
+  updateButtonOutlinedText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: "700", fontSize: 13 },
   progressBarTrack: { height: 8, borderRadius: 16, backgroundColor: "#E5E7EB", overflow: "hidden" },
-  progressBarFill: { height: "100%", borderRadius: 16, backgroundColor: "#D32F2F" },
+  progressBarFill: { height: "100%", borderRadius: 16, backgroundColor: "#8B0000" },
   progressPercentLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#6B7280", marginTop: 6 },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   // ── ✅ NEW: Assignment Attachment card (header) ──
@@ -2235,9 +2235,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "#E8CCCC",
     borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -2276,7 +2276,7 @@ const styles = StyleSheet.create({
   assignmentAttachmentPreviewText: { fontFamily: FONT_BODY,
     fontSize: 11,
     fontWeight: "700",
-    color: "#D32F2F",
+    color: "#8B0000",
   },
   smallChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   smallChipText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700" },
@@ -2323,7 +2323,7 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: "center",
   },
-  filterChipActive: { backgroundColor: "#D32F2F", borderColor: "#D32F2F" },
+  filterChipActive: { backgroundColor: "#8B0000", borderColor: "#8B0000" },
   filterChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#4B5563" },
   filterChipTextActive: { color: "#FFFFFF" },
   // ── Scroll containers ──
@@ -2343,17 +2343,17 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minHeight: 48,
   },
-  listItemActive: { backgroundColor: "#FEF2F2" },
+  listItemActive: { backgroundColor: "#F8F0F0" },
   listItemAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
   listItemTextWrap: { flex: 1, minWidth: 0 },
   listItemName: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: "700", color: "#111827" },
-  listItemNameActive: { color: "#D32F2F" },
+  listItemNameActive: { color: "#8B0000" },
   listItemHandle: { fontFamily: FONT_BODY, fontSize: 11, color: "#9CA3AF", marginTop: 1 },
   listItemScore: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700", color: "#6B7280", marginRight: 4 },
   listItemDot: { width: 8, height: 8, borderRadius: 4 },
   detailPane: { gap: 16 },
   detailHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatarCircleLarge: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
+  avatarCircleLarge: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#F8F0F0", alignItems: "center", justifyContent: "center" },
   detailName: { fontFamily: FONT_BODY, fontSize: 20, fontWeight: "800", color: "#111827" },
   detailHandle: { fontFamily: FONT_BODY, fontSize: 12, color: "#6B7280", fontWeight: "600", marginTop: 2 },
   tabletDetailRow: { flexDirection: "row", gap: 20 },
@@ -2384,10 +2384,10 @@ const styles = StyleSheet.create({
   },
   studentCardFull: { width: "100%" },
   studentCardGrid: {},
-  studentCardSelected: { borderWidth: 1.5, borderColor: "#D32F2F" },
+  studentCardSelected: { borderWidth: 1.5, borderColor: "#8B0000" },
   studentCardTopRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
   studentCardIdentity: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
-  avatarCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
+  avatarCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#F8F0F0", alignItems: "center", justifyContent: "center" },
   studentCardNameWrap: { flex: 1, minWidth: 0 },
   studentCardName: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: "800", color: "#111827" },
   studentCardId: { fontFamily: FONT_BODY, fontSize: 12, color: "#6B7280", fontWeight: "500", marginTop: 1 },
@@ -2443,7 +2443,7 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
     borderLeftWidth: 2,
-    borderLeftColor: "#D32F2F",
+    borderLeftColor: "#8B0000",
   },
   linkSubmissionItem: {
     borderLeftColor: "#1a73e8",
@@ -2453,7 +2453,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 12,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "#F8F0F0",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2543,7 +2543,7 @@ const styles = StyleSheet.create({
   commentsSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
   commentsSectionTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: "800", color: "#111827" },
   showCommentsBtn: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 32, paddingHorizontal: 6 },
-  showCommentsBtnText: { fontFamily: FONT_BODY, color: "#D32F2F", fontWeight: "700", fontSize: 12 },
+  showCommentsBtnText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: "700", fontSize: 12 },
   bubbleList: { marginTop: 14, gap: 10 },
   bubbleRow: { flexDirection: "row" },
   bubbleRowTeacher: { justifyContent: "flex-start" },
@@ -2577,7 +2577,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2587,7 +2587,7 @@ const styles = StyleSheet.create({
   editActionsRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 8 },
   editCancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "#F3F4F6", minHeight: 32 },
   editCancelText: { fontFamily: FONT_BODY, fontWeight: "600", color: "#4B5563", fontSize: 12 },
-  editSaveBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "#D32F2F", minHeight: 32 },
+  editSaveBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "#8B0000", minHeight: 32 },
   editSaveText: { fontFamily: FONT_BODY, fontWeight: "700", color: "#FFFFFF", fontSize: 12 },
   // ── Delete Modal ──
   deleteModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
@@ -2607,7 +2607,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -2622,7 +2622,7 @@ const styles = StyleSheet.create({
   previewModalContainer: { flex: 1, backgroundColor: "#3c3c3c87" },
   previewTopBar: {
     height: 62,
-    backgroundColor: "#D32F2F",
+    backgroundColor: "#8B0000",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
@@ -2654,7 +2654,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     alignSelf: "flex-start",
   },
-  previewTypeText: { fontFamily: FONT_BODY, color: "#D32F2F", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+  previewTypeText: { fontFamily: FONT_BODY, color: "#8B0000", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   previewActions: {
     flexDirection: 'row',
     alignItems: 'center',

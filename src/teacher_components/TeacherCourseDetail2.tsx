@@ -676,7 +676,7 @@ function LessonModeDropdown({
                         {option.label}
                       </Text>
                       {isSelected ? (
-                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                        <Ionicons name="checkmark" size={18} color="#8B0000" />
                       ) : null}
                     </TouchableOpacity>
                   );
@@ -1001,7 +1001,7 @@ function InlineMaterialViewer({
         startInLoadingState
         renderLoading={() => (
           <View style={inlineStyles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#D32F2F" />
+            <ActivityIndicator size="large" color="#8B0000" />
             <Text style={inlineStyles.loadingText}>Loading document...</Text>
           </View>
         )}
@@ -1065,7 +1065,7 @@ const ConfirmationModal = ({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlayCenter}>
         <View style={[styles.modalCardElevated, { width: 330 }]}>
-          <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10, color: '#D32F2F' }]}>
+          <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10, color: '#8B0000' }]}>
             {title}
           </Text>
           <Text style={{ fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 22, marginBottom: 20 }}>
@@ -4463,7 +4463,7 @@ useEffect(() => {
               {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
             </Text>
           </TouchableOpacity>
-          {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
+          {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#8B0000" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
           <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
             {selectedLesson?.type === 'manual_file'
               ? `Leave empty to keep the current file. Upload a new file to replace it (max ${formatFileSizeMB(MAX_LESSON_FILE_SIZE_BYTES)}).`
@@ -4483,7 +4483,7 @@ useEffect(() => {
             <Ionicons
               name={label === 'AI Generated' ? 'sparkles-outline' : 'create-outline'}
               size={11}
-              color="#D32F2F"
+              color="#8B0000"
             />
             <Text style={styles.docPageBadgeText}>{label}</Text>
           </View>
@@ -4527,7 +4527,7 @@ useEffect(() => {
         <Text style={styles.sectionLabel}>Attachment (Optional)</Text>
         {visibleExistingFiles.map((file, index) => (
           <View key={`existing-${getAssignmentFileKey(file) || index}`} style={styles.currentFileBox}>
-            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+            <Ionicons name="document-text-outline" size={20} color="#8B0000" />
             <View style={{ flex: 1 }}>
               <Text style={styles.currentFileLabel}>Current File</Text>
               <Text style={styles.currentFileName} numberOfLines={1}>
@@ -4544,7 +4544,7 @@ useEffect(() => {
         ))}
         {pickedAssignmentFiles.map((file, index) => (
           <View key={`picked-${file.name}-${index}`} style={styles.filePreviewBox}>
-            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+            <Ionicons name="document-text-outline" size={20} color="#8B0000" />
             <Text style={styles.filePreviewText}>{file.name}</Text>
             <TouchableOpacity
               onPress={() => handleRemovePickedAssignmentFile(index)}
@@ -4643,7 +4643,7 @@ useEffect(() => {
             onPress={() => setShowGeneratedPreview(true)}
             disabled={isSaving}
           >
-            <Ionicons name="eye-outline" size={16} color="#D32F2F" />
+            <Ionicons name="eye-outline" size={16} color="#8B0000" />
             <Text style={styles.reviewQuestionsButtonText}>
               Review {generatedQuestions.length} Generated Question{generatedQuestions.length === 1 ? '' : 's'}
             </Text>
@@ -4693,7 +4693,7 @@ useEffect(() => {
                   <Ionicons
                     name={active ? 'checkmark-circle' : isLesson ? 'book-outline' : 'ellipse-outline'}
                     size={16}
-                    color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
+                    color={active ? '#FFF' : isLesson ? '#1976D2' : '#8B0000'}
                   />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text
@@ -4774,7 +4774,7 @@ useEffect(() => {
       <Text style={[styles.dropdownText, !label && styles.dropdownPlaceholder]} numberOfLines={1}>
         {label || placeholder}
       </Text>
-      <Ionicons name={visible ? 'chevron-up' : 'chevron-down'} size={18} color="#D32F2F" />
+      <Ionicons name={visible ? 'chevron-up' : 'chevron-down'} size={18} color="#8B0000" />
     </TouchableOpacity>
   );
 
@@ -4847,7 +4847,7 @@ useEffect(() => {
                         )}
                       </View>
                       {isSelected ? (
-                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                        <Ionicons name="checkmark" size={18} color="#8B0000" />
                       ) : null}
                     </TouchableOpacity>
                   );
@@ -4911,7 +4911,7 @@ useEffect(() => {
                       </Text>
                       {!!opt.desc && <Text style={styles.formDropdownItemDesc}>{opt.desc}</Text>}
                     </View>
-                    {isSelected ? <Ionicons name="checkmark" size={16} color="#B71C1C" /> : null}
+                    {isSelected ? <Ionicons name="checkmark" size={16} color="#8B0000" /> : null}
                   </TouchableOpacity>
                 );
               })}
@@ -4982,7 +4982,7 @@ useEffect(() => {
         activeOpacity={0.85}
         disabled={isSaving}
       >
-        <Ionicons name="calendar-outline" size={18} color="#D32F2F" />
+        <Ionicons name="calendar-outline" size={18} color="#8B0000" />
         <Text style={styles.dateButtonText}>{formDue || 'Select due date and time'}</Text>
       </TouchableOpacity>
       {renderInputError(errors.dueDate)}
@@ -5395,7 +5395,7 @@ useEffect(() => {
           </TouchableOpacity>
           {!!pickedFile?.name && (
             <View style={styles.filePreviewBox}>
-              <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+              <Ionicons name="document-text-outline" size={20} color="#8B0000" />
               <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
             </View>
           )}
@@ -5833,7 +5833,7 @@ useEffect(() => {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
               {generatedStructure?.modules?.map((mod: any, mi: number) => (
                 <View key={mi} style={{ marginBottom: 24 }}>
-                  <View style={{ backgroundColor: '#D32F2F', padding: 16, borderRadius: 16, marginBottom: 16 }}>
+                  <View style={{ backgroundColor: '#8B0000', padding: 16, borderRadius: 16, marginBottom: 16 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={{ fontSize: 18, fontWeight: WEIGHT_EMPHASIS, color: '#FFF' }}>
                         Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
@@ -6113,7 +6113,7 @@ DATE TIME MODAL
                           )
                         }
                       >
-                        <Ionicons name="chevron-back" size={18} color="#D32F2F" />
+                        <Ionicons name="chevron-back" size={18} color="#8B0000" />
                       </TouchableOpacity>
                       <Text
                         style={[styles.calendarMonthLabel, isSmallPhone && styles.calendarMonthLabelCompact]}
@@ -6133,7 +6133,7 @@ DATE TIME MODAL
                           )
                         }
                       >
-                        <Ionicons name="chevron-forward" size={18} color="#D32F2F" />
+                        <Ionicons name="chevron-forward" size={18} color="#8B0000" />
                       </TouchableOpacity>
                     </View>
                     <View style={styles.weekRow}>
@@ -6302,7 +6302,7 @@ the button looked completely dead.
                 setShowGeneratedPreview(false);
                 toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
               }}
-              style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+              style={[styles.lessonPreviewIconBtn, { backgroundColor: '#8B0000' }]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="checkmark" size={20} color="#FFF" />
@@ -6491,7 +6491,7 @@ the button looked completely dead.
             </View>
 
             <View style={styles.classCodeInline}>
-              <Ionicons name="key-outline" size={14} color="#D32F2F" />
+              <Ionicons name="key-outline" size={14} color="#8B0000" />
               <Text style={styles.classCodeInlineValue} numberOfLines={1}>{classCode}</Text>
               <TouchableOpacity
                 onPress={handleCopyClassCode}
@@ -6501,7 +6501,7 @@ the button looked completely dead.
                 <Ionicons
                   name={classCodeCopied ? 'checkmark-outline' : 'copy-outline'}
                   size={14}
-                  color="#D32F2F"
+                  color="#8B0000"
                 />
                 <Text style={styles.copyCodeInlineText}>{classCodeCopied ? 'Copied' : 'Copy'}</Text>
               </TouchableOpacity>
@@ -6592,7 +6592,7 @@ the button looked completely dead.
                   setShowManageTemplateModal(true);
                 }}
               >
-                <Ionicons name="image-outline" size={16} color="#D32F2F" />
+                <Ionicons name="image-outline" size={16} color="#8B0000" />
                 <Text style={styles.manageTemplateButtonText}>Manage Template</Text>
               </TouchableOpacity>
             </View>
@@ -6605,7 +6605,7 @@ the button looked completely dead.
                   <TouchableOpacity
                     onPress={handlePickSyllabus}
                     disabled={isUploadingSyllabus}
-                    style={{ backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                    style={{ backgroundColor: '#8B0000', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}
                   >
                     {isUploadingSyllabus ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />}
                     <Text style={{ color: '#FFF', fontWeight: '700' }}>Upload Course Syllabus</Text>
@@ -6617,7 +6617,7 @@ the button looked completely dead.
               ) : (
                 <View style={{ backgroundColor: '#F9F9F9', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <Ionicons name="document-text-outline" size={24} color="#D32F2F" />
+                    <Ionicons name="document-text-outline" size={24} color="#8B0000" />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: '#111' }} numberOfLines={1}>{currentSyllabus.fileName}</Text>
                       <Text style={{ fontSize: 12, color: '#666' }}>
@@ -6653,7 +6653,7 @@ the button looked completely dead.
                       style={{ backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
                     >
                       {isDeletingSyllabus ? (
-                        <ActivityIndicator color="#D32F2F" size="small" />
+                        <ActivityIndicator color="#8B0000" size="small" />
                       ) : (
                         <Ionicons name="trash-outline" size={14} color="#D32F2F" />
                       )}
@@ -6669,7 +6669,7 @@ the button looked completely dead.
             {/* ACCORDION MODULES LIST WITH LOADING STATE */}
             {isLoadingModules ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#D32F2F" />
+                <ActivityIndicator size="large" color="#8B0000" />
                 <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading resources...</Text>
               </View>
             ) : modules.length === 0 ? (
@@ -6682,12 +6682,12 @@ the button looked completely dead.
                     (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
                   return (
                     <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
-                      <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}>
+                      <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FAF5F5' : '#FFF' }}>
                         <TouchableOpacity
                           onPress={() => setExpandedModules(p => ({ ...p, [mod.id]: !isExpanded }))}
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
                         >
-                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#8B0000', alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons name="layers-outline" size={20} color="#FFF" />
                           </View>
                           <View style={{ flex: 1 }}>
@@ -6732,7 +6732,7 @@ the button looked completely dead.
                             style={{ padding: 4 }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
-                            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+                            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#8B0000" />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -6805,24 +6805,24 @@ the button looked completely dead.
                     onPress={handleOpenModuleSelectionModal}
                     disabled={unmadeSyllabusModules.length === 0}
                     style={[
-                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#8B0000', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
                       unmadeSyllabusModules.length === 0 && styles.disabledButton
                     ]}
                   >
-                    <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />
-                    <Text style={{ color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Module 1</Text>
+                    <Ionicons name="add-circle-outline" size={24} color="#8B0000" />
+                    <Text style={{ color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Module 1</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     onPress={handleOpenModuleSelectionModal}
                     disabled={unmadeSyllabusModules.length === 0}
                     style={[
-                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#8B0000', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
                       unmadeSyllabusModules.length === 0 && styles.disabledButton
                     ]}
                   >
-                    <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />
-                    <Text style={{ color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Another Module</Text>
+                    <Ionicons name="add-circle-outline" size={24} color="#8B0000" />
+                    <Text style={{ color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Another Module</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -6835,10 +6835,10 @@ the button looked completely dead.
                     setNewModuleTitle('');
                     setShowManualModuleModal(true);
                   }}
-                  style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 1, borderColor: '#8B0000', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                 >
-                  <Ionicons name="create-outline" size={24} color="#D32F2F" />
-                  <Text style={{ color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Create Module (Manual)</Text>
+                  <Ionicons name="create-outline" size={24} color="#8B0000" />
+                  <Text style={{ color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Create Module (Manual)</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -6875,7 +6875,7 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
                   <Ionicons
                     name={viewerIsPresentation ? 'easel-outline' : 'document-text-outline'}
                     size={11}
-                    color="#D32F2F"
+                    color="#8B0000"
                   />
                   <Text style={styles.viewerTypeText}>
                     {viewerIsPresentation
@@ -6917,7 +6917,7 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
             <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
           ) : viewerIsVideo && viewerFileUrl ? (
             <View style={styles.viewerExternalPrompt}>
-              <Ionicons name="videocam-outline" size={56} color="#D32F2F" />
+              <Ionicons name="videocam-outline" size={56} color="#8B0000" />
               <Text style={styles.viewerExternalTitle}>Video Material</Text>
               <Text style={styles.viewerExternalText}>
                 Videos open in your device's media player or browser.
@@ -7024,7 +7024,7 @@ EDIT MATERIAL MODAL
               />
               {!!editingMaterial?.fileName && (
                 <View style={styles.currentFileBox}>
-                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                  <Ionicons name="document-text-outline" size={20} color="#8B0000" />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.currentFileLabel}>Current File</Text>
                     <Text style={styles.currentFileName} numberOfLines={1}>
@@ -7048,7 +7048,7 @@ EDIT MATERIAL MODAL
               </TouchableOpacity>
               {!!editMatPickedFile?.name && (
                 <View style={styles.filePreviewBox}>
-                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                  <Ionicons name="document-text-outline" size={20} color="#8B0000" />
                   <Text style={styles.filePreviewText}>{editMatPickedFile.name}</Text>
                   <TouchableOpacity
                     onPress={() => setEditMatPickedFile(null)}
@@ -7066,7 +7066,7 @@ EDIT MATERIAL MODAL
                 disabled={isSavingMaterial || isDeletingMaterial}
               >
                 {isDeletingMaterial ? (
-                  <ActivityIndicator size="small" color="#D32F2F" />
+                  <ActivityIndicator size="small" color="#8B0000" />
                 ) : (
                   <Ionicons name="trash-outline" size={18} color="#D32F2F" />
                 )}
@@ -7225,7 +7225,7 @@ DATE TIME MODAL
                         )
                       }
                     >
-                      <Ionicons name="chevron-back" size={18} color="#D32F2F" />
+                      <Ionicons name="chevron-back" size={18} color="#8B0000" />
                     </TouchableOpacity>
                     <Text
                       style={[styles.calendarMonthLabel, isSmallPhone && styles.calendarMonthLabelCompact]}
@@ -7245,7 +7245,7 @@ DATE TIME MODAL
                         )
                       }
                     >
-                      <Ionicons name="chevron-forward" size={18} color="#D32F2F" />
+                      <Ionicons name="chevron-forward" size={18} color="#8B0000" />
                     </TouchableOpacity>
                   </View>
                   <View style={styles.weekRow}>
@@ -7408,7 +7408,7 @@ GENERATED QUESTIONS PREVIEW MODAL
                 setShowGeneratedPreview(false);
                 toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
               }}
-              style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+              style={[styles.lessonPreviewIconBtn, { backgroundColor: '#8B0000' }]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="checkmark" size={20} color="#FFF" />
@@ -7741,7 +7741,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
             contentContainerStyle={styles.lessonPreviewScrollContent}
           >
             {isLessonLoading ? (
-              <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 40 }} />
+              <ActivityIndicator size="large" color="#8B0000" style={{ marginVertical: 40 }} />
             ) : selectedLesson ? (
               <View style={styles.lessonPreviewPageWrap}>
                 <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
@@ -7752,7 +7752,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       <Ionicons
                         name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
                         size={11}
-                        color="#D32F2F"
+                        color="#8B0000"
                       />
                       <Text style={styles.docPageBadgeText}>
                         {selectedLesson.isGenerated
@@ -7786,9 +7786,9 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                         setViewerMaterial(materialViewData);
                       }}
                       style={{
-                        backgroundColor: '#FFF5F5',
+                        backgroundColor: '#FAF5F5',
                         borderWidth: 2,
-                        borderColor: '#D32F2F',
+                        borderColor: '#8B0000',
                         borderStyle: 'dashed',
                         borderRadius: 16,
                         padding: 24,
@@ -7799,8 +7799,8 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       }}
                       activeOpacity={0.8}
                     >
-                      <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
-                      <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F' }}>
+                      <Ionicons name="document-text-outline" size={48} color="#8B0000" />
+                      <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' }}>
                         {selectedLesson.fileName || 'View Attached File'}
                       </Text>
                       <Text style={{ fontSize: 13, color: '#666' }}>
@@ -8120,7 +8120,7 @@ MANUAL LESSON CREATION MODAL
                 disabled={isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()}
                 style={[
                   styles.lessonPreviewIconBtn,
-                  { backgroundColor: '#D32F2F' },
+                  { backgroundColor: '#8B0000' },
                   (isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()) && { opacity: 0.5 },
                 ]}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -8137,7 +8137,7 @@ MANUAL LESSON CREATION MODAL
                 <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
                   {renderTemplateHeaderBanner()}
                   <View style={styles.docPageBadge}>
-                    <Ionicons name="create-outline" size={11} color="#D32F2F" />
+                    <Ionicons name="create-outline" size={11} color="#8B0000" />
                     <Text style={styles.docPageBadgeText}>Edit Lesson</Text>
                   </View>
                   {renderLessonFormFields()}
@@ -8190,7 +8190,7 @@ MANUAL LESSON CREATION MODAL
                 disabled={isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()}
                 style={[
                   styles.lessonPreviewIconBtn,
-                  { backgroundColor: '#D32F2F' },
+                  { backgroundColor: '#8B0000' },
                   (isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()) && { opacity: 0.5 },
                 ]}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -8217,7 +8217,7 @@ MANUAL LESSON CREATION MODAL
                 <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
                   {renderTemplateHeaderBanner()}
                   <View style={styles.docPageBadge}>
-                    <Ionicons name="add-circle-outline" size={11} color="#D32F2F" />
+                    <Ionicons name="add-circle-outline" size={11} color="#8B0000" />
                     <Text style={styles.docPageBadgeText}>Manually Created</Text>
                   </View>
                   <Text style={styles.lessonPreviewTopBarSubtitle}>
@@ -8384,7 +8384,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                   return (
                     <View key={tIdx} style={{ marginBottom: 14 }}>
                       {!isFallbackSingleItem && (
-                        <Text style={{ fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F', marginBottom: 6 }}>
+                        <Text style={{ fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', marginBottom: 6 }}>
                           {topic.title}
                         </Text>
                       )}
@@ -8403,7 +8403,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                             <Ionicons
                               name={isSelected ? "checkbox" : "square-outline"}
                               size={22}
-                              color={isSelected ? "#FFF" : "#D32F2F"}
+                              color={isSelected ? "#FFF" : "#8B0000"}
                             />
                             <View style={{ flex: 1, marginLeft: 8 }}>
                               <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
@@ -8479,7 +8479,7 @@ MODULE SELECTION MODAL (mirrors "Generate Next Lessons" above)
                       <Ionicons
                         name={isSelected ? "checkbox" : "square-outline"}
                         size={22}
-                        color={isSelected ? "#FFF" : "#D32F2F"}
+                        color={isSelected ? "#FFF" : "#8B0000"}
                       />
                       <View style={{ flex: 1, marginLeft: 8 }}>
                         <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
@@ -8538,7 +8538,7 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
               {isEditingSyllabus ? 'Confirm Replacement' : 'Confirm Upload'}
             </Text>
             <View style={{ backgroundColor: '#F5F5F5', padding: 12, borderRadius: 14, marginBottom: 16, alignItems: 'center' }}>
-              <Ionicons name="document-text-outline" size={32} color="#D32F2F" style={{ marginBottom: 8 }} />
+              <Ionicons name="document-text-outline" size={32} color="#8B0000" style={{ marginBottom: 8 }} />
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#333', textAlign: 'center' }} numberOfLines={2}>
                 {pendingSyllabusFile?.name}
               </Text>
@@ -8614,7 +8614,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                 renderDocPage(
                   <View style={{ marginBottom: 24 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F', flex: 1, marginRight: 8 }}>
+                      <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', flex: 1, marginRight: 8 }}>
                         Lesson {index + 1}: {lesson.title}
                       </Text>
                       {pendingGeneratedLessons.length > 1 && (
@@ -8823,7 +8823,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
       {isSaving && (
         <View style={styles.savingOverlay} pointerEvents="auto">
           <View style={styles.savingCard}>
-            <ActivityIndicator size="large" color="#D32F2F" />
+            <ActivityIndicator size="large" color="#8B0000" />
             <Text style={styles.savingTitle}>
               {activeTab === 'materials' ? 'Saving Material' : 'Saving Assignment'}
             </Text>
@@ -8846,7 +8846,7 @@ const styles = StyleSheet.create({
   screenScroll: { flex: 1, backgroundColor: '#ffffff' },
   screenScrollContent: { paddingBottom: 40 },
   courseHeader: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 10,
@@ -8865,10 +8865,10 @@ const styles = StyleSheet.create({
   bannerBox: {
     width: '100%',
     overflow: 'hidden',
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   bannerFallback: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   bannerScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -8946,13 +8946,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FDEAEA',
+    backgroundColor: '#F5E9E9',
     borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   classCodeInlineValue: {
-    color: '#D32F2F',
+    color: '#8B0000',
     fontSize: 13,
     fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 1,
@@ -8965,9 +8965,9 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     paddingLeft: 8,
     borderLeftWidth: 1,
-    borderLeftColor: 'rgba(211,47,47,0.25)',
+    borderLeftColor: 'rgba(139,0,0,0.25)',
   },
-  copyCodeInlineText: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
+  copyCodeInlineText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
   scheduleStripWrap: { paddingBottom: 14 },
   scheduleStripCard: {
     flexDirection: 'row',
@@ -9119,7 +9119,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 16,
-    backgroundColor: '#FDEAEA',
+    backgroundColor: '#F5E9E9',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -9143,7 +9143,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -9182,13 +9182,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderBottomColor: 'transparent',
   },
-  tabActive: { borderBottomColor: '#D32F2F' },
+  tabActive: { borderBottomColor: '#8B0000' },
   tabText: { color: '#888', fontWeight: '700' },
-  tabTextActive: { color: '#D32F2F' },
+  tabTextActive: { color: '#8B0000' },
   viewerModal: { flex: 1, backgroundColor: '#1e1e1e' },
   viewerTopBar: {
     height: 62,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
@@ -9227,7 +9227,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   viewerTypeText: { fontFamily: FONT_BODY,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontSize: 10,
     fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.5,
@@ -9287,7 +9287,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 16,
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -9306,7 +9306,7 @@ const styles = StyleSheet.create({
   },
   viewerTextMeta: { fontFamily: FONT_BODY,
     fontSize: 13,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '700',
     marginBottom: 16,
   },
@@ -9344,9 +9344,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#FFF8F8',
+    backgroundColor: '#FAF5F5',
     borderWidth: 1,
-    borderColor: '#F1D0D0',
+    borderColor: '#EBD4D4',
     borderRadius: 16,
     padding: 12,
     marginBottom: 12,
@@ -9444,7 +9444,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BODY,
     fontSize: 12,
     fontWeight: '800',
-    color: '#D32F2F',
+    color: '#8B0000',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: 18,
@@ -9497,7 +9497,7 @@ const styles = StyleSheet.create({
   dateButtonText: { color: '#222', fontWeight: '600', flex: 1 },
   sectionBlock: { marginTop: 0 },
   clearSelectionText: { fontFamily: FONT_BODY,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -9512,14 +9512,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#F0B9B9',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 16,
   },
-  materialChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  materialChipText: { color: '#D32F2F', fontWeight: '700', flex: 1 },
+  materialChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
+  materialChipText: { color: '#8B0000', fontWeight: '700', flex: 1 },
   materialChipTextActive: { color: '#FFF' },
   // Read-only chip shown once questions have been generated — lesson
   // selection is locked until the teacher explicitly chooses to change it.
@@ -9534,12 +9534,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderRadius: 16,
     paddingVertical: 10,
     marginTop: 12,
   },
-  reviewQuestionsButtonText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
+  reviewQuestionsButtonText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 13 },
   lessonChip: {
     backgroundColor: '#E3F2FD',
     borderColor: '#90CAF9',
@@ -9556,7 +9556,7 @@ const styles = StyleSheet.create({
     color: '#E3F2FD',
   },
   primaryButtonWide: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     minHeight: 48,
     borderRadius: 16,
     alignItems: 'center',
@@ -9574,8 +9574,8 @@ const styles = StyleSheet.create({
   filePreviewBox: {
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#F1D0D0',
-    backgroundColor: '#FFF8F8',
+    borderColor: '#EBD4D4',
+    backgroundColor: '#FAF5F5',
     padding: 12,
     borderRadius: 16,
     flexDirection: 'row',
@@ -9597,16 +9597,16 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFF',
   },
-  checkboxBoxChecked: { backgroundColor: '#D32F2F' },
+  checkboxBoxChecked: { backgroundColor: '#8B0000' },
   buttonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     minHeight: 46,
     borderRadius: 16,
     alignItems: 'center',
@@ -9616,18 +9616,18 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     minHeight: 46,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFF',
   },
-  secondaryButtonText: { color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
+  secondaryButtonText: { color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
   floatingSaveWrap: { position: 'absolute', right: 18, left: 18, bottom: 18 },
   floatingSaveWrapMobile: { right: 18, left: 18, bottom: 18 },
   floatingSaveButton: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 16,
     minHeight: 48,
     width: '100%',
@@ -9653,7 +9653,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   inlineSaveButton: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 16,
     minHeight: 48,
     paddingHorizontal: 24,
@@ -9744,7 +9744,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#F7EDED',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -9769,7 +9769,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   dayCellOutside: { opacity: 0.35 },
-  dayCellActive: { backgroundColor: '#D32F2F' },
+  dayCellActive: { backgroundColor: '#8B0000' },
   dayCellDisabled: { backgroundColor: '#F5F5F5', opacity: 0.45 },
   dayText: { color: '#222', fontWeight: '600' },
   dayTextCompact: { fontFamily: FONT_BODY, fontSize: 12 },
@@ -9791,7 +9791,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     justifyContent: 'center',
   },
-  timeTextInputWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  timeTextInputWrapFocused: { borderColor: '#8B0000', borderWidth: 1.5 },
   timeTextInput: { fontFamily: FONT_BODY,
     fontSize: 15,
     color: '#111',
@@ -9808,20 +9808,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   meridiemBtn: { paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' },
-  meridiemBtnActive: { backgroundColor: '#D32F2F' },
+  meridiemBtnActive: { backgroundColor: '#8B0000' },
   meridiemBtnText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#9AA0A6' },
   meridiemBtnTextActive: { color: '#FFFFFF' },
   timeErrorText: { fontFamily: FONT_BODY, marginTop: 8, color: '#D32F2F', fontSize: 12, fontWeight: '700' },
   datePreviewBox: {
     marginTop: 14,
     borderWidth: 1,
-    borderColor: '#F1D0D0',
-    backgroundColor: '#FFF8F8',
+    borderColor: '#EBD4D4',
+    backgroundColor: '#FAF5F5',
     borderRadius: 16,
     padding: 12,
   },
   datePreviewLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#777', marginBottom: 4 },
-  datePreviewValue: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F' },
+  datePreviewValue: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
   datePreviewValueCompact: { fontFamily: FONT_BODY, fontSize: 12 },
   typeChip: {
     flex: 1,
@@ -9829,12 +9829,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F0B9B9',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
     alignItems: 'center',
   },
-  typeChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  typeChipText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 14 },
+  typeChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
+  typeChipText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 14 },
   typeChipTextActive: { color: '#FFF' },
   gameAndClassRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   gameAndClassRowMobile: { flexDirection: 'column', gap: 12 },
@@ -9893,7 +9893,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F5F5F5',
   },
   formDropdownItemText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#111' },
-  formDropdownItemTextSelected: { color: '#B71C1C' },
+  formDropdownItemTextSelected: { color: '#8B0000' },
   formDropdownItemDesc: { fontFamily: FONT_BODY, fontSize: 11, color: '#888', marginTop: 2, lineHeight: 15 },
 
   // ✅ Mobile bottom-sheet Modal variant — same shape as Assignments.tsx's
@@ -9940,9 +9940,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 16,
   },
-  formDropdownModalItemSelected: { backgroundColor: '#FDECEC' },
+  formDropdownModalItemSelected: { backgroundColor: '#F7EDED' },
   formDropdownModalItemText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#111' },
-  formDropdownModalItemTextSelected: { fontFamily: FONT_BODY, color: '#B71C1C', fontWeight: WEIGHT_EMPHASIS },
+  formDropdownModalItemTextSelected: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
   formDropdownModalItemDesc: { fontFamily: FONT_BODY, fontSize: 12, color: '#888', marginTop: 2, lineHeight: 16 },
   dropdownItem: {
     flexDirection: 'row',
@@ -9952,7 +9952,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F5F5F5',
   },
-  dropdownItemActive: { backgroundColor: '#D32F2F', borderBottomColor: '#C62828' },
+  dropdownItemActive: { backgroundColor: '#8B0000', borderBottomColor: '#6B0000' },
   dropdownItemText: { fontFamily: FONT_BODY, color: '#111', fontWeight: '700', fontSize: 14, flex: 1 },
   dropdownItemTextActive: { color: '#FFF' },
   dropdownItemDesc: { fontFamily: FONT_BODY, color: '#888', fontSize: 11, marginTop: 2, lineHeight: 15 },
@@ -9962,22 +9962,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F0B9B9',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
   },
-  attemptChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  attemptChipText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
+  attemptChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
+  attemptChipText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 13 },
   attemptChipTextActive: { color: '#FFF' },
   timeChip: {
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F0B9B9',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
   },
-  timeChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  timeChipText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
+  timeChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
+  timeChipText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 13 },
   timeChipTextActive: { color: '#FFF' },
   generatedQuestionBlock: {
     marginBottom: 24,
@@ -10066,14 +10066,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FCE8E8',
+    backgroundColor: '#F5E9E9',
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginBottom: 10,
   },
   docPageBadgeText: { fontFamily: FONT_BODY,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '700',
     fontSize: 10,
     textTransform: 'uppercase',
@@ -10085,12 +10085,12 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: '#FFF',
     borderWidth: 1,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  manageTemplateButtonText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 12 },
+  manageTemplateButtonText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 12 },
   templateSlotCard: {
     backgroundColor: '#F9F9F9',
     borderWidth: 1,
@@ -10341,7 +10341,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   lessonDropdownModalItemSelected: {
-    backgroundColor: '#FDECEC',
+    backgroundColor: '#F7EDED',
   },
   lessonDropdownModalItemText: { fontFamily: FONT_BODY,
     fontSize: 14,
@@ -10349,7 +10349,7 @@ const styles = StyleSheet.create({
     color: '#111',
   },
   lessonDropdownModalItemTextSelected: {
-    color: '#B71C1C',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
   },
   lessonPreviewBottomBar: {

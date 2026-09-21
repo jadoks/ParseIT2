@@ -194,7 +194,7 @@ function SortableHeader({
             : "swap-vertical-outline"
         }
         size={12}
-        color={isActive ? "#DC2626" : "#C7B0B0"}
+        color={isActive ? "#8B0000" : "#C7B0B0"}
         style={styles.sortIcon}
       />
     </TouchableOpacity>
@@ -873,12 +873,12 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
 
                 {isLoading ? (
                   <View style={styles.emptyState}>
-                    <Ionicons name="sync-outline" size={26} color="#DC2626" />
+                    <Ionicons name="sync-outline" size={26} color="#8B0000" />
                     <Text style={styles.emptyStateTitle}>Loading classes...</Text>
                   </View>
                 ) : paginatedClasses.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Ionicons name="albums-outline" size={26} color="#DC2626" />
+                    <Ionicons name="albums-outline" size={26} color="#8B0000" />
                     <Text style={styles.emptyStateTitle}>No classes found</Text>
                     <Text style={styles.emptyStateSubtitle}>
                       Try another search or add a new class record.
@@ -1182,12 +1182,12 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
               {isLoadingMembers ? (
                 <View style={[styles.emptyState, { paddingVertical: 60 }]}>
-                  <Ionicons name="sync-outline" size={32} color="#DC2626" />
+                  <Ionicons name="sync-outline" size={32} color="#8B0000" />
                   <Text style={styles.emptyStateTitle}>Loading members...</Text>
                 </View>
               ) : classMembers.length === 0 ? (
                 <View style={[styles.emptyState, { paddingVertical: 60 }]}>
-                  <Ionicons name="people-outline" size={48} color="#F1CACA" />
+                  <Ionicons name="people-outline" size={48} color="#E8CCCC" />
                   <Text style={styles.emptyStateTitle}>No members yet</Text>
                   <Text style={styles.emptyStateSubtitle}>Add students to this class to get started.</Text>
                 </View>
@@ -1196,8 +1196,8 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
                   const nameStr = member.name || "Unknown";
                   const initials = nameStr.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
                   const isTeacher = member.role === 'teacher';
-                  const avatarBg = isTeacher ? "#DBEAFE" : "#FEE2E2";
-                  const avatarText = isTeacher ? "#1E40AF" : "#991B1B";
+                  const avatarBg = isTeacher ? "#DBEAFE" : "#F1E0E0";
+                  const avatarText = isTeacher ? "#1E40AF" : "#6B0000";
 
                   return (
                     <View key={member.id} style={styles.memberRow}>
@@ -1224,7 +1224,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
                           onPress={() => handleRemoveMember(member.id, member.name)}
                           style={styles.removeMemberBtn}
                         >
-                          <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                          <Ionicons name="trash-outline" size={18} color="#8B0000" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1426,13 +1426,13 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   heroCard: {
-    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4",
+    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#EBD4D4",
     padding: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20,
   },
   heroCardMobile: { flexDirection: "column", alignItems: "flex-start" },
   heroTextSection: { flex: 1, marginRight: 20 },
   heroTextMobile: { marginRight: 0, marginBottom: 0 },
-  heroEyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.2, color: "#DC2626", marginBottom: 8 },
+  heroEyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.2, color: "#8B0000", marginBottom: 8 },
   heroTitle: { fontSize: 28, fontWeight: "800", color: "#2B1111", marginBottom: 8 },
   heroTitleMobile: { fontSize: 22 },
   heroSubtitle: { fontSize: 14, color: "#8A6F6F", lineHeight: 22 },
@@ -1446,8 +1446,8 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, marginLeft: 10, height: "80%", fontSize: 14, color: "#2B1111", fontWeight: "500" },
   primaryActionButton: {
     height: 50, minWidth: 140, paddingHorizontal: 20, borderRadius: 14,
-    backgroundColor: "#DC2626", alignItems: "center", justifyContent: "center", flexDirection: "row",
-    shadowColor: "#DC2626", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 3,
+    backgroundColor: "#8B0000", alignItems: "center", justifyContent: "center", flexDirection: "row",
+    shadowColor: "#8B0000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 3,
   },
   fullWidthButton: { width: "100%" },
   primaryActionButtonText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF", marginLeft: 6 },
@@ -1477,7 +1477,7 @@ const styles = StyleSheet.create({
   tableHeaderText: {
     fontSize: 11, fontWeight: "700", color: "#B99C9C", letterSpacing: 0.6, textTransform: "uppercase",
   },
-  tableHeaderTextActive: { color: "#DC2626" },
+  tableHeaderTextActive: { color: "#8B0000" },
   actionHeaderText: { textAlign: "right" },
   sortableHeaderButton: { flexDirection: "row", alignItems: "center" },
   sortIcon: { marginLeft: 4 },
@@ -1493,9 +1493,9 @@ const styles = StyleSheet.create({
   actionColumn: { width: 90 },
 
   codeBadge: {
-    alignSelf: "flex-start", backgroundColor: "#FDF2F2", color: "#B5484B",
+    alignSelf: "flex-start", backgroundColor: "#F8F0F0", color: "#8B0000",
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, overflow: "hidden",
-    fontSize: 12, fontWeight: "700", borderWidth: 1, borderColor: "#F5DEDE",
+    fontSize: 12, fontWeight: "700", borderWidth: 1, borderColor: "#EBD4D4",
   },
 
   memberCountBadge: {
@@ -1527,7 +1527,7 @@ const styles = StyleSheet.create({
   paginationPageButton: {
     minWidth: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 6,
   },
-  paginationPageButtonActive: { backgroundColor: "#DC2626" },
+  paginationPageButtonActive: { backgroundColor: "#8B0000" },
   paginationPageText: { fontSize: 13, fontWeight: "600", color: "#8A6F6F" },
   paginationPageTextActive: { color: "#FFFFFF", fontWeight: "700" },
   paginationEllipsis: { fontSize: 13, color: "#C7B0B0", marginHorizontal: 4 },
@@ -1546,14 +1546,14 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: "rgba(43, 17, 17, 0.45)", justifyContent: "center", alignItems: "center", padding: 20 },
   confirmModalCard: {
     width: "100%", maxWidth: 420, backgroundColor: "#FFFFFF", borderRadius: 24,
-    borderWidth: 1, borderColor: "#F3D4D4", padding: 24, alignItems: "center",
+    borderWidth: 1, borderColor: "#EBD4D4", padding: 24, alignItems: "center",
   },
   confirmIconWrap: { width: 64, height: 64, borderRadius: 20, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center", marginBottom: 16 },
   confirmTitle: { fontSize: 22, fontWeight: "800", color: "#2B1111", marginBottom: 8 },
   confirmSubtitle: { fontSize: 14, color: "#8A6F6F", textAlign: "center", lineHeight: 22, marginBottom: 22 },
   confirmHighlight: { fontWeight: "800", color: "#2B1111" },
   confirmActions: { flexDirection: "row", width: "100%", justifyContent: "center", gap: 12 },
-  confirmCancelButton: { flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: "#E7C0C0", backgroundColor: "#FFF7F7", alignItems: "center", justifyContent: "center" },
+  confirmCancelButton: { flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: "#E2BFBF", backgroundColor: "#FAF5F5", alignItems: "center", justifyContent: "center" },
   confirmCancelText: { fontSize: 14, fontWeight: "700", color: "#7A4A4A" },
   confirmDeleteButton: { flex: 1, height: 48, borderRadius: 14, backgroundColor: "#DC2626", alignItems: "center", justifyContent: "center", flexDirection: "row" },
   confirmDeleteText: { fontSize: 14, fontWeight: "800", color: "#FFFFFF", marginLeft: 8 },
@@ -1566,35 +1566,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 12,
     shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 15,
   },
-  bottomSheetHandle: { width: 40, height: 5, backgroundColor: "#E7C0C0", borderRadius: 10, alignSelf: "center", marginBottom: 16 },
+  bottomSheetHandle: { width: 40, height: 5, backgroundColor: "#E2BFBF", borderRadius: 10, alignSelf: "center", marginBottom: 16 },
   sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
   sheetTitle: { fontSize: 22, fontWeight: "800", color: "#2B1111" },
   sheetSubtitle: { fontSize: 14, color: "#8A6F6F", marginTop: 4, fontWeight: "600" },
-  closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFF5F5", alignItems: "center", justifyContent: "center" },
+  closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FAF5F5", alignItems: "center", justifyContent: "center" },
   statsRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  statCard: { flex: 1, backgroundColor: "#FFF9F9", borderWidth: 1, borderColor: "#F3D4D4", borderRadius: 16, paddingVertical: 16, alignItems: "center" },
-  statNumber: { fontSize: 24, fontWeight: "800", color: "#DC2626" },
+  statCard: { flex: 1, backgroundColor: "#FAF5F5", borderWidth: 1, borderColor: "#EBD4D4", borderRadius: 16, paddingVertical: 16, alignItems: "center" },
+  statNumber: { fontSize: 24, fontWeight: "800", color: "#8B0000" },
   statLabel: { fontSize: 11, fontWeight: "700", color: "#8A6F6F", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.5 },
   
   // Member Row
-  memberRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F8E3E3" },
+  memberRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3E6E6" },
   memberAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", marginRight: 14 },
   memberAvatarText: { fontSize: 15, fontWeight: "800" },
   memberInfo: { flex: 1, marginRight: 12 },
   memberName: { fontSize: 15, fontWeight: "700", color: "#2B1111" },
   memberMetaRow: { flexDirection: "row", alignItems: "center", marginTop: 4, gap: 8 },
   roleBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  roleBadgeStudent: { backgroundColor: "#FEE2E2" },
+  roleBadgeStudent: { backgroundColor: "#F1E0E0" },
   roleBadgeTeacher: { backgroundColor: "#DBEAFE" },
   roleBadgeText: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
-  roleBadgeTextStudent: { color: "#991B1B" },
+  roleBadgeTextStudent: { color: "#6B0000" },
   roleBadgeTextTeacher: { color: "#1E40AF" },
   memberId: { fontSize: 13, color: "#8A6F6F", fontWeight: "500" },
   removeMemberBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FFF1F2", alignItems: "center", justifyContent: "center" },
-  sheetFooter: { paddingVertical: 20, borderTopWidth: 1, borderTopColor: "#F8E3E3" },
+  sheetFooter: { paddingVertical: 20, borderTopWidth: 1, borderTopColor: "#F3E6E6" },
   addMemberFooterBtn: {
-    height: 52, borderRadius: 16, backgroundColor: "#DC2626", alignItems: "center", justifyContent: "center", flexDirection: "row",
-    shadowColor: "#DC2626", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
+    height: 52, borderRadius: 16, backgroundColor: "#8B0000", alignItems: "center", justifyContent: "center", flexDirection: "row",
+    shadowColor: "#8B0000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
   },
   addMemberFooterText: { fontSize: 15, fontWeight: "800", color: "#FFFFFF", marginLeft: 8 },
 
@@ -1607,7 +1607,7 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 24 },
   inputLabel: { fontSize: 12, fontWeight: "700", color: "#7A4A4A", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
   professionalInput: {
-    width: "100%", height: 52, borderWidth: 1.5, borderColor: "#F1CACA", borderRadius: 14,
-    paddingHorizontal: 16, backgroundColor: "#FFF9F9", fontSize: 15, color: "#2B1111", fontWeight: "600",
+    width: "100%", height: 52, borderWidth: 1.5, borderColor: "#E8CCCC", borderRadius: 14,
+    paddingHorizontal: 16, backgroundColor: "#FAF5F5", fontSize: 15, color: "#2B1111", fontWeight: "600",
   },
 });

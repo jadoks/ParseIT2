@@ -235,7 +235,7 @@ const MyJourney = ({
                     {option}
                   </Text>
                   {active && (
-                    <MaterialCommunityIcons name="check" size={18} color="#D32F2F" />
+                    <MaterialCommunityIcons name="check" size={18} color="#8B0000" />
                   )}
                 </Pressable>
               );
@@ -325,7 +325,7 @@ const MyJourney = ({
                 <MaterialCommunityIcons
                   name={semesterDropdownVisible ? 'chevron-up' : 'chevron-down'}
                   size={22}
-                  color={semesterDropdownVisible ? '#D32F2F' : '#6B7280'}
+                  color={semesterDropdownVisible ? '#8B0000' : '#6B7280'}
                 />
               </TouchableOpacity>
             </View>
@@ -377,7 +377,7 @@ const MyJourney = ({
 
           {isLoadingUploadedGrades ? (
             <View style={styles.loadingRow}>
-              <ActivityIndicator color="#D32F2F" />
+              <ActivityIndicator color="#8B0000" />
               <Text style={styles.loadingText}>AI is extracting grades from uploaded file...</Text>
             </View>
           ) : hasFetchedGrade && uploadedGrades.length > 0 ? (
@@ -470,10 +470,10 @@ const styles = StyleSheet.create({
   containerMobile: { padding: 14, paddingBottom: 28 },
   containerLarge: { paddingHorizontal: 150 },
   pageHeaderCard: { backgroundColor: '#FFFFFF', borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden', marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
-  pageHeaderAccent: { height: 8, backgroundColor: '#D32F2F' },
+  pageHeaderAccent: { height: 8, backgroundColor: '#8B0000' },
   pageHeaderContent: { paddingHorizontal: 22, paddingVertical: 20 },
   pageHeaderCardMobile: { borderRadius: 18, marginBottom: 14 },
-  pageEyebrow: { fontSize: 12, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#D32F2F', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 6 },
+  pageEyebrow: { fontSize: 12, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8B0000', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 6 },
   pageTitle: { fontSize: 30, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#111827', marginBottom: 6 },
   pageSubtitle: { fontSize: 14, color: '#6B7280', lineHeight: 21, fontFamily: FONT_BODY },
   filterCard: { backgroundColor: '#FFFFFF', borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', padding: 18, marginBottom: 22, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
@@ -482,9 +482,9 @@ const styles = StyleSheet.create({
   filterHeaderRowMobile: { alignItems: 'flex-start', flexDirection: 'column' },
   filterTitle: { fontSize: 18, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#111827' },
   filterSubtitle: { marginTop: 4, fontSize: 13, color: '#6B7280', fontFamily: FONT_BODY },
-  schoolYearBadge: { minWidth: 170, borderRadius: 16, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', paddingHorizontal: 14, paddingVertical: 10 },
-  schoolYearBadgeLabel: { fontSize: 10, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, letterSpacing: 0.8, color: '#991B1B', textTransform: 'uppercase', marginBottom: 3 },
-  schoolYearBadgeValue: { fontSize: 16, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#D32F2F' },
+  schoolYearBadge: { minWidth: 170, borderRadius: 16, borderWidth: 1, borderColor: '#E2BFBF', backgroundColor: '#F8F0F0', paddingHorizontal: 14, paddingVertical: 10 },
+  schoolYearBadgeLabel: { fontSize: 10, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, letterSpacing: 0.8, color: '#6B0000', textTransform: 'uppercase', marginBottom: 3 },
+  schoolYearBadgeValue: { fontSize: 16, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8B0000' },
   controlsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' },
   controlsRowTablet: { gap: 12 },
   controlsRowMobile: { flexDirection: 'column' },
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
   inputShell: { height: 54, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
   // 👇 highlighted-border focus state, matching inputWrapperFocused
   // in SignIn.tsx (red border + slightly thicker width on focus).
-  inputShellFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  inputShellFocused: { borderColor: '#8B0000', borderWidth: 1.5 },
   textInput: {
     flex: 1,
     height: 54,
@@ -525,9 +525,9 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   dropdownTriggerActive: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
-    shadowColor: '#D32F2F',
+    shadowColor: '#8B0000',
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   semesterOptionLast: { borderBottomWidth: 0 },
-  semesterOptionActive: { backgroundColor: '#FEF2F2' },
+  semesterOptionActive: { backgroundColor: '#F8F0F0' },
   semesterOptionHover: { backgroundColor: '#F9FAFB' },
   semesterOptionText: {
     fontSize: 15,
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   semesterOptionTextActive: {
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY,
   },
 
@@ -589,14 +589,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
   },
-  pickerWrapperFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  pickerWrapperFocused: { borderColor: '#8B0000', borderWidth: 1.5 },
   picker: {
     height: 54,
     width: '100%',
     color: '#111827',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  showBtn: { minWidth: 170, height: 54, backgroundColor: '#D32F2F', paddingHorizontal: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 25, shadowColor: '#D32F2F', shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
+  showBtn: { minWidth: 170, height: 54, backgroundColor: '#8B0000', paddingHorizontal: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 25, shadowColor: '#8B0000', shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   showBtnTablet: { flexGrow: 1, minWidth: 220 },
   showBtnMobile: { width: '100%', marginTop: 2 },
   showBtnDisabled: { backgroundColor: '#C9C9C9', shadowOpacity: 0 },
@@ -627,10 +627,10 @@ const styles = StyleSheet.create({
   mobileCourseList: { gap: 12 },
   mobileCourseCard: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, backgroundColor: '#FFFFFF', padding: 14 },
   mobileCourseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
-  mobileCourseIndex: { fontSize: 10, color: '#991B1B', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 3 },
+  mobileCourseIndex: { fontSize: 10, color: '#6B0000', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 3 },
   mobileCourseCode: { fontSize: 17, color: '#111827', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
-  mobileGradeBadge: { minWidth: 78, borderRadius: 14, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
-  mobileGradeLabel: { fontSize: 10, color: '#991B1B', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, textTransform: 'uppercase', marginBottom: 2 },
+  mobileGradeBadge: { minWidth: 78, borderRadius: 14, backgroundColor: '#F8F0F0', borderWidth: 1, borderColor: '#E8CCCC', paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
+  mobileGradeLabel: { fontSize: 10, color: '#6B0000', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, textTransform: 'uppercase', marginBottom: 2 },
   mobileGradeValue: { fontSize: 15, color: '#111827', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   mobileCourseName: { fontSize: 14, lineHeight: 20, color: '#374151', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, marginBottom: 12 },
   mobileCourseMetaRow: { flexDirection: 'row', gap: 10 },
@@ -654,9 +654,9 @@ const styles = StyleSheet.create({
   loadingText: { marginLeft: 8, color: '#777', fontSize: 13, fontFamily: FONT_BODY },
   uploadedSourceBadge: { 
     alignSelf: 'flex-start', 
-    backgroundColor: '#FEF2F2', 
+    backgroundColor: '#F8F0F0', 
     borderWidth: 1, 
-    borderColor: '#FECACA', 
+    borderColor: '#E8CCCC', 
     borderRadius: 12, 
     paddingHorizontal: 10, 
     paddingVertical: 6, 
@@ -666,7 +666,7 @@ const styles = StyleSheet.create({
     fontSize: 12, 
     fontWeight: WEIGHT_EMPHASIS, 
     fontFamily: FONT_BODY,
-    color: '#991B1B' 
+    color: '#6B0000' 
   },
 });
 

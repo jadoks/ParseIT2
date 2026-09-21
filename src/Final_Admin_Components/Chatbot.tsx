@@ -380,7 +380,7 @@ export default function Chatbot({
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <View style={styles.modalIconBox}>
-                <MaterialCommunityIcons name="robot-outline" size={22} color="#DC2626" />
+                <MaterialCommunityIcons name="robot-outline" size={22} color="#8B0000" />
               </View>
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.modalTitle}>Train Chatbot</Text>
@@ -402,7 +402,7 @@ export default function Chatbot({
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalContent}>
             <View style={styles.modalSection}>
               <View style={styles.modalSectionHeaderRow}>
-                <MaterialCommunityIcons name="message-text-outline" size={18} color="#DC2626" />
+                <MaterialCommunityIcons name="message-text-outline" size={18} color="#8B0000" />
                 <Text style={styles.modalSectionTitle}>Training Details</Text>
               </View>
 
@@ -522,7 +522,7 @@ export default function Chatbot({
                             activeOpacity={0.85}
                             style={styles.tagRemoveButton}
                           >
-                            <Ionicons name="close" size={14} color="#DC2626" />
+                            <Ionicons name="close" size={14} color="#8B0000" />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
   modalHeader: {
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -673,7 +673,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
   },
   modeToggleRow: {
     flexDirection: "row",
-    backgroundColor: "#FFF3F3",
+    backgroundColor: "#F8F0F0",
     borderRadius: 14,
     padding: 4,
     marginBottom: 18,
@@ -728,7 +728,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   modeToggleButtonActive: {
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
   },
   modeToggleButtonText: {
     fontSize: 13,
@@ -753,8 +753,8 @@ const styles = StyleSheet.create({
     minHeight: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
   // Gives a visible highlighted border on the whole rounded container,
   // matching the focus behavior used across the rest of the app.
   inputFieldFocused: {
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderWidth: 1.5,
   },
   textInput: {
@@ -794,7 +794,7 @@ const styles = StyleSheet.create({
     minWidth: 110,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
   uploadButton: {
     height: 52,
     borderRadius: 16,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -833,9 +833,9 @@ const styles = StyleSheet.create({
   tagChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF1F1",
+    backgroundColor: "#F7EDED",
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     borderRadius: 999,
     paddingLeft: 14,
     paddingRight: 8,
@@ -862,7 +862,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: "#F8E3E3",
+    borderTopColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "flex-end",
   },
@@ -871,8 +871,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -886,7 +886,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",

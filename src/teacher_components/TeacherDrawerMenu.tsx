@@ -178,7 +178,7 @@ const MenuItem = ({
             borderRadius: 16,
           },
           active && {
-            backgroundColor: 'rgba(211,47,47,0.08)',
+            backgroundColor: 'rgba(139,0,0,0.08)',
           },
         ];
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
@@ -193,14 +193,14 @@ const MenuItem = ({
         <Ionicons
           name={ionIconName as any}
           size={22}
-          color={active ? '#D32F2F' : '#444'}
+          color={active ? '#8B0000' : '#444'}
           style={styles.vectorMenuIcon}
         />
       ) : (
         <MaterialCommunityIcons
           name={iconName as any}
           size={22}
-          color={active ? '#D32F2F' : '#444'}
+          color={active ? '#8B0000' : '#444'}
           style={styles.vectorMenuIcon}
         />
       )}
@@ -208,7 +208,7 @@ const MenuItem = ({
         style={[
           styles.menuLabel,
           { fontSize: menuLabelFontSize },
-          active && { color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
+          active && { color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
         ]}
       >
         {label}
@@ -739,7 +739,7 @@ const TeacherDrawerMenu = ({
       >
         <Path
           d="M0,10 C40,45 60,0 100,35 C140,70 160,25 200,60 C230,85 260,50 300,120 L300,150 L0,150 Z"
-          fill="rgba(211,47,47,0.10)"
+          fill="rgba(139,0,0,0.10)"
         />
       </Svg>
       <Svg
@@ -751,7 +751,7 @@ const TeacherDrawerMenu = ({
       >
         <Path
           d="M0,40 C35,65 55,30 95,60 C130,90 155,55 195,85 C225,105 255,80 300,140 L300,150 L0,150 Z"
-          fill="rgba(211,47,47,0.16)"
+          fill="rgba(139,0,0,0.16)"
         />
       </Svg>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
@@ -790,7 +790,7 @@ const TeacherDrawerMenu = ({
         <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
       </ScrollView>
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
-        <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
+        <MaterialCommunityIcons name="logout" size={28} color="#8B0000" style={{ marginRight: 20 }} />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
 
@@ -822,7 +822,7 @@ const TeacherDrawerMenu = ({
                     isMobile && styles.modalIconBoxMobile,
                   ]}
                 >
-                  <Feather name="settings" size={22} color="#DC2626" />
+                  <Feather name="settings" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
@@ -855,7 +855,7 @@ const TeacherDrawerMenu = ({
                   <Ionicons
                     name="shield-checkmark-outline"
                     size={18}
-                    color="#DC2626"
+                    color="#8B0000"
                   />
                   <Text style={styles.modalSectionTitle}>
                     Account & Security
@@ -865,7 +865,7 @@ const TeacherDrawerMenu = ({
                 <Pressable style={styles.actionCard} onPress={openChangeEmailModal}>
                   <View style={styles.actionCardLeft}>
                     <View style={styles.smallIconBox}>
-                      <Ionicons name="mail-outline" size={18} color="#DC2626" />
+                      <Ionicons name="mail-outline" size={18} color="#8B0000" />
                     </View>
 
                     <View style={styles.actionCardTextWrap}>
@@ -885,7 +885,7 @@ const TeacherDrawerMenu = ({
                       <Ionicons
                         name="lock-closed-outline"
                         size={18}
-                        color="#DC2626"
+                        color="#8B0000"
                       />
                     </View>
 
@@ -950,7 +950,7 @@ const TeacherDrawerMenu = ({
                     isMobile && styles.modalIconBoxMobile,
                   ]}
                 >
-                  <Ionicons name="mail-outline" size={22} color="#DC2626" />
+                  <Ionicons name="mail-outline" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
@@ -978,7 +978,7 @@ const TeacherDrawerMenu = ({
               {changeEmailStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="key-outline" size={18} color="#DC2626" />
+                    <Ionicons name="key-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
@@ -1017,7 +1017,7 @@ const TeacherDrawerMenu = ({
                     <Ionicons
                       name="mail-open-outline"
                       size={18}
-                      color="#DC2626"
+                      color="#8B0000"
                     />
                     <Text style={styles.modalSectionTitle}>New Email</Text>
                   </View>
@@ -1137,7 +1137,7 @@ const TeacherDrawerMenu = ({
                   <Ionicons
                     name="lock-closed-outline"
                     size={22}
-                    color="#DC2626"
+                    color="#8B0000"
                   />
                 </View>
 
@@ -1166,7 +1166,7 @@ const TeacherDrawerMenu = ({
               {changePasswordStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="key-outline" size={18} color="#DC2626" />
+                    <Ionicons name="key-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
@@ -1205,7 +1205,7 @@ const TeacherDrawerMenu = ({
                     <Ionicons
                       name="lock-closed-outline"
                       size={18}
-                      color="#DC2626"
+                      color="#8B0000"
                     />
                     <Text style={styles.modalSectionTitle}>Set New Password</Text>
                   </View>
@@ -1454,7 +1454,7 @@ const styles = StyleSheet.create({
   vectorMenuIcon: { width: 22, marginRight: 20, textAlign: 'center' },
   menuLabel: { color: '#444', fontWeight: '500', fontFamily: FONT_BODY },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
-  logoutLabel: { fontFamily: FONT_BODY, fontSize: 16, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
+  logoutLabel: { fontFamily: FONT_BODY, fontSize: 16, color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
 
   // Generic overlay, kept for the Logout modal (unchanged from before).
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
@@ -1464,7 +1464,7 @@ const styles = StyleSheet.create({
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
   modalCancelText: { color: '#444', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
-  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
+  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#8B0000' },
   logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
 
   // ─── Settings / Change Email / Change Password — mirrors the Admin
@@ -1484,7 +1484,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD4D4',
     overflow: 'hidden',
   },
 
@@ -1494,7 +1494,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD4D4',
     overflow: 'hidden',
   },
 
@@ -1508,7 +1508,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8E3E3',
+    borderBottomColor: '#F3E6E6',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -1528,7 +1528,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#F1E0E0',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -1562,7 +1562,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#FAF5F5',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1635,7 +1635,7 @@ const styles = StyleSheet.create({
     minHeight: 70,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD4D4',
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1656,7 +1656,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#F1E0E0',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1694,8 +1694,8 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1CACA',
-    backgroundColor: '#FFF9F9',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1751,8 +1751,8 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1CACA',
-    backgroundColor: '#FFF9F9',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
     fontSize: 22,
     fontWeight: WEIGHT_EMPHASIS,
     color: '#2B1111',
@@ -1785,7 +1785,7 @@ const styles = StyleSheet.create({
   resendLinkText: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '700',
-    color: '#DC2626',
+    color: '#8B0000',
   },
 
   // Toast — portal-based, matches the Admin Settings flow.
@@ -1798,7 +1798,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: '#F8E3E3',
+    borderTopColor: '#F3E6E6',
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
@@ -1821,8 +1821,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E7C0C0',
-    backgroundColor: '#FFF7F7',
+    borderColor: '#E2BFBF',
+    backgroundColor: '#FAF5F5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -1839,7 +1839,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: '#DC2626',
+    backgroundColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',

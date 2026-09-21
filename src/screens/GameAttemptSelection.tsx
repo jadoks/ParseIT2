@@ -182,7 +182,7 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
 
         {canPlayAgain && (
           <TouchableOpacity style={styles.playAgainButton} onPress={onPlayAgain} activeOpacity={0.85}>
-            <Ionicons name="refresh" size={18} color="#D32F2F" />
+            <Ionicons name="refresh" size={18} color="#8B0000" />
             <Text style={styles.playAgainText}>
               Play Again{Number.isFinite(attemptsRemaining) ? ` (${attemptsRemaining} left)` : ''}
             </Text>
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  attemptCardPicked: { borderColor: '#D32F2F', backgroundColor: '#FFF5F5' },
+  attemptCardPicked: { borderColor: '#8B0000', backgroundColor: '#FAF5F5' },
   attemptCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   radioOuter: {
     width: 22,
@@ -269,8 +269,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioOuterPicked: { borderColor: '#D32F2F' },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#D32F2F' },
+  radioOuterPicked: { borderColor: '#8B0000' },
+  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#8B0000' },
   attemptLabel: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#222' },
   currentFinalTag: { fontFamily: FONT_BODY, fontSize: 12, color: '#2E7D32', fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
   attemptCardRight: { alignItems: 'flex-end' },
@@ -282,13 +282,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderWidth: 2,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderRadius: 16,
     paddingVertical: 12,
     marginTop: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  playAgainText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },
+  playAgainText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },
   footer: {
     flexDirection: 'row',
     gap: 12,
@@ -312,9 +312,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 16,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
-  submitButtonDisabled: { backgroundColor: '#E7A9A9' },
+  submitButtonDisabled: { backgroundColor: '#C57F7F' },
   submitButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },
   // ✅ Compact variants of the same two buttons, used inline in the header
   // on large screens instead of the full-width footer versions above.
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 16,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   submitButtonTextHeader: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
 });

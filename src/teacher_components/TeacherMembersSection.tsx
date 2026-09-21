@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   },
 
   plusBtn: {
-    backgroundColor: '#C62828',
+    backgroundColor: '#8B0000',
     width: 45,
     height: 45,
     borderRadius: 8,
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   },
 
   minusBtn: {
-    backgroundColor: '#C62828',
+    backgroundColor: '#8B0000',
     width: 45,
     height: 45,
     borderRadius: 8,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
 
   studentRedAccent: {
     width: 4,
-    backgroundColor: '#C62828',
+    backgroundColor: '#8B0000',
   },
 
   studentInfo: {

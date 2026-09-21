@@ -252,7 +252,7 @@ const ClassesScreen = ({
               >
                 <View style={styles.joinDropdownHeader}>
                   <View style={styles.joinDropdownIconWrap}>
-                    <Ionicons name="school-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="school-outline" size={18} color="#8B0000" />
                   </View>
                   <View style={styles.joinDropdownHeaderText}>
                     <Text style={styles.joinDropdownTitle}>Join Class</Text>
@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
   headerTextWrap: { flex: 1 },
   pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE, color: '#111', marginBottom: 6 },
   pageSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#666' },
-  joinClassButton: { backgroundColor: '#D32F2F', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
+  joinClassButton: { backgroundColor: '#8B0000', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   joinClassButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
   grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 15 },
   gridMobile: { justifyContent: 'center' },
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
   joinDropdownModal: { position: 'absolute', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#ECECEC', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 18, elevation: 10 },
   joinDropdownHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 18 },
   joinDropdownHeaderText: { flex: 1 },
-  joinDropdownIconWrap: { width: 38, height: 38, borderRadius: 16, backgroundColor: '#FFF1F1', alignItems: 'center', justifyContent: 'center' },
+  joinDropdownIconWrap: { width: 38, height: 38, borderRadius: 16, backgroundColor: '#F7EDED', alignItems: 'center', justifyContent: 'center' },
   joinDropdownTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#111827', marginBottom: 3 },
   joinDropdownSubtitle: { fontFamily: FONT_BODY, fontSize: 13, lineHeight: 18, color: '#6B7280' },
   inputLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#374151', marginBottom: 8 },
@@ -367,8 +367,8 @@ const styles = StyleSheet.create({
   cancelButtonText: { fontFamily: FONT_BODY, color: '#374151', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   joinDisabledButton: { opacity: 0.65 },
   joinLoadingContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  confirmButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 16, backgroundColor: '#D32F2F' },
-  confirmButtonDisabled: { backgroundColor: '#F0A7A7' },
+  confirmButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 16, backgroundColor: '#8B0000' },
+  confirmButtonDisabled: { backgroundColor: '#C57F7F' },
   confirmButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
 
   // ✅ Toast portal — matches Community/Dashboard; lets touches pass through

@@ -484,7 +484,7 @@ export default function Settings({
                     isMobile && styles.modalIconBoxMobile,
                   ]}
                 >
-                  <Feather name="settings" size={22} color="#DC2626" />
+                  <Feather name="settings" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
@@ -521,7 +521,7 @@ export default function Settings({
                   <Ionicons
                     name="shield-checkmark-outline"
                     size={18}
-                    color="#DC2626"
+                    color="#8B0000"
                   />
                   <Text style={styles.modalSectionTitle}>
                     Account & Security
@@ -535,7 +535,7 @@ export default function Settings({
                 >
                   <View style={styles.actionCardLeft}>
                     <View style={styles.smallIconBox}>
-                      <Ionicons name="mail-outline" size={18} color="#DC2626" />
+                      <Ionicons name="mail-outline" size={18} color="#8B0000" />
                     </View>
 
                     <View style={styles.actionCardTextWrap}>
@@ -559,7 +559,7 @@ export default function Settings({
                       <Ionicons
                         name="lock-closed-outline"
                         size={18}
-                        color="#DC2626"
+                        color="#8B0000"
                       />
                     </View>
 
@@ -628,7 +628,7 @@ export default function Settings({
                     isMobile && styles.modalIconBoxMobile,
                   ]}
                 >
-                  <Ionicons name="mail-outline" size={22} color="#DC2626" />
+                  <Ionicons name="mail-outline" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
@@ -660,7 +660,7 @@ export default function Settings({
               {changeEmailStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="key-outline" size={18} color="#DC2626" />
+                    <Ionicons name="key-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
@@ -700,7 +700,7 @@ export default function Settings({
                     <Ionicons
                       name="mail-open-outline"
                       size={18}
-                      color="#DC2626"
+                      color="#8B0000"
                     />
                     <Text style={styles.modalSectionTitle}>New Email</Text>
                   </View>
@@ -825,7 +825,7 @@ export default function Settings({
                   <Ionicons
                     name="lock-closed-outline"
                     size={22}
-                    color="#DC2626"
+                    color="#8B0000"
                   />
                 </View>
 
@@ -858,7 +858,7 @@ export default function Settings({
               {changePasswordStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="key-outline" size={18} color="#DC2626" />
+                    <Ionicons name="key-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
@@ -898,7 +898,7 @@ export default function Settings({
                     <Ionicons
                       name="lock-closed-outline"
                       size={18}
-                      color="#DC2626"
+                      color="#8B0000"
                     />
                     <Text style={styles.modalSectionTitle}>Set New Password</Text>
                   </View>
@@ -1132,7 +1132,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
 
@@ -1142,7 +1142,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
 
@@ -1156,7 +1156,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -1176,7 +1176,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -1210,7 +1210,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1283,7 +1283,7 @@ const styles = StyleSheet.create({
     minHeight: 70,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
@@ -1304,7 +1304,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1342,8 +1342,8 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -1411,8 +1411,8 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     fontSize: 22,
     fontWeight: "800",
     color: "#2B1111",
@@ -1445,7 +1445,7 @@ const styles = StyleSheet.create({
   resendLinkText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#DC2626",
+    color: "#8B0000",
   },
 
   // Toast — portal-based, matches Chatbot/Register/Community/Dashboard/
@@ -1459,7 +1459,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: "#F8E3E3",
+    borderTopColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
@@ -1482,8 +1482,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1500,7 +1500,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",

@@ -199,7 +199,7 @@ function CustomDropdown({
                         {option}
                       </Text>
                       {isSelected ? (
-                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                        <Ionicons name="checkmark" size={18} color="#8B0000" />
                       ) : null}
                     </TouchableOpacity>
                   );
@@ -920,7 +920,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               display: flex;
               justify-content: space-between;
               align-items: center;
-              background: #b71c1c;
+              background: #8B0000;
               color: #fff;
               padding: 14px 16px;
             }
@@ -1478,7 +1478,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                   hitSlop={8}
                   accessibilityLabel="How is the Deans List generated?"
                 >
-                  <Ionicons name="help-circle-outline" size={24} color="#B71C1C" />
+                  <Ionicons name="help-circle-outline" size={24} color="#8B0000" />
                 </TouchableOpacity>
               </View>
 
@@ -1783,7 +1783,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   infoIcon: { fontFamily: FONT_BODY,
-    color: '#B71C1C',
+    color: '#8B0000',
     fontSize: 18,
     fontWeight: WEIGHT_EMPHASIS,
     fontStyle: 'italic',
@@ -2040,7 +2040,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   dropdownModalItemSelected: {
-    backgroundColor: '#FDECEC',
+    backgroundColor: '#F7EDED',
   },
   dropdownModalItemText: { fontFamily: FONT_BODY,
     fontSize: 14,
@@ -2048,12 +2048,12 @@ const styles = StyleSheet.create({
     color: '#111',
   },
   dropdownModalItemTextSelected: {
-    color: '#B71C1C',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
   },
 
   generateBtn: {
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     minWidth: 210,
     height: 46,
     paddingHorizontal: 24,
@@ -2061,7 +2061,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 3,
-    borderBottomColor: '#7F1010',
+    borderBottomColor: '#5A0000',
   },
   generateBtnMobile: {
     width: '100%',
@@ -2111,7 +2111,7 @@ const styles = StyleSheet.create({
   },
 
   openBtn: {
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     minWidth: 70,
     height: 32,
     paddingHorizontal: 12,
@@ -2165,26 +2165,26 @@ const styles = StyleSheet.create({
   mobileCountWrap: {
     minWidth: 72,
     borderRadius: 14,
-    backgroundColor: '#FDECEC',
+    backgroundColor: '#F7EDED',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 10,
   },
   mobileCountNumber: { fontFamily: FONT_BODY,
-    color: '#B71C1C',
+    color: '#8B0000',
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 20,
   },
   mobileCountLabel: { fontFamily: FONT_BODY,
-    color: '#B71C1C',
+    color: '#8B0000',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
   },
   mobileOpenBtn: {
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     height: 44,
     borderRadius: 16,
     justifyContent: 'center',
@@ -2281,7 +2281,7 @@ const styles = StyleSheet.create({
   },
 
   previewCloseBtn: {
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 14,
@@ -2293,7 +2293,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#C81414',
+    backgroundColor: '#8B0000',
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 4,
@@ -2396,7 +2396,7 @@ const styles = StyleSheet.create({
   },
   previewTableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#e61c23',
+    backgroundColor: '#8B0000',
     borderWidth: 1,
     borderColor: '#fff',
   },
@@ -2412,7 +2412,7 @@ const styles = StyleSheet.create({
   },
   previewTableRow: {
     flexDirection: 'row',
-    backgroundColor: '#e61c23',
+    backgroundColor: '#8B0000',
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
@@ -2451,7 +2451,7 @@ const styles = StyleSheet.create({
   getLinkBtn: {
     marginTop: 16,
     marginBottom: 8,
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     paddingHorizontal: 20,
     height: 42,
     borderRadius: 16,
@@ -2535,7 +2535,7 @@ const styles = StyleSheet.create({
   honorCountBadge: {
     minWidth: 76,
     borderRadius: 14,
-    backgroundColor: '#FDECEC',
+    backgroundColor: '#F7EDED',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 9,
@@ -2547,13 +2547,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   honorCountNumber: { fontFamily: FONT_BODY,
-    color: '#B71C1C',
+    color: '#8B0000',
     fontSize: 18,
     fontWeight: WEIGHT_EMPHASIS,
     lineHeight: 20,
   },
   honorCountLabel: { fontFamily: FONT_BODY,
-    color: '#B71C1C',
+    color: '#8B0000',
     fontSize: 11,
     fontWeight: '700',
     marginTop: 2,
@@ -2604,7 +2604,7 @@ const styles = StyleSheet.create({
   honorRankCell: { fontFamily: FONT_BODY,
     paddingVertical: 12,
     paddingHorizontal: 10,
-    color: '#B71C1C',
+    color: '#8B0000',
     fontSize: 13,
     fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
@@ -2800,7 +2800,7 @@ const styles = StyleSheet.create({
   flowStepNumber: { fontFamily: FONT_TITLE,
     fontSize: 11,
     fontWeight: WEIGHT_TITLE,
-    color: '#B71C1C',
+    color: '#8B0000',
     letterSpacing: 0.6,
   },
   flowStepAiPill: {

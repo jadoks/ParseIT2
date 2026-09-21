@@ -126,7 +126,7 @@ function getInitials(firstName: string, lastName: string): string {
 
 // Small deterministic palette so each teacher gets a consistent avatar color
 const AVATAR_PALETTE = [
-  { bg: "#FEE2E2", fg: "#DC2626" },
+  { bg: "#F1E0E0", fg: "#8B0000" },
   { bg: "#FFE8D6", fg: "#C2410C" },
   { bg: "#FDE68A33", fg: "#B45309" },
   { bg: "#E0E7FF", fg: "#4338CA" },
@@ -211,7 +211,7 @@ function SortableHeader({
             : "swap-vertical-outline"
         }
         size={12}
-        color={isActive ? "#DC2626" : "#C7B0B0"}
+        color={isActive ? "#8B0000" : "#C7B0B0"}
         style={styles.sortIcon}
       />
     </TouchableOpacity>
@@ -683,7 +683,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
 
                 {isLoading ? (
                   <View style={styles.emptyState}>
-                    <Ionicons name="sync-outline" size={26} color="#DC2626" />
+                    <Ionicons name="sync-outline" size={26} color="#8B0000" />
                     <Text style={styles.emptyStateTitle}>Loading teachers...</Text>
                     <Text style={styles.emptyStateSubtitle}>
                       Please wait while teacher records are fetched.
@@ -694,7 +694,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
                     <MaterialCommunityIcons
                       name="account-tie-outline"
                       size={26}
-                      color="#DC2626"
+                      color="#8B0000"
                     />
                     <Text style={styles.emptyStateTitle}>No teachers found</Text>
                     <Text style={styles.emptyStateSubtitle}>
@@ -980,7 +980,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 24,
     flexDirection: "row",
     alignItems: "center",
@@ -1007,7 +1007,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1.2,
-    color: "#DC2626",
+    color: "#8B0000",
     marginBottom: 8,
   },
 
@@ -1070,11 +1070,11 @@ const styles = StyleSheet.create({
     minWidth: 140,
     paddingHorizontal: 20,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    shadowColor: "#DC2626",
+    shadowColor: "#8B0000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 12,
@@ -1170,7 +1170,7 @@ const styles = StyleSheet.create({
   },
 
   tableHeaderTextActive: {
-    color: "#DC2626",
+    color: "#8B0000",
   },
 
   actionHeaderText: {
@@ -1244,8 +1244,8 @@ const styles = StyleSheet.create({
 
   codeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "#FDF2F2",
-    color: "#B5484B",
+    backgroundColor: "#F8F0F0",
+    color: "#8B0000",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
@@ -1253,7 +1253,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     borderWidth: 1,
-    borderColor: "#F5DEDE",
+    borderColor: "#EBD4D4",
   },
 
   actionCellRow: {
@@ -1341,7 +1341,7 @@ const styles = StyleSheet.create({
   },
 
   paginationPageButtonActive: {
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
   },
 
   paginationPageText: {
@@ -1407,7 +1407,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 24,
     alignItems: "center",
   },
@@ -1454,8 +1454,8 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1482,4 +1482,4 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 8,
   },
-}); 
+});

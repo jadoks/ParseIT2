@@ -1096,7 +1096,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(211, 47, 47, 0.1)',
+    backgroundColor: 'rgba(139,0,0, 0.1)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -1106,7 +1106,7 @@ const styles = StyleSheet.create({
   backText: { fontFamily: FONT_BODY, 
     fontSize: 16,
     fontWeight: WEIGHT_EMPHASIS,
-    color: '#D32F2F',
+    color: '#8B0000',
   },
 
   pageTitle: { fontFamily: FONT_TITLE, 
@@ -1139,7 +1139,7 @@ const styles = StyleSheet.create({
   },
 
   scoreText: { fontFamily: FONT_BODY, 
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
     marginTop: 8,
   },
@@ -1198,9 +1198,9 @@ const styles = StyleSheet.create({
 
   sectionMeta: { fontFamily: FONT_BODY, 
     fontSize: 13,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#F7EDED',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
@@ -1289,8 +1289,8 @@ const styles = StyleSheet.create({
   },
 
   optionSelected: {
-    borderColor: '#D32F2F',
-    backgroundColor: '#FFF7F7',
+    borderColor: '#8B0000',
+    backgroundColor: '#FAF5F5',
   },
 
   optionCorrect: {
@@ -1379,7 +1379,7 @@ const styles = StyleSheet.create({
   },
 
   submitBtn: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     padding: 14,
     borderRadius: 16,
     alignItems: 'center',

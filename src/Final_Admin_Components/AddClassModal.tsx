@@ -972,7 +972,7 @@ export default function AddClassModal({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Ionicons name="school-outline" size={22} color="#DC2626" />
+                  <Ionicons name="school-outline" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
@@ -1010,7 +1010,7 @@ export default function AddClassModal({
                     <MaterialCommunityIcons
                       name="google-classroom"
                       size={18}
-                      color="#DC2626"
+                      color="#8B0000"
                     />
                     <Text style={styles.modalSectionTitle}>Select Year</Text>
                   </View>
@@ -1115,7 +1115,7 @@ export default function AddClassModal({
                                     <Ionicons
                                       name="checkmark-circle"
                                       size={18}
-                                      color="#DC2626"
+                                      color="#8B0000"
                                     />
                                   )}
                                 </TouchableOpacity>
@@ -1143,7 +1143,7 @@ export default function AddClassModal({
                       <Ionicons
                         name="layers-outline"
                         size={18}
-                        color="#DC2626"
+                        color="#8B0000"
                       />
                       <Text style={styles.modalSectionTitle}>
                         Select Section
@@ -1191,7 +1191,7 @@ export default function AddClassModal({
                 {selectedYear && selectedSemester && (
                   <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                     <View style={styles.modalSectionHeaderRow}>
-                      <Ionicons name="time-outline" size={18} color="#DC2626" />
+                      <Ionicons name="time-outline" size={18} color="#8B0000" />
                       <Text style={styles.modalSectionTitle}>Class Schedule</Text>
                     </View>
 
@@ -1209,7 +1209,7 @@ export default function AddClassModal({
                               <MaterialCommunityIcons
                                 name="trash-can-outline"
                                 size={18}
-                                color="#DC2626"
+                                color="#8B0000"
                               />
                             </TouchableOpacity>
                           )}
@@ -1271,7 +1271,7 @@ export default function AddClassModal({
                     ))}
 
                     <TouchableOpacity style={styles.addScheduleBtn} onPress={addScheduleBlock}>
-                      <Ionicons name="add-circle-outline" size={18} color="#DC2626" />
+                      <Ionicons name="add-circle-outline" size={18} color="#8B0000" />
                       <Text style={styles.addScheduleBtnText}>Add another schedule</Text>
                     </TouchableOpacity>
                   </View>
@@ -1322,7 +1322,7 @@ export default function AddClassModal({
 
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="image-outline" size={18} color="#DC2626" />
+                    <Ionicons name="image-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>
                       Select Class Banner Image
                     </Text>
@@ -1333,7 +1333,7 @@ export default function AddClassModal({
                     activeOpacity={0.85}
                     onPress={handlePickBanner}
                   >
-                    <Ionicons name="image-outline" size={20} color="#DC2626" />
+                    <Ionicons name="image-outline" size={20} color="#8B0000" />
                     <Text style={styles.uploadBtnText}>
                       {bannerFile ? "Change Banner Photo" : "Upload Banner Photo"}
                     </Text>
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
   addClassModalBodyWrap: {
@@ -1468,7 +1468,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -1485,7 +1485,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -1505,7 +1505,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1544,7 +1544,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
@@ -1552,23 +1552,23 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   checkRowActive: {
-    borderColor: "#DC2626",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#8B0000",
+    backgroundColor: "#FAF5F5",
   },
   checkboxBase: {
     width: 18,
     height: 18,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: "#D8B4B4",
+    borderColor: "#E2BFBF",
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
   },
   checkboxChecked: {
-    backgroundColor: "#DC2626",
-    borderColor: "#DC2626",
+    backgroundColor: "#8B0000",
+    borderColor: "#8B0000",
   },
   checkText: {
     fontSize: 14,
@@ -1580,7 +1580,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
@@ -1588,8 +1588,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sectionRowActive: {
-    borderColor: "#DC2626",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#8B0000",
+    backgroundColor: "#FAF5F5",
   },
   modalRow: {
     flexDirection: "row",
@@ -1615,8 +1615,8 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -1638,10 +1638,10 @@ const styles = StyleSheet.create({
   },
   dropdownItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: "#FAE9E9",
+    borderBottomColor: "#F5E9E9",
   },
   dropdownItemActive: {
-    backgroundColor: "#FFF7F7",
+    backgroundColor: "#FAF5F5",
   },
   dropdownItemText: {
     flex: 1,
@@ -1651,7 +1651,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   dropdownItemTextActive: {
-    color: "#DC2626",
+    color: "#8B0000",
     fontWeight: "700",
   },
   // ✅ Ensures the Semester Selection dropdown menu (which floats absolutely)
@@ -1668,7 +1668,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     shadowColor: "#2B1111",
     shadowOpacity: 0.12,
     shadowRadius: 12,
@@ -1682,14 +1682,14 @@ const styles = StyleSheet.create({
   plainInputWrap: {
     minHeight: 54,
     borderWidth: 1,
-    borderColor: "#F1CACA",
+    borderColor: "#E8CCCC",
     borderRadius: 16,
-    backgroundColor: "#FFF9F9",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     justifyContent: "center",
   },
   plainInputWrapFocused: {
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderWidth: 1.5,
   },
   plainInput: {
@@ -1702,7 +1702,7 @@ const styles = StyleSheet.create({
   // ── Class Schedule section ────────────────────────────────────────────
   scheduleBlockCard: {
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
@@ -1732,13 +1732,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#F1CACA",
+    borderColor: "#E8CCCC",
     backgroundColor: "#FFFFFF",
     alignItems: "center",
   },
   dayChipActive: {
-    backgroundColor: "#DC2626",
-    borderColor: "#DC2626",
+    backgroundColor: "#8B0000",
+    borderColor: "#8B0000",
   },
   dayChipText: {
     fontSize: 12,
@@ -1753,20 +1753,20 @@ const styles = StyleSheet.create({
   meridiemToggle: {
     flexDirection: "row",
     borderWidth: 1,
-    borderColor: "#F1CACA",
+    borderColor: "#E8CCCC",
     borderRadius: 14,
-    backgroundColor: "#FFF9F9",
+    backgroundColor: "#FAF5F5",
     overflow: "hidden",
   },
   meridiemBtn: { paddingHorizontal: 12, justifyContent: "center", alignItems: "center" },
-  meridiemBtnActive: { backgroundColor: "#DC2626" },
+  meridiemBtnActive: { backgroundColor: "#8B0000" },
   meridiemBtnText: { fontSize: 12, fontWeight: "800", color: "#B79A9A" },
   meridiemBtnTextActive: { color: "#FFFFFF" },
   addScheduleBtn: {
     minHeight: 44,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -1774,13 +1774,13 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 4,
   },
-  addScheduleBtnText: { color: "#DC2626", fontWeight: "700", fontSize: 13 },
+  addScheduleBtnText: { color: "#8B0000", fontWeight: "700", fontSize: 13 },
   inputField: {
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -1789,7 +1789,7 @@ const styles = StyleSheet.create({
   // Gives a visible highlighted border on the whole rounded container
   // instead of relying on the browser's default (clipped) outline.
   inputFieldFocused: {
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderWidth: 1.5,
   },
   textInput: {
@@ -1806,8 +1806,8 @@ const styles = StyleSheet.create({
   descriptionField: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -1816,7 +1816,7 @@ const styles = StyleSheet.create({
   // inputFieldFocused so all fields — single-line or multiline — share
   // the same highlighted-border behavior.
   descriptionFieldFocused: {
-    borderColor: "#DC2626",
+    borderColor: "#8B0000",
     borderWidth: 1.5,
   },
   descriptionInput: {
@@ -1829,16 +1829,16 @@ const styles = StyleSheet.create({
   uploadBtn: {
     minHeight: 54,
     borderWidth: 1,
-    borderColor: "#F1CACA",
+    borderColor: "#E8CCCC",
     borderRadius: 16,
-    backgroundColor: "#FFF9F9",
+    backgroundColor: "#FAF5F5",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     marginBottom: 14,
   },
-  uploadBtnText: { color: "#DC2626", fontWeight: "700", fontSize: 14 },
+  uploadBtnText: { color: "#8B0000", fontWeight: "700", fontSize: 14 },
   bannerPreview: {
     height: 150,
     borderRadius: 16,
@@ -1870,7 +1870,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: "#F8E3E3",
+    borderTopColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "flex-end",
   },
@@ -1879,8 +1879,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -1894,7 +1894,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",

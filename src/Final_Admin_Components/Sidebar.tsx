@@ -76,7 +76,7 @@ function MenuContent({
 
         {topItems.map((item) => {
           const isActive = activeItem === item.label;
-          const iconColor = isActive ? "#DC2626" : "#667085";
+          const iconColor = isActive ? "#8B0000" : "#667085";
 
           return (
             <TouchableOpacity
@@ -107,7 +107,7 @@ function MenuContent({
           onPress={() => onChange(logoutItem.label)}
           activeOpacity={0.85}
         >
-          <View style={styles.iconWrap}>{logoutItem.icon("#EF4444")}</View>
+          <View style={styles.iconWrap}>{logoutItem.icon("#8B0000")}</View>
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       )}
@@ -156,7 +156,7 @@ export default function Sidebar({
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <View style={styles.modalIconBox}>
-                <Feather name="menu" size={22} color="#DC2626" />
+                <Feather name="menu" size={22} color="#8B0000" />
               </View>
 
               <View style={styles.modalHeaderTextWrap}>
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
 
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 16,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -286,9 +286,9 @@ const styles = StyleSheet.create({
   },
 
   menuButtonActive: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "#E8CCCC",
   },
 
   iconWrap: {
@@ -306,14 +306,14 @@ const styles = StyleSheet.create({
   },
 
   menuTextActive: {
-    color: "#DC2626",
+    color: "#8B0000",
   },
 
   activeDot: {
     width: 8,
     height: 8,
     borderRadius: 999,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
   },
 
   logoutButton: {
@@ -322,15 +322,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 52,
     borderRadius: 16,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "#F8F0F0",
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "#E8CCCC",
     marginTop: 12,
     justifyContent: "center",
   },
 
   logoutText: {
-    color: "#EF4444",
+    color: "#8B0000",
     fontSize: 15,
     fontWeight: "700",
   },
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
 
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },

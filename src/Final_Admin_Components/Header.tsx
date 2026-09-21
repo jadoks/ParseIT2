@@ -145,7 +145,7 @@ function NotificationList({
               onPress={onClose}
               activeOpacity={0.85}
             >
-              <Ionicons name="chevron-back" size={22} color="#DC2626" />
+              <Ionicons name="chevron-back" size={22} color="#8B0000" />
             </TouchableOpacity>
           )}
 
@@ -186,7 +186,7 @@ function NotificationList({
           onPress={onMarkAllAsRead}
           activeOpacity={0.85}
         >
-          <Ionicons name="checkmark-done-outline" size={17} color="#DC2626" />
+          <Ionicons name="checkmark-done-outline" size={17} color="#8B0000" />
           <Text style={styles.markAllText}>Mark all as read</Text>
         </TouchableOpacity>
       )}
@@ -214,12 +214,12 @@ function NotificationList({
       >
         {loading ? (
           <View style={styles.emptyNotificationBox}>
-            <Ionicons name="sync" size={28} color="#DC2626" />
+            <Ionicons name="sync" size={28} color="#8B0000" />
             <Text style={styles.emptyNotificationTitle}>Loading alerts...</Text>
           </View>
         ) : notifications.length === 0 ? (
           <View style={styles.emptyNotificationBox}>
-            <Ionicons name="notifications-off-outline" size={30} color="#DC2626" />
+            <Ionicons name="notifications-off-outline" size={30} color="#8B0000" />
             <Text style={styles.emptyNotificationTitle}>No notifications yet</Text>
             <Text style={styles.emptyNotificationText}>
               Admin alerts like new user registrations and low assignment scores will appear here.
@@ -241,7 +241,7 @@ function NotificationList({
                     <Ionicons
                       name={getNotificationIcon(item.type)}
                       size={20}
-                      color={unread ? "#DC2626" : "#A07C7C"}
+                      color={unread ? "#8B0000" : "#A07C7C"}
                     />
                   </View>
 
@@ -393,7 +393,7 @@ export default function Header({
       <Ionicons
         name={notificationOpen ? "notifications" : "notifications-outline"}
         size={22}
-        color="#DC2626"
+        color="#8B0000"
       />
       {unreadCount > 0 && (
         <View style={styles.notificationBadge}>
@@ -432,7 +432,7 @@ export default function Header({
                   <Ionicons
                     name={active ? NAV_ICONS_ACTIVE[item] : NAV_ICONS[item]}
                     size={18}
-                    color={active ? "#DC2626" : "#9CA3AF"}
+                    color={active ? "#8B0000" : "#9CA3AF"}
                     style={styles.navIcon}
                   />
 
@@ -472,7 +472,7 @@ export default function Header({
           <View style={styles.topRow}>
             <View style={styles.leftMobile}>
               <TouchableOpacity style={styles.menuBtn} onPress={onMenuPress}>
-                <Ionicons name="menu" size={22} color="#DC2626" />
+                <Ionicons name="menu" size={22} color="#8B0000" />
               </TouchableOpacity>
 
               <Image
@@ -501,7 +501,7 @@ export default function Header({
                   <Ionicons
                     name={active ? NAV_ICONS_ACTIVE[item] : NAV_ICONS[item]}
                     size={20}
-                    color={active ? "#DC2626" : "#9CA3AF"}
+                    color={active ? "#8B0000" : "#9CA3AF"}
                   />
                   <Text style={[styles.iconLabel, active && styles.navTextActive]}>
                     {item}
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#DC2626",
+    color: "#8B0000",
   },
   navRow: {
     flex: 1,
@@ -627,7 +627,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   navItemActive: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
   },
   navText: {
     fontSize: 14,
@@ -635,7 +635,7 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
   },
   navTextActive: {
-    color: "#DC2626",
+    color: "#8B0000",
   },
   iconLabel: {
     fontSize: 10,
@@ -646,9 +646,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 16,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     paddingHorizontal: 5,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     borderWidth: 2,
     borderColor: "#FFFFFF",
     alignItems: "center",
@@ -696,7 +696,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -730,7 +730,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -754,7 +754,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 13,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 8,
@@ -764,9 +764,9 @@ const styles = StyleSheet.create({
     marginTop: 14,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -774,7 +774,7 @@ const styles = StyleSheet.create({
   markAllText: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#DC2626",
+    color: "#8B0000",
     marginLeft: 8,
   },
   viewAtRiskButton: {
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -805,25 +805,25 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     backgroundColor: "#FFFFFF",
     marginBottom: 10,
   },
   notificationItemUnread: {
-    backgroundColor: "#FFF7F7",
-    borderColor: "#F1BEBE",
+    backgroundColor: "#FAF5F5",
+    borderColor: "#E2BFBF",
   },
   notificationItemIcon: {
     width: 42,
     height: 42,
     borderRadius: 15,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
   notificationItemIconUnread: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
   },
   notificationItemBody: {
     flex: 1,
@@ -842,7 +842,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     marginLeft: 8,
   },
   notificationItemMessage: {
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
   notificationItemMetaChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -882,7 +882,7 @@ const styles = StyleSheet.create({
   seeAllButton: {
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4,

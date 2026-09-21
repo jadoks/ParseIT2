@@ -447,7 +447,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <Ionicons name="log-out-outline" size={22} color="#DC2626" />
+                  <Ionicons name="log-out-outline" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
   },
 
   placeholderTitle: {
@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     overflow: "hidden",
   },
 
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F3E6E6",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -592,7 +592,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
@@ -615,7 +615,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -635,8 +635,8 @@ const styles = StyleSheet.create({
     minHeight: 110,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFF9F9",
+    borderColor: "#EBD4D4",
+    backgroundColor: "#FAF5F5",
     padding: 16,
     justifyContent: "center",
   },
@@ -667,8 +667,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 38,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E2BFBF",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 38,
     borderRadius: 14,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",

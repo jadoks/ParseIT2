@@ -1,13 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 
 type RiskNotification = {
@@ -160,7 +160,7 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
         <View style={styles.headerInner}>
           <View style={styles.headerLeft}>
             <TouchableOpacity style={styles.backButton} onPress={onClose} activeOpacity={0.85}>
-              <Ionicons name="chevron-back" size={22} color="#DC2626" />
+              <Ionicons name="chevron-back" size={22} color="#8B0000" />
             </TouchableOpacity>
 
             <View>
@@ -196,7 +196,7 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
                 <Ionicons
                   name={option.icon}
                   size={14}
-                  color={active ? "#FFFFFF" : "#DC2626"}
+                  color={active ? "#FFFFFF" : "#8B0000"}
                   style={styles.sortChipIcon}
                 />
                 <Text style={[styles.sortChipText, active && styles.sortChipTextActive]}>
@@ -212,17 +212,17 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, isLargeScreen && styles.scrollContentLarge]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#DC2626" />
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#8B0000" />
         }
       >
         {loading ? (
           <View style={styles.emptyBox}>
-            <Ionicons name="sync" size={28} color="#DC2626" />
+            <Ionicons name="sync" size={28} color="#8B0000" />
             <Text style={styles.emptyTitle}>Loading at-risk students...</Text>
           </View>
         ) : sortedNotifications.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Ionicons name="checkmark-circle-outline" size={30} color="#DC2626" />
+            <Ionicons name="checkmark-circle-outline" size={30} color="#8B0000" />
             <Text style={styles.emptyTitle}>No low scores flagged</Text>
             <Text style={styles.emptyText}>
               Assignments with low scores will show up here as soon as they're detected.
@@ -244,7 +244,7 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
                   <Ionicons
                     name="alert-circle-outline"
                     size={20}
-                    color={unread ? "#DC2626" : "#A07C7C"}
+                    color={unread ? "#8B0000" : "#A07C7C"}
                   />
                 </View>
 
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: "#F3D4D4",
+    borderBottomColor: "#EBD4D4",
   },
   headerLeft: {
     flexDirection: "row",
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 13,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: "#F3D4D4",
+    borderBottomColor: "#EBD4D4",
   },
   sortRowInner: {
     flexDirection: "row",
@@ -375,14 +375,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#EBD4D4",
+    backgroundColor: "#FAF5F5",
     marginRight: 8,
     marginBottom: 8,
   },
   sortChipActive: {
-    backgroundColor: "#DC2626",
-    borderColor: "#DC2626",
+    backgroundColor: "#8B0000",
+    borderColor: "#8B0000",
   },
   sortChipIcon: {
     marginRight: 6,
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   sortChipText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#DC2626",
+    color: "#8B0000",
   },
   sortChipTextActive: {
     color: "#FFFFFF",
@@ -413,25 +413,25 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     backgroundColor: "#FFFFFF",
     marginBottom: 10,
   },
   cardUnread: {
-    backgroundColor: "#FFF7F7",
-    borderColor: "#F1BEBE",
+    backgroundColor: "#FAF5F5",
+    borderColor: "#E2BFBF",
   },
   cardIcon: {
     width: 42,
     height: 42,
     borderRadius: 15,
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
   cardIconUnread: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
   },
   cardBody: {
     flex: 1,
@@ -467,7 +467,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#DC2626",
+    backgroundColor: "#8B0000",
     marginLeft: 8,
   },
   cardMessage: {
@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
   cardMetaChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FAF5F5",
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,

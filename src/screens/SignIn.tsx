@@ -1137,7 +1137,7 @@ const SignIn = ({
               {forgotStep === 1 && (
                 <View style={styles.stepContent}>
                   <View style={styles.modalIconWrapper}>
-                    <Icon name="mail-open-outline" size={28} color="#D32F2F" />
+                    <Icon name="mail-open-outline" size={28} color="#8B0000" />
                   </View>
 
                   <Text style={styles.stepTitle}>Verify your email</Text>
@@ -1179,7 +1179,7 @@ const SignIn = ({
               {forgotStep === 2 && (
                 <View style={styles.stepContent}>
                   <View style={styles.modalIconWrapper}>
-                    <Icon name="key-outline" size={28} color="#D32F2F" />
+                    <Icon name="key-outline" size={28} color="#8B0000" />
                   </View>
 
                   <Text style={styles.stepTitle}>Enter verification PIN</Text>
@@ -1257,7 +1257,7 @@ const SignIn = ({
               {forgotStep === 3 && (
                 <View style={styles.stepContent}>
                   <View style={styles.modalIconWrapper}>
-                    <Icon name="lock-closed-outline" size={28} color="#D32F2F" />
+                    <Icon name="lock-closed-outline" size={28} color="#8B0000" />
                   </View>
 
                   <Text style={styles.stepTitle}>Create a new password</Text>
@@ -1390,7 +1390,7 @@ const SignIn = ({
 
               <View style={styles.stepContent}>
                 <View style={styles.modalIconWrapper}>
-                  <Icon name="lock-closed-outline" size={28} color="#D32F2F" />
+                  <Icon name="lock-closed-outline" size={28} color="#8B0000" />
                 </View>
 
                 <Text style={styles.stepTitle}>Set your new password</Text>
@@ -1539,7 +1539,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 28,
-    shadowColor: '#780000',
+    shadowColor: '#500000',
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 10 },
     shadowRadius: 24,
@@ -1653,7 +1653,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#780000',
+    shadowColor: '#500000',
     shadowOpacity: 0.18,
     shadowOffset: { width: 0, height: 10 },
     shadowRadius: 50,
@@ -1701,7 +1701,7 @@ const styles = StyleSheet.create({
   // Applied alongside inputWrapper when the inner TextInput is focused,
   // matching the highlighted-border focus behavior used across the app.
   inputWrapperFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   inputWithIcon: { fontFamily: FONT_BODY, 
@@ -1723,7 +1723,7 @@ const styles = StyleSheet.create({
   },
   // Applied alongside passwordContainer when the inner TextInput is focused.
   passwordContainerFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   passwordInput: { fontFamily: FONT_BODY, 
@@ -1743,19 +1743,19 @@ const styles = StyleSheet.create({
   },
   forgotPassword: { fontFamily: FONT_BODY, 
     fontSize: 14,
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '700',
     textAlign: 'right',
     marginBottom: 18,
   },
   logInButton: {
     width: '100%',
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 14,
     paddingVertical: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#D32F2F',
+    shadowColor: '#8B0000',
     shadowOpacity: 0.22,
     shadowOffset: { width: 0, height: 8 },
     shadowRadius: 16,
@@ -1774,7 +1774,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   registerButtonText: { fontFamily: FONT_BODY, 
-    color: '#D32F2F',
+    color: '#8B0000',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1854,12 +1854,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stepCircleActive: {
-    backgroundColor: '#D32F2F',
-    borderColor: '#D32F2F',
+    backgroundColor: '#8B0000',
+    borderColor: '#8B0000',
   },
   stepCircleCompleted: {
-    backgroundColor: '#D32F2F',
-    borderColor: '#D32F2F',
+    backgroundColor: '#8B0000',
+    borderColor: '#8B0000',
   },
   stepNumber: { fontFamily: FONT_BODY, 
     fontSize: 14,
@@ -1876,7 +1876,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   stepLabelActive: { fontFamily: FONT_BODY, 
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '700',
   },
   stepLine: {
@@ -1887,7 +1887,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   stepLineActive: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   stepContent: {
     marginTop: 6,
@@ -1896,7 +1896,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#FDECEC',
+    backgroundColor: '#F7EDED',
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
@@ -1928,7 +1928,7 @@ const styles = StyleSheet.create({
   },
   // Applied alongside modalInputWrapper when the inner TextInput is focused.
   modalInputWrapperFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   modalInput: { fontFamily: FONT_BODY, 
@@ -1965,12 +1965,12 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   otpInputFilled: {
-    borderColor: '#D32F2F',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#8B0000',
+    backgroundColor: '#FAF5F5',
   },
   primaryButton: {
     height: 52,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 14,
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1980,7 +1980,7 @@ const styles = StyleSheet.create({
   primaryButtonCompact: {
     flex: 1,
     height: 52,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 14,
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1997,7 +1997,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     backgroundColor: '#FFF',
     flexDirection: 'row',
     justifyContent: 'center',
@@ -2005,7 +2005,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   secondaryButtonText: { fontFamily: FONT_BODY, 
-    color: '#D32F2F',
+    color: '#8B0000',
     fontSize: 15,
     fontWeight: '700',
   },
@@ -2026,7 +2026,7 @@ const styles = StyleSheet.create({
   },
   // Applied alongside passwordFieldWrapper when the inner TextInput is focused.
   passwordFieldWrapperFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   passwordFieldInput: { fontFamily: FONT_BODY, 
@@ -2081,7 +2081,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   mInputWrapFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     backgroundColor: '#FFFFFF',
   },
   mInput: {
@@ -2098,17 +2098,17 @@ const styles = StyleSheet.create({
     fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '700',
-    color: '#D32F2F',
+    color: '#8B0000',
   },
   mFooter: { paddingTop: 28 },
   mPrimaryButton: {
     width: '100%',
     height: 54,
     borderRadius: 12,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#D32F2F',
+    shadowColor: '#8B0000',
     shadowOpacity: 0.25,
     shadowOffset: { width: 0, height: 8 },
     shadowRadius: 16,
@@ -2128,7 +2128,7 @@ const styles = StyleSheet.create({
   },
   mSwitchRow: { marginTop: 18, alignItems: 'center', paddingVertical: 4 },
   mSwitchText: { fontFamily: FONT_BODY, fontSize: 14, color: '#6B7280' },
-  mSwitchLink: { color: '#D32F2F', fontWeight: '700' },
+  mSwitchLink: { color: '#8B0000', fontWeight: '700' },
 
   // ✅ Toast portal — matches Community/Dashboard/ClassesScreen; lets touches
   // pass through to whatever's behind, except the toast itself.

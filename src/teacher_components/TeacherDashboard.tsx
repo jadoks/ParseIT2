@@ -706,7 +706,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
   if (isInitialLoad) {
     return (
       <View style={styles.fullPageLoader}>
-        <ActivityIndicator size="large" color="#D32F2F" />
+        <ActivityIndicator size="large" color="#8B0000" />
         <Text style={styles.fullPageLoaderText}>Loading your dashboard...</Text>
       </View>
     );
@@ -1024,7 +1024,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
             </View>
             {isCreatingClass && (
               <View style={styles.creatingOverlay}>
-                <ActivityIndicator size="large" color="#D32F2F" />
+                <ActivityIndicator size="large" color="#8B0000" />
                 <Text style={styles.creatingTitle}>Creating class...</Text>
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being saved</Text>
               </View>
@@ -1032,7 +1032,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
             <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
-                  <MaterialCommunityIcons name="school-outline" size={18} color="#D32F2F" />
+                  <MaterialCommunityIcons name="school-outline" size={18} color="#8B0000" />
                   <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
                 <View style={styles.optionsGrid}>
@@ -1057,7 +1057,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                             return (
                               <TouchableOpacity key={semester.id} style={[styles.floatingDropdownItem, isActive && styles.floatingDropdownItemActive, !isLast && styles.floatingDropdownItemBorder]} onPress={() => { setSelectedSemester(semester.id); setSelectedSection(null); setSemesterDropdownVisible(false); }}>
                                 <Text style={[styles.floatingDropdownItemText, isActive && styles.floatingDropdownItemTextActive]}>{semester.label}</Text>
-                                {isActive && <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />}
+                                {isActive && <Ionicons name="checkmark-circle" size={18} color="#8B0000" />}
                               </TouchableOpacity>
                             );
                           })}
@@ -1078,7 +1078,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               {selectedYear && selectedSemester && (
                 <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="layers-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="layers-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
                   </View>
                   <View style={styles.optionsGrid}>
@@ -1098,7 +1098,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               {selectedYear && selectedSemester && (
                 <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="time-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="time-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Class Schedule</Text>
                   </View>
                   {scheduleBlocks.map((block, index) => (
@@ -1137,7 +1137,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                     </View>
                   ))}
                   <TouchableOpacity style={styles.addScheduleBtn} onPress={addScheduleBlock}>
-                    <Ionicons name="add-circle-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="add-circle-outline" size={18} color="#8B0000" />
                     <Text style={styles.addScheduleBtnText}>Add another schedule</Text>
                   </TouchableOpacity>
                 </View>
@@ -1160,7 +1160,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               </View>
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={[styles.uploadBtn, isCreatingClass && styles.disabledBtn]} onPress={handlePickBanner} disabled={isCreatingClass}>
-                <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
+                <MaterialCommunityIcons name="image-plus" size={20} color="#8B0000" />
                 <Text style={styles.uploadBtnText}>{classBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}</Text>
               </TouchableOpacity>
               
@@ -1205,7 +1205,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
             </View>
             {isSavingEdit && (
               <View style={styles.creatingOverlay}>
-                <ActivityIndicator size="large" color="#D32F2F" />
+                <ActivityIndicator size="large" color="#8B0000" />
                 <Text style={styles.creatingTitle}>Saving changes...</Text>
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being updated</Text>
               </View>
@@ -1213,7 +1213,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
             <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
-                  <MaterialCommunityIcons name="school-outline" size={18} color="#D32F2F" />
+                  <MaterialCommunityIcons name="school-outline" size={18} color="#8B0000" />
                   <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
                 <View style={styles.optionsGrid}>
@@ -1238,7 +1238,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                             return (
                               <TouchableOpacity key={semester.id} style={[styles.floatingDropdownItem, isActive && styles.floatingDropdownItemActive, !isLast && styles.floatingDropdownItemBorder]} onPress={() => { setEditSelectedSemester(semester.id); setEditSelectedSection(null); setEditSemesterDropdownVisible(false); }}>
                                 <Text style={[styles.floatingDropdownItemText, isActive && styles.floatingDropdownItemTextActive]}>{semester.label}</Text>
-                                {isActive && <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />}
+                                {isActive && <Ionicons name="checkmark-circle" size={18} color="#8B0000" />}
                               </TouchableOpacity>
                             );
                           })}
@@ -1259,7 +1259,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               {editSelectedYear && editSelectedSemester && (
                 <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="layers-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="layers-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
                   </View>
                   <View style={styles.optionsGrid}>
@@ -1279,7 +1279,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               {editSelectedYear && editSelectedSemester && (
                 <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="time-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="time-outline" size={18} color="#8B0000" />
                     <Text style={styles.modalSectionTitle}>Class Schedule</Text>
                   </View>
                   {editScheduleBlocks.map((block, index) => (
@@ -1318,7 +1318,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                     </View>
                   ))}
                   <TouchableOpacity style={styles.addScheduleBtn} onPress={addEditScheduleBlock}>
-                    <Ionicons name="add-circle-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="add-circle-outline" size={18} color="#8B0000" />
                     <Text style={styles.addScheduleBtnText}>Add another schedule</Text>
                   </TouchableOpacity>
                 </View>
@@ -1341,7 +1341,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               </View>
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
-                <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />
+                <MaterialCommunityIcons name="image-edit-outline" size={20} color="#8B0000" />
                 <Text style={styles.uploadBtnText}>{editClassBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}</Text>
               </TouchableOpacity>
 
@@ -1418,7 +1418,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
             </View>
             {isDeletingClass && (
               <View style={styles.deletingOverlay}>
-                <ActivityIndicator size="large" color="#D32F2F" />
+                <ActivityIndicator size="large" color="#8B0000" />
                 <Text style={styles.creatingTitle}>Deleting class...</Text>
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being deleted</Text>
               </View>
@@ -1515,7 +1515,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                     <MaterialCommunityIcons 
                       name={showAllClasses ? "unfold-less-horizontal" : "unfold-more-horizontal"} 
                       size={isMobile ? 20 : 18} 
-                      color="#D32F2F" 
+                      color="#8B0000" 
                     />
                     {!isMobile && (
                       <Text style={styles.seeAllButtonText}>
@@ -1642,9 +1642,9 @@ const styles = StyleSheet.create({
   classesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: 16, gap: 12 },
   classesHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
   seeAllButton: { 
-    backgroundColor: '#FFF1F1', 
+    backgroundColor: '#F7EDED', 
     borderWidth: 1, 
-    borderColor: '#F3C6C6', 
+    borderColor: '#E8CCCC', 
     paddingHorizontal: 14, 
     paddingVertical: 10, 
     borderRadius: 14,
@@ -1652,10 +1652,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  seeAllButtonText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
+  seeAllButtonText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   classesTitle: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
   createBtn: { 
-    backgroundColor: '#D32F2F', 
+    backgroundColor: '#8B0000', 
     paddingHorizontal: 16, 
     paddingVertical: 11, 
     borderRadius: 14, 
@@ -1694,9 +1694,9 @@ const styles = StyleSheet.create({
   modalSectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   modalSectionTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: WEIGHT_TITLE, color: '#202124' },
   checkRow: { minHeight: 46, borderWidth: 1, borderColor: '#E7E7E7', borderRadius: 14, paddingHorizontal: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff' },
-  checkRowActive: { backgroundColor: '#FFF4F4', borderColor: '#F4B4B4' },
+  checkRowActive: { backgroundColor: '#FAF5F5', borderColor: '#E2BFBF' },
   sectionRow: { minHeight: 46, borderWidth: 1, borderColor: '#E7E7E7', borderRadius: 14, paddingHorizontal: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff' },
-  sectionRowActive: { backgroundColor: '#FFF4F4', borderColor: '#F4B4B4' },
+  sectionRowActive: { backgroundColor: '#FAF5F5', borderColor: '#E2BFBF' },
   // ✅ Grid wrapper for Select Year / Select Section so large screens use
   // the extra horizontal room instead of stacking every option full-width.
   optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12 },
@@ -1706,7 +1706,7 @@ const styles = StyleSheet.create({
   formGridRow: { flexDirection: 'row', gap: 16 },
   formGridCol: { flex: 1 },
   checkboxBase: { width: 18, height: 18, borderRadius: 12, borderWidth: 1.5, borderColor: '#C9CDD2', alignItems: 'center', justifyContent: 'center', marginRight: 10, backgroundColor: '#fff' },
-  checkboxChecked: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  checkboxChecked: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
   checkText: { fontFamily: FONT_BODY, flex: 1, color: '#202124', fontSize: 14, fontWeight: '500' },
   // ✅ Ensures the Semester Selection dropdown menu (which floats absolutely)
   // stacks above later sections like "Select Section" instead of behind them.
@@ -1719,14 +1719,14 @@ const styles = StyleSheet.create({
   floatingDropdownDismiss: { ...StyleSheet.absoluteFillObject, zIndex: 25 },
   floatingDropdownMenu: { position: 'absolute', top: 60, left: 0, right: 0, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 14, zIndex: 30, overflow: 'hidden' },
   floatingDropdownItem: { minHeight: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  floatingDropdownItemActive: { backgroundColor: '#FFF4F4' },
+  floatingDropdownItemActive: { backgroundColor: '#FAF5F5' },
   floatingDropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: '#F1F3F4' },
   floatingDropdownItemText: { fontFamily: FONT_BODY, fontSize: 14, color: '#202124', fontWeight: '500' },
-  floatingDropdownItemTextActive: { color: '#D32F2F', fontWeight: '700' },
+  floatingDropdownItemTextActive: { color: '#8B0000', fontWeight: '700' },
   yearRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   yearCol: { flex: 1 },
   yearInputWrap: { minHeight: 48, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, backgroundColor: '#F9FAFB', paddingHorizontal: 14, justifyContent: 'center' },
-  yearInputWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  yearInputWrapFocused: { borderColor: '#8B0000', borderWidth: 1.5 },
   yearInput: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#111827',
@@ -1735,7 +1735,7 @@ const styles = StyleSheet.create({
   },
   autoYearText: { fontFamily: FONT_BODY, fontSize: 14, color: '#111827', fontWeight: '600', paddingVertical: 10 },
   textAreaWrap: { minHeight: 108, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, backgroundColor: '#F9FAFB', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
-  textAreaWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  textAreaWrapFocused: { borderColor: '#8B0000', borderWidth: 1.5 },
   textAreaInput: { fontFamily: FONT_BODY,
     minHeight: 84,
     fontSize: 14,
@@ -1748,7 +1748,7 @@ const styles = StyleSheet.create({
   scheduleRemoveBtn: { padding: 4 },
   dayChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   dayChip: { minWidth: 42, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#fff', alignItems: 'center' },
-  dayChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  dayChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
   dayChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#374151' },
   dayChipTextActive: { color: '#FFFFFF' },
   scheduleTimeRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
@@ -1764,13 +1764,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   meridiemBtn: { paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
-  meridiemBtnActive: { backgroundColor: '#D32F2F' },
+  meridiemBtnActive: { backgroundColor: '#8B0000' },
   meridiemBtnText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: '#9AA0A6' },
   meridiemBtnTextActive: { color: '#FFFFFF' },
-  addScheduleBtn: { minHeight: 44, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D32F2F', borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, marginBottom: 4 },
-  addScheduleBtnText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
-  uploadBtn: { minHeight: 48, borderWidth: 1, borderColor: '#F4B4B4', borderRadius: 14, backgroundColor: '#FFF7F7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
-  uploadBtnText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 14 },
+  addScheduleBtn: { minHeight: 44, borderWidth: 1, borderStyle: 'dashed', borderColor: '#8B0000', borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, marginBottom: 4 },
+  addScheduleBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 13 },
+  uploadBtn: { minHeight: 48, borderWidth: 1, borderColor: '#E2BFBF', borderRadius: 14, backgroundColor: '#FAF5F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
+  uploadBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '700', fontSize: 14 },
   bannerPreview: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 14, position: 'relative' },
   previewOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)', alignItems: 'center', justifyContent: 'center' },
   previewText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: '700', fontSize: 14 },
@@ -1779,7 +1779,7 @@ const styles = StyleSheet.create({
   modalButtonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 6 },
   cancelBtn: { minWidth: 110, minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#E0E0E0', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, backgroundColor: '#fff' },
   cancelBtnText: { fontFamily: FONT_BODY, color: '#444', fontWeight: '700', fontSize: 14 },
-  saveBtn: { minWidth: 130, minHeight: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, backgroundColor: '#D32F2F' },
+  saveBtn: { minWidth: 130, minHeight: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, backgroundColor: '#8B0000' },
   saveBtnText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   disabledBtn: { opacity: 0.65 },
   loadingButtonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },

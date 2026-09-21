@@ -844,7 +844,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         <View style={[styles.flashcardContainer, isFlipped && styles.flashcardFlipped]}>
           {!isFlipped ? (
             <View style={styles.flashcardFront}>
-              <Ionicons name="help-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#D32F2F" />
+              <Ionicons name="help-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#8B0000" />
               <Text style={styles.flashcardQuestion}>{currentQuestion.question}</Text>
             </View>
           ) : (
@@ -1088,7 +1088,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         // apply — a saved in-progress attempt, so the student never sees a
         // flash of "Question 1" right before jumping to where they left off.
         <View style={styles.resumeLoadingContainer}>
-          <ActivityIndicator size="large" color="#D32F2F" />
+          <ActivityIndicator size="large" color="#8B0000" />
           <Text style={styles.resumeLoadingText}>Resuming your game...</Text>
         </View>
       ) : (
@@ -1117,7 +1117,7 @@ const createStyles = (r: ResponsiveInfo) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: '#D32F2F',
+      backgroundColor: '#8B0000',
       paddingHorizontal: r.horizontalPadding,
       paddingVertical: r.isSmallPhone ? 10 : r.isDesktop ? 18 : 14,
       width: '100%',
@@ -1181,7 +1181,7 @@ const createStyles = (r: ResponsiveInfo) => {
     scoreText: { fontFamily: FONT_BODY, 
       fontSize: r.font.body,
       fontWeight: WEIGHT_EMPHASIS,
-      color: '#D32F2F',
+      color: '#8B0000',
       flexShrink: 0,
     },
     timerBadge: {
@@ -1259,7 +1259,7 @@ const createStyles = (r: ResponsiveInfo) => {
       textAlign: 'center',
     },
     nextButton: {
-      backgroundColor: '#D32F2F',
+      backgroundColor: '#8B0000',
       paddingVertical: r.isSmallPhone ? 12 : 14,
       paddingHorizontal: r.isDesktop ? 48 : 32,
       borderRadius: 16,
@@ -1358,7 +1358,7 @@ const createStyles = (r: ResponsiveInfo) => {
       marginBottom: r.spacing.md,
       paddingBottom: r.spacing.xs + 4,
       borderBottomWidth: 2,
-      borderBottomColor: '#D32F2F',
+      borderBottomColor: '#8B0000',
     },
     memoryCard: {
       backgroundColor: '#FFF',
@@ -1392,13 +1392,13 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     memoryCardSelectedLetter: { fontFamily: FONT_BODY, 
       marginLeft: r.spacing.xs + 4,
-      color: '#D32F2F',
+      color: '#8B0000',
       fontWeight: WEIGHT_EMPHASIS,
       fontSize: r.font.body,
     },
     memoryCardLetter: { fontFamily: FONT_BODY, 
       fontWeight: WEIGHT_EMPHASIS,
-      color: '#D32F2F',
+      color: '#8B0000',
       marginBottom: r.spacing.xs + 2,
       fontSize: r.font.body,
     },
@@ -1438,7 +1438,7 @@ const createStyles = (r: ResponsiveInfo) => {
     summaryScore: { fontFamily: FONT_BODY, 
       fontSize: r.font.heading + (r.isDesktop ? 6 : 4),
       fontWeight: WEIGHT_EMPHASIS,
-      color: '#D32F2F',
+      color: '#8B0000',
       marginTop: r.spacing.xs + 4,
       textAlign: 'center',
     },

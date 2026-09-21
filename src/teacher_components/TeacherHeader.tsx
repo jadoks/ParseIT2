@@ -184,8 +184,8 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
             borderRadius: ringSize / 2,
             borderWidth: 2,
             borderColor: 'transparent',
-            borderTopColor: '#D32F2F',
-            borderRightColor: '#D32F2F',
+            borderTopColor: '#8B0000',
+            borderRightColor: '#8B0000',
             opacity: ringOpacity,
             transform: [{ scale: ringScale }, { rotate: spinA }],
           }}
@@ -200,8 +200,8 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
             borderRadius: innerRingSize / 2,
             borderWidth: 2,
             borderColor: 'transparent',
-            borderBottomColor: '#F87171',
-            borderLeftColor: '#F87171',
+            borderBottomColor: '#C57F7F',
+            borderLeftColor: '#C57F7F',
             opacity: ringOpacity,
             transform: [{ scale: ringScale }, { rotate: spinB }],
           }}
@@ -349,7 +349,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   };
 
   const getIconColor = (screen: ScreenType) =>
-    activeScreen === screen ? '#D32F2F' : '#000000';
+    activeScreen === screen ? '#8B0000' : '#000000';
 
   const isActive = (screen: ScreenType) => activeScreen === screen;
 
@@ -431,7 +431,7 @@ const desktopNavScreens: (
   };
 
   // 👇 UPDATED: Facebook-style active indicator — a colored underline bar
-  // beneath the icon (same #D32F2F as the active icon color) instead of a
+  // beneath the icon (same #8B0000 as the active icon color) instead of a
   // background tint. The nav button itself now uses generous horizontal
   // padding like Facebook's desktop tabs.
   const renderDesktopNavButton = (
@@ -506,7 +506,7 @@ const desktopNavScreens: (
               activeOpacity={0.7}
             >
               <View style={styles.resultIconBox}>
-                <MaterialCommunityIcons name={item.icon as any} size={20} color="#D32F2F" />
+                <MaterialCommunityIcons name={item.icon as any} size={20} color="#8B0000" />
               </View>
               <View style={styles.resultContent}>
                 <Text style={styles.resultTitle}>{item.title}</Text>
@@ -672,7 +672,7 @@ const desktopNavScreens: (
                   <MaterialCommunityIcons
                     name="magnify"
                     size={24}
-                    color={searchQuery.trim() ? '#D32F2F' : '#888'}
+                    color={searchQuery.trim() ? '#8B0000' : '#888'}
                   />
                 </TouchableOpacity>
               </View>
@@ -889,7 +889,7 @@ const styles = StyleSheet.create({
   },
   searchIconOnly: {
     borderWidth: 1,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',
@@ -935,7 +935,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
   // 👇 NEW: Facebook-style active indicator — a colored bar under the
-  // active icon, same color (#D32F2F) as the active icon itself.
+  // active icon, same color (#8B0000) as the active icon itself.
   activeUnderline: {
     position: 'absolute',
     bottom: -1,
@@ -943,7 +943,7 @@ const styles = StyleSheet.create({
     right: '20%',
     height: 3,
     borderRadius: 2,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
   },
   tooltip: {
     position: 'absolute',
@@ -984,13 +984,13 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   mobileNavItemActive: {
-    backgroundColor: 'rgba(211,47,47,0.10)',
+    backgroundColor: 'rgba(139,0,0,0.10)',
   },
   badge: {
     position: 'absolute',
     top: -6,
     right: -8,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -1015,7 +1015,7 @@ const styles = StyleSheet.create({
   // input, matching the desktop/tablet focus behavior (red border on focus).
   expandedSearchInputFocused: {
     borderWidth: 1.5,
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
   },
   // 👇 disables the browser's default black focus outline in
   // Chrome/Edge on React Native Web for the mobile expanded search TextInput.
@@ -1057,7 +1057,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 14,
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#F7EDED',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,

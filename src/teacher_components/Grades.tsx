@@ -202,7 +202,7 @@ const InlineDropdown = ({
                         {option}
                       </Text>
                       {isSelected ? (
-                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                        <Ionicons name="checkmark" size={18} color="#8B0000" />
                       ) : null}
                     </TouchableOpacity>
                   );
@@ -528,7 +528,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
               padding-right: 24px;
             }
 
-            .gwa { color: #b71c1c; }
+            .gwa { color: #8B0000; }
 
             table.grades {
               width: 100%;
@@ -541,7 +541,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             }
 
             .grades th {
-              background: #b71c1c;
+              background: #8B0000;
               color: white;
               border-right: 1px solid #ffffff;
               padding: 10px 8px;
@@ -1492,7 +1492,7 @@ const styles = StyleSheet.create({
   },
 
   dropdownModalItemSelected: {
-    backgroundColor: '#FDECEC',
+    backgroundColor: '#F7EDED',
   },
 
   dropdownModalItemText: {
@@ -1503,7 +1503,7 @@ const styles = StyleSheet.create({
   },
 
   dropdownModalItemTextSelected: {
-    color: '#B71C1C',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
   },
 
@@ -1544,26 +1544,26 @@ const styles = StyleSheet.create({
 
   journeyButton: {
     minWidth: 220,
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     height: 46,
     paddingHorizontal: 22,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 3,
-    borderBottomColor: '#7F1010',
+    borderBottomColor: '#5A0000',
   },
 
   journeyButtonFull: {
     width: '100%',
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     height: 48,
     paddingHorizontal: 20,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 3,
-    borderBottomColor: '#7F1010',
+    borderBottomColor: '#5A0000',
   },
 
   journeyButtonMobile: {
@@ -1797,7 +1797,7 @@ const styles = StyleSheet.create({
   },
 
   gwaValue: {
-    color: '#B71C1C',
+    color: '#8B0000',
   },
 
   tableScroll: {
@@ -1819,7 +1819,7 @@ const styles = StyleSheet.create({
 
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
     borderBottomWidth: 1,
     borderBottomColor: '#BDBDBD',
   },
@@ -1847,7 +1847,7 @@ const styles = StyleSheet.create({
   },
 
   tableHeaderCell: {
-    backgroundColor: '#B71C1C',
+    backgroundColor: '#8B0000',
   },
 
   tableBodyCell: {

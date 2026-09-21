@@ -255,13 +255,13 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
 
         <View style={styles.classMetaWrap}>
           <View style={styles.classMetaPill}>
-            <Ionicons name="school-outline" size={14} color="#D32F2F" />
+            <Ionicons name="school-outline" size={14} color="#8B0000" />
             <Text style={styles.classMetaText} numberOfLines={1}>
               {getYearSectionLabel(item)}
             </Text>
           </View>
           <View style={styles.classMetaPill}>
-            <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
+            <Ionicons name="calendar-outline" size={14} color="#8B0000" />
             <Text style={styles.classMetaText} numberOfLines={1}>
               {getSemesterSchoolYearLabel(item)}
             </Text>
@@ -270,7 +270,7 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
             const { days, time, room } = formatScheduleBlock(entry);
             return (
               <View key={`schedule-${index}`} style={styles.classMetaPill}>
-                <Ionicons name="time-outline" size={14} color="#D32F2F" />
+                <Ionicons name="time-outline" size={14} color="#8B0000" />
                 <Text style={styles.classMetaText} numberOfLines={1}>
                   {days} · {time}
                   {room ? ` · ${room}` : ''}
@@ -376,15 +376,15 @@ const styles = StyleSheet.create({
   classMetaPill: {
     minHeight: 32,
     borderRadius: 16,
-    backgroundColor: '#FFF4F4',
+    backgroundColor: '#FAF5F5',
     borderWidth: 1,
-    borderColor: '#F8D7D7',
+    borderColor: '#EBD4D4',
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
   },
-  classMetaText: { fontFamily: FONT_BODY, flex: 1, color: '#7A1F1F', fontSize: 12, fontWeight: '700' },
+  classMetaText: { fontFamily: FONT_BODY, flex: 1, color: '#6B0000', fontSize: 12, fontWeight: '700' },
   classCodeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   copyButton: { marginLeft: 8, padding: 4 },
   cardContent: {

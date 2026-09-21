@@ -499,7 +499,7 @@ export default function AdminDashboard({
         <DashboardCard
           title="Manage Class"
           subtitle={`${classCount} classes available`}
-          icon={<Ionicons name="school-outline" size={24} color="#DC2626" />}
+          icon={<Ionicons name="school-outline" size={24} color="#8B0000" />}
           actions={[
             {
               label: "+ Add",
@@ -517,7 +517,7 @@ export default function AdminDashboard({
         <DashboardCard
           title="Manage Student"
           subtitle={`${studentCount} undergraduate students`}
-          icon={<Ionicons name="people-outline" size={24} color="#DC2626" />}
+          icon={<Ionicons name="people-outline" size={24} color="#8B0000" />}
           actions={[
             {
               label: "+ Add",
@@ -539,7 +539,7 @@ export default function AdminDashboard({
             <FontAwesome5
               name="chalkboard-teacher"
               size={22}
-              color="#DC2626"
+              color="#8B0000"
             />
           }
           actions={[
@@ -563,7 +563,7 @@ export default function AdminDashboard({
             <MaterialCommunityIcons
               name="account-cog-outline"
               size={24}
-              color="#DC2626"
+              color="#8B0000"
             />
           }
           actions={[
@@ -587,7 +587,7 @@ export default function AdminDashboard({
             <MaterialCommunityIcons
               name="robot-outline"
               size={24}
-              color="#DC2626"
+              color="#8B0000"
             />
           }
           actions={[
@@ -690,7 +690,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 24,
     flexDirection: "row",
     alignItems: "center",
@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1.2,
-    color: "#DC2626",
+    color: "#8B0000",
     marginBottom: 8,
   },
 
@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 18,
     marginBottom: 12,
   },
@@ -770,7 +770,7 @@ const styles = StyleSheet.create({
 
   summaryTrend: {
     fontSize: 13,
-    color: "#DC2626",
+    color: "#8B0000",
     fontWeight: "600",
   },
 
@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#EBD4D4",
     padding: 20,
     marginBottom: 18,
     marginRight: 16,
@@ -818,7 +818,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#F1E0E0",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -848,8 +848,8 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF7F7",
+    borderColor: "#E8CCCC",
+    backgroundColor: "#FAF5F5",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -861,8 +861,8 @@ const styles = StyleSheet.create({
   singleButton: {},
 
   actionButtonPrimary: {
-    backgroundColor: "#DC2626",
-    borderColor: "#DC2626",
+    backgroundColor: "#8B0000",
+    borderColor: "#8B0000",
   },
 
   actionText: {

@@ -1380,7 +1380,7 @@ inputField: {
   paddingHorizontal: 16,
   backgroundColor: '#F0F2F5',  // FB gray fill
   justifyContent: 'center',
-  // borderWidth / borderColor: '#D32F2F' removed
+  // borderWidth / borderColor: '#8B0000' removed
 },
 
 inputPlaceholder: { fontFamily: FONT_BODY, 
@@ -1717,7 +1717,7 @@ inputPlaceholder: { fontFamily: FONT_BODY,
   postAnswerButton: {
     alignSelf: 'flex-start',
     marginTop: 12,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 14,

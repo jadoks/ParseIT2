@@ -352,7 +352,7 @@ function BirthdayField({
             <View style={bdStyles.modalHeader}>
               <View style={bdStyles.modalHeaderLeft}>
                 <View style={bdStyles.modalIconBox}>
-                  <Ionicons name="calendar-outline" size={22} color="#DC2626" />
+                  <Ionicons name="calendar-outline" size={22} color="#8B0000" />
                 </View>
                 <View style={bdStyles.modalHeaderTextWrap}>
                   <Text style={bdStyles.modalTitle}>Select Birthday</Text>
@@ -426,7 +426,7 @@ function BirthdayField({
                             {month}
                           </Text>
                           {active && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+                            <Ionicons name="checkmark-circle" size={18} color="#8B0000" />
                           )}
                         </TouchableOpacity>
                       );
@@ -467,7 +467,7 @@ function BirthdayField({
                             {day}
                           </Text>
                           {active && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+                            <Ionicons name="checkmark-circle" size={18} color="#8B0000" />
                           )}
                         </TouchableOpacity>
                       );
@@ -512,7 +512,7 @@ function BirthdayField({
                             {year}
                           </Text>
                           {active && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+                            <Ionicons name="checkmark-circle" size={18} color="#8B0000" />
                           )}
                         </TouchableOpacity>
                       );
@@ -616,8 +616,8 @@ const bdStyles = StyleSheet.create({
     height: 38,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E7C0C0',
-    backgroundColor: '#FFF7F7',
+    borderColor: '#E2BFBF',
+    backgroundColor: '#FAF5F5',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -642,7 +642,7 @@ const bdStyles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD4D4',
     overflow: 'hidden',
   },
   modalHeader: {
@@ -650,7 +650,7 @@ const bdStyles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8E3E3',
+    borderBottomColor: '#F3E6E6',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -667,7 +667,7 @@ const bdStyles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#F1E0E0',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -687,7 +687,7 @@ const bdStyles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#FAF5F5',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -717,8 +717,8 @@ const bdStyles = StyleSheet.create({
     maxHeight: 260,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1CACA',
-    backgroundColor: '#FFF9F9',
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
   },
   webDateListMobile: {
     maxHeight: 200,
@@ -732,10 +732,10 @@ const bdStyles = StyleSheet.create({
   },
   dropdownItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#FAE9E9',
+    borderBottomColor: '#F5E9E9',
   },
   dropdownItemActive: {
-    backgroundColor: '#FFF7F7',
+    backgroundColor: '#FAF5F5',
   },
   dropdownItemText: { fontFamily: FONT_BODY, 
     flex: 1,
@@ -745,7 +745,7 @@ const bdStyles = StyleSheet.create({
     paddingRight: 10,
   },
   dropdownItemTextActive: { fontFamily: FONT_BODY, 
-    color: '#DC2626',
+    color: '#8B0000',
     fontWeight: '700',
   },
   modalFooter: {
@@ -753,7 +753,7 @@ const bdStyles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: '#F8E3E3',
+    borderTopColor: '#F3E6E6',
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
@@ -762,8 +762,8 @@ const bdStyles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E7C0C0',
-    backgroundColor: '#FFF7F7',
+    borderColor: '#E2BFBF',
+    backgroundColor: '#FAF5F5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -777,7 +777,7 @@ const bdStyles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: '#DC2626',
+    backgroundColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -1895,7 +1895,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 28,
-    shadowColor: '#780000',
+    shadowColor: '#500000',
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 10 },
     shadowRadius: 24,
@@ -1993,7 +1993,7 @@ const styles = StyleSheet.create({
     width: 104, height: 104, borderRadius: 28,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#780000', shadowOpacity: 0.18,
+    shadowColor: '#500000', shadowOpacity: 0.18,
     shadowOffset: { width: 0, height: 10 }, shadowRadius: 50,
     elevation: 10, borderWidth: 1, borderColor: '#F2F4F7',
   },
@@ -2052,8 +2052,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   activeRolePillButton: {
-    backgroundColor: '#D32F2F',
-    shadowColor: '#D32F2F',
+    backgroundColor: '#8B0000',
+    shadowColor: '#8B0000',
     shadowOpacity: 0.25,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 8,
@@ -2097,7 +2097,7 @@ const styles = StyleSheet.create({
   // Applied alongside inputWrapper when the inner TextInput is focused,
   // matching the highlighted-border focus behavior used in SignIn.tsx.
   inputWrapperFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   inputWithIcon: { flex: 1, fontSize: 16, color: '#111827', paddingVertical: 15 },
@@ -2108,7 +2108,7 @@ const styles = StyleSheet.create({
   },
   // Applied alongside passwordContainer when the inner TextInput is focused.
   passwordContainerFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     borderWidth: 1.5,
   },
   passwordInput: { flex: 1, paddingVertical: 15, fontSize: 16, color: '#111827' },
@@ -2124,7 +2124,7 @@ const styles = StyleSheet.create({
     flex: 1, borderWidth: 1.5, borderColor: '#E5E7EB',
     paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#F9FAFB',
   },
-  activeTypeButton: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  activeTypeButton: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
   typeText: { fontWeight: '700', fontSize: 15, color: '#374151' },
   typeTextCompact: { fontWeight: '700', fontSize: 13, color: '#374151' },
   activeTypeText: { color: '#FFF' },
@@ -2168,20 +2168,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   termsLink: {
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
   registerButton: {
-    width: '100%', backgroundColor: '#D32F2F', borderRadius: 14,
+    width: '100%', backgroundColor: '#8B0000', borderRadius: 14,
     paddingVertical: 16, justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#D32F2F', shadowOpacity: 0.22, shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#8B0000', shadowOpacity: 0.22, shadowOffset: { width: 0, height: 8 },
     shadowRadius: 16, elevation: 6, marginTop: 12,
   },
   disabledButton: { opacity: 0.7 },
   registerButtonText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
   backButton: { marginTop: 16, alignItems: 'center' },
-  backButtonText: { color: '#D32F2F', fontSize: 14, fontWeight: '700' },
+  backButtonText: { color: '#8B0000', fontSize: 14, fontWeight: '700' },
 
   // ── Small-screen layout: wave header + soft fields ────────────────────────
   mRoot: { flex: 1, backgroundColor: '#FFFFFF' },
@@ -2233,7 +2233,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   mInputWrapFocused: {
-    borderColor: '#D32F2F',
+    borderColor: '#8B0000',
     backgroundColor: '#FFFFFF',
   },
   mInput: {
@@ -2273,10 +2273,10 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 54,
     borderRadius: 12,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#D32F2F',
+    shadowColor: '#8B0000',
     shadowOpacity: 0.25,
     shadowOffset: { width: 0, height: 8 },
     shadowRadius: 16,
@@ -2296,7 +2296,7 @@ const styles = StyleSheet.create({
   },
   mSwitchRow: { marginTop: 18, alignItems: 'center', paddingVertical: 4 },
   mSwitchText: { fontFamily: FONT_BODY, fontSize: 14, color: '#6B7280' },
-  mSwitchLink: { color: '#D32F2F', fontWeight: '700' },
+  mSwitchLink: { color: '#8B0000', fontWeight: '700' },
 
   // ✅ Toast portal — matches Community/Dashboard/ClassesScreen/SignIn; lets
   // touches pass through to whatever's behind, except the toast itself.

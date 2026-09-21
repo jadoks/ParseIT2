@@ -1127,7 +1127,7 @@ useEffect(() => {
                   <MaterialCommunityIcons
                     name="pencil"
                     size={isSmallPhone ? 13 : 14}
-                    color="#D32F2F"
+                    color="#8B0000"
                   />
                   <Text
                     style={[
@@ -2006,14 +2006,14 @@ const styles = StyleSheet.create({
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F4DCDC',
+    backgroundColor: '#F1E0E0',
     alignSelf: 'flex-start',
   },
   editBtnDisabled: {
     opacity: 0.7,
   },
   editText: { fontFamily: FONT_BODY, 
-    color: '#D32F2F',
+    color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
   },
   divider: {
@@ -2058,7 +2058,7 @@ askInput: {
   borderRadius: 999,
   backgroundColor: '#F0F2F5',   // FB gray fill
   justifyContent: 'center',
-  // borderWidth / borderColor: '#D32F2F' removed
+  // borderWidth / borderColor: '#8B0000' removed
 },
 
 askText: {
@@ -2447,7 +2447,7 @@ askText: {
   postAnswerButton: {
     alignSelf: 'flex-start',
     marginTop: 12,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#8B0000',
     borderRadius: 14,
   },
   postAnswerButtonText: { fontFamily: FONT_BODY, 

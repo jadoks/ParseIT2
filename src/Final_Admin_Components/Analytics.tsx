@@ -481,7 +481,7 @@ function AcademicTrendChart({
             width={chartWidth}
             height={chartHeight}
             rx={18}
-            fill="#FFF9F9"
+            fill="#FAF5F5"
           />
 
           {guideValues.map((value) => {
@@ -494,7 +494,7 @@ function AcademicTrendChart({
                   y1={y}
                   x2={chartWidth - paddingRight}
                   y2={y}
-                  stroke="#F3D4D4"
+                  stroke="#EBD4D4"
                   strokeWidth={1}
                   strokeDasharray="5 6"
                 />
@@ -516,7 +516,7 @@ function AcademicTrendChart({
             y1={paddingTop}
             x2={paddingLeft}
             y2={chartHeight - paddingBottom}
-            stroke="#F3D4D4"
+            stroke="#EBD4D4"
             strokeWidth={1}
           />
           <Line
@@ -524,14 +524,14 @@ function AcademicTrendChart({
             y1={chartHeight - paddingBottom}
             x2={chartWidth - paddingRight}
             y2={chartHeight - paddingBottom}
-            stroke="#F3D4D4"
+            stroke="#EBD4D4"
             strokeWidth={1}
           />
 
           <Path
             d={pathData}
             fill="none"
-            stroke="#DC2626"
+            stroke="#8B0000"
             strokeWidth={3}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -553,7 +553,7 @@ function AcademicTrendChart({
                   cx={point.x}
                   cy={point.y}
                   r={5}
-                  fill="#DC2626"
+                  fill="#8B0000"
                   stroke="#FFFFFF"
                   strokeWidth={2}
                 />
@@ -660,7 +660,7 @@ function DropdownModal({
                 <Text style={[styles.modalOptionText, !selectedValue && styles.modalOptionTextActive]}>
                   All {label}
                 </Text>
-                {!selectedValue && <Ionicons name="checkmark" size={20} color="#DC2626" />}
+                {!selectedValue && <Ionicons name="checkmark" size={20} color="#8B0000" />}
               </Pressable>
 
               {options.map((item) => (
@@ -675,7 +675,7 @@ function DropdownModal({
                   <Text style={[styles.modalOptionText, selectedValue === item && styles.modalOptionTextActive]} numberOfLines={1}>
                     {item}
                   </Text>
-                  {selectedValue === item && <Ionicons name="checkmark" size={20} color="#DC2626" />}
+                  {selectedValue === item && <Ionicons name="checkmark" size={20} color="#8B0000" />}
                 </Pressable>
               ))}
             </ScrollView>
@@ -917,7 +917,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           title="Department Overview"
           subtitle="Institution-wide assignment performance summary"
           icon={
-            <Ionicons name="analytics-outline" size={24} color="#DC2626" />
+            <Ionicons name="analytics-outline" size={24} color="#8B0000" />
           }
         >
           <View style={[styles.departmentOverviewGrid, isMobile && styles.departmentOverviewGridMobile]}>
@@ -973,7 +973,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
               : "No graded trend data yet"
           }
           icon={
-            <Ionicons name="trending-up-outline" size={24} color="#DC2626" />
+            <Ionicons name="trending-up-outline" size={24} color="#8B0000" />
           }
         >
           <AcademicTrendChart
@@ -1021,7 +1021,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
             <MaterialCommunityIcons
               name="google-classroom"
               size={24}
-              color="#DC2626"
+              color="#8B0000"
             />
           }
         >
@@ -1043,7 +1043,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           title="Year-Level Comparison"
           subtitle="Compare assignment performance across year levels"
           icon={
-            <Ionicons name="school-outline" size={24} color="#DC2626" />
+            <Ionicons name="school-outline" size={24} color="#8B0000" />
           }
         >
           {topYears.length ? (
@@ -1063,7 +1063,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           widthValue={halfWidth}
           title="Subject Difficulty Trend"
           subtitle="Subjects identified through low assignment grades, missing submissions, and pending assignments"
-          icon={<Ionicons name="book-outline" size={24} color="#DC2626" />}
+          icon={<Ionicons name="book-outline" size={24} color="#8B0000" />}
         >
           {analytics.subjectDifficulty.length ? (
             analytics.subjectDifficulty.slice(0, 6).map((subject) => (
@@ -1089,7 +1089,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           widthValue={halfWidth}
           title="Intervention Suggestions"
           subtitle="AI-generated recommendations based on institution-wide assignment performance"
-          icon={<Ionicons name="medkit-outline" size={24} color="#DC2626" />}
+          icon={<Ionicons name="medkit-outline" size={24} color="#8B0000" />}
         >
           {analytics.suggestions.map((item) => (
             <View style={styles.suggestionCard} key={item.title}>
@@ -1133,18 +1133,18 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 const styles = StyleSheet.create({
   heroRow: { marginBottom: 20 },
   heroCard: {
-    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4",
+    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#EBD4D4",
     padding: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
   heroCardMobile: { flexDirection: "column", alignItems: "flex-start" },
   heroTextSection: { flex: 1, marginRight: 20 },
   heroTextMobile: { marginRight: 0, marginBottom: 18 },
-  heroEyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.2, color: "#DC2626", marginBottom: 8 },
+  heroEyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.2, color: "#8B0000", marginBottom: 8 },
   heroTitle: { fontSize: 28, fontWeight: "800", color: "#2B1111", marginBottom: 8 },
   heroTitleMobile: { fontSize: 22 },
   heroSubtitle: { fontSize: 14, color: "#8A6F6F", lineHeight: 22 },
   refreshButton: {
-    minHeight: 46, paddingHorizontal: 18, borderRadius: 14, backgroundColor: "#DC2626",
+    minHeight: 46, paddingHorizontal: 18, borderRadius: 14, backgroundColor: "#8B0000",
     flexDirection: "row", alignItems: "center", justifyContent: "center",
   },
   refreshButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800", marginLeft: 8 },
@@ -1156,14 +1156,14 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 24 },
   summaryCard: {
     minWidth: 180, backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1,
-    borderColor: "#F3D4D4", padding: 18, marginBottom: 12,
+    borderColor: "#EBD4D4", padding: 18, marginBottom: 12,
   },
   summaryCardDanger: { backgroundColor: "#FFF7F7", borderColor: "#FCA5A5" },
   summaryCardSuccess: { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" },
   summaryCardWarning: { backgroundColor: "#FFFBEB", borderColor: "#FDE68A" },
   summaryLabel: { fontSize: 13, color: "#A07C7C", fontWeight: "600", marginBottom: 10 },
   summaryValue: { fontSize: 28, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
-  summaryTrend: { fontSize: 13, color: "#DC2626", fontWeight: "600" },
+  summaryTrend: { fontSize: 13, color: "#8B0000", fontWeight: "600" },
   summaryTrendDanger: { color: "#DC2626" },
   summaryTrendSuccess: { color: "#059669" },
   summaryTrendWarning: { color: "#D97706" },
@@ -1172,7 +1172,7 @@ const styles = StyleSheet.create({
   sectionSubtitle: { fontSize: 14, color: "#8A6F6F" },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   sectionCard: {
-    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4",
+    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#EBD4D4",
     padding: 20, marginBottom: 18, minWidth: 0,
   },
   sectionCardHeader: { marginBottom: 18 },
@@ -1182,12 +1182,12 @@ const styles = StyleSheet.create({
   sectionCardTitle: { fontSize: 18, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
   sectionCardSubtitle: { fontSize: 14, color: "#8A6F6F", lineHeight: 20 },
   iconBox: {
-    width: 56, height: 56, borderRadius: 18, backgroundColor: "#FEE2E2",
+    width: 56, height: 56, borderRadius: 18, backgroundColor: "#F1E0E0",
     alignItems: "center", justifyContent: "center", marginRight: 14,
   },
   statRow: {
-    width: "100%", minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: "#F8E3E3",
-    backgroundColor: "#FFF9F9", paddingHorizontal: 14, marginBottom: 10,
+    width: "100%", minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: "#F3E6E6",
+    backgroundColor: "#FAF5F5", paddingHorizontal: 14, marginBottom: 10,
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
   statRowLabel: { flex: 1, fontSize: 14, color: "#5F3B3B", fontWeight: "600", paddingRight: 12 },
@@ -1198,11 +1198,11 @@ const styles = StyleSheet.create({
   progressBlock: { marginBottom: 14 },
   progressLabelRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
   progressLabel: { fontSize: 14, fontWeight: "700", color: "#5F3B3B", flex: 1, paddingRight: 10 },
-  progressValue: { fontSize: 13, fontWeight: "800", color: "#DC2626" },
-  progressTrack: { height: 12, borderRadius: 999, backgroundColor: "#FDE8E8", overflow: "hidden" },
-  progressFill: { height: "100%", borderRadius: 999, backgroundColor: "#DC2626" },
+  progressValue: { fontSize: 13, fontWeight: "800", color: "#8B0000" },
+  progressTrack: { height: 12, borderRadius: 999, backgroundColor: "#F5E9E9", overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 999, backgroundColor: "#8B0000" },
   suggestionCard: {
-    borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
+    borderRadius: 16, borderWidth: 1, borderColor: "#EBD4D4", backgroundColor: "#FAF5F5",
     padding: 14, marginBottom: 12,
   },
   suggestionTitle: { fontSize: 14, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
@@ -1211,7 +1211,7 @@ const styles = StyleSheet.create({
   riskGridMobile: { flexDirection: "column", gap: 10 },
   riskCard: {
     flexGrow: 1, flexBasis: "48%", maxWidth: "49%", minWidth: 280, borderRadius: 18,
-    borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFFFFF", padding: 16, marginBottom: 0,
+    borderWidth: 1, borderColor: "#EBD4D4", backgroundColor: "#FFFFFF", padding: 16, marginBottom: 0,
   },
   riskCardMobile: { width: "100%", maxWidth: "100%", minWidth: 0, padding: 14 },
   riskCardHigh: { backgroundColor: "#FFF7F7", borderColor: "#FCA5A5" },
@@ -1226,7 +1226,7 @@ const styles = StyleSheet.create({
   riskSection: { fontSize: 13, color: "#8A6F6F", fontWeight: "600" },
   riskTagContainer: { flexDirection: "row", flexWrap: "wrap", marginTop: 6, gap: 6 },
   riskTag: {
-    backgroundColor: "#FFF1F1", borderWidth: 1, borderColor: "#F3D4D4", borderRadius: 999,
+    backgroundColor: "#F7EDED", borderWidth: 1, borderColor: "#EBD4D4", borderRadius: 999,
     paddingHorizontal: 10, paddingVertical: 5, maxWidth: "100%",
   },
   riskTagText: { fontSize: 12, fontWeight: "700", color: "#7A4A4A", flexShrink: 1 },
@@ -1239,7 +1239,7 @@ const styles = StyleSheet.create({
   riskBadgeText: { fontSize: 12, fontWeight: "800", color: "#DC2626" },
   riskReason: { fontSize: 13, lineHeight: 20, color: "#7A4A4A", marginTop: 4 },
   emptyState: {
-    borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
+    borderRadius: 16, borderWidth: 1, borderColor: "#EBD4D4", backgroundColor: "#FAF5F5",
     padding: 18, alignItems: "center", justifyContent: "center",
   },
   emptyStateText: { marginTop: 8, textAlign: "center", color: "#8A6F6F", fontWeight: "700" },
@@ -1249,7 +1249,7 @@ const styles = StyleSheet.create({
   departmentOverviewItem: { flexGrow: 1, flexBasis: "31%", minWidth: 180, marginBottom: 0 },
   departmentOverviewItemMobile: { width: "100%", minWidth: 0, flexBasis: "auto", marginBottom: 0 },
   trendChartShell: {
-    borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
+    borderRadius: 16, borderWidth: 1, borderColor: "#EBD4D4", backgroundColor: "#FAF5F5",
     padding: 12, marginBottom: 12,
   },
   trendChartHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10, alignItems: "flex-start" },
@@ -1275,11 +1275,11 @@ const styles = StyleSheet.create({
   trendEmptyTitle: { fontSize: 14, fontWeight: "800", color: "#2B1111" },
   trendEmptyText: { fontSize: 12, color: "#7A4A4A", textAlign: "center" },
   singleTrendCard: {
-    flex: 1, minWidth: 200, padding: 16, borderRadius: 14, backgroundColor: "#FFF9F9", // Reduced minWidth from 260
-    borderWidth: 1, borderColor: "#F3D4D4",
+    flex: 1, minWidth: 200, padding: 16, borderRadius: 14, backgroundColor: "#FAF5F5", // Reduced minWidth from 260
+    borderWidth: 1, borderColor: "#EBD4D4",
   },
   singleTrendLabel: { fontSize: 12, color: "#8A6F6F" },
-  singleTrendValue: { fontSize: 28, fontWeight: "900", color: "#DC2626" },
+  singleTrendValue: { fontSize: 28, fontWeight: "900", color: "#8B0000" },
   singleTrendText: { fontSize: 12, color: "#7A4A4A" },
   trendMetricGrid: {
     flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between",
@@ -1287,15 +1287,15 @@ const styles = StyleSheet.create({
   },
   trendMetricCard: {
     flex: 1, minWidth: 120, padding: 10, borderRadius: 12, backgroundColor: "#FFFFFF", // Reduced minWidth from 140
-    borderWidth: 1, borderColor: "#F3D4D4",
+    borderWidth: 1, borderColor: "#EBD4D4",
   },
-  trendMetricValue: { fontSize: 16, fontWeight: "900", color: "#DC2626" },
+  trendMetricValue: { fontSize: 16, fontWeight: "900", color: "#8B0000" },
   trendMetricLabel: { fontSize: 11, color: "#7A4A4A" },
 
   // ===== DROPDOWN & MODAL STYLES =====
   filterRow: {
     flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 20,
-    backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "#F3D4D4", padding: 16,
+    backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "#EBD4D4", padding: 16,
   },
   filterRowMobile: { flexDirection: "column" },
   filterGroup: { flex: 1, minWidth: 250 },
@@ -1305,7 +1305,7 @@ const styles = StyleSheet.create({
   dropdownButton: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14,
-    backgroundColor: "#FFF9F9", borderWidth: 1, borderColor: "#F3D4D4",
+    backgroundColor: "#FAF5F5", borderWidth: 1, borderColor: "#EBD4D4",
   },
   dropdownButtonText: { fontSize: 14, fontWeight: "700", color: "#5F3B3B", flex: 1, marginRight: 8 },
   
@@ -1315,20 +1315,20 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: "100%", maxWidth: 400, backgroundColor: "#FFFFFF", borderRadius: 24,
-    padding: 20, borderWidth: 1, borderColor: "#F3D4D4", maxHeight: "80%",
+    padding: 20, borderWidth: 1, borderColor: "#EBD4D4", maxHeight: "80%",
   },
   modalTitle: { fontSize: 18, fontWeight: "800", color: "#2B1111", marginBottom: 16, textAlign: "center" },
   modalOptionsContainer: { maxHeight: 400, marginBottom: 16 },
   modalOption: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, marginBottom: 8,
-    backgroundColor: "#FFF9F9", borderWidth: 1, borderColor: "#F3D4D4",
+    backgroundColor: "#FAF5F5", borderWidth: 1, borderColor: "#EBD4D4",
   },
-  modalOptionActive: { backgroundColor: "#FEE2E2", borderColor: "#DC2626" },
+  modalOptionActive: { backgroundColor: "#F1E0E0", borderColor: "#8B0000" },
   modalOptionText: { fontSize: 14, fontWeight: "700", color: "#5F3B3B", flex: 1 },
-  modalOptionTextActive: { color: "#DC2626" },
+  modalOptionTextActive: { color: "#8B0000" },
   modalCancelButton: {
-    paddingVertical: 12, borderRadius: 12, backgroundColor: "#F3D4D4", alignItems: "center",
+    paddingVertical: 12, borderRadius: 12, backgroundColor: "#EBD4D4", alignItems: "center",
   },
   modalCancelText: { fontSize: 14, fontWeight: "800", color: "#7A4A4A" },
 });
