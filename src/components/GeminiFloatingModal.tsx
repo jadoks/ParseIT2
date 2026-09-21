@@ -804,14 +804,14 @@ export default function GeminiFloatingModal({
                     <View key={`${message.role}-${actualIndex}`} style={[styles.messageRow, isUser ? styles.userRow : styles.botRow]}>
                       {!isUser && (
                         <View style={styles.botLabelContainer}>
-                          <MaterialCommunityIcons name="robot-outline" size={14} color="#D32F2F" />
+                          <MaterialCommunityIcons name="robot-outline" size={14} color="#800020" />
                           <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
                         </View>
                       )}
                       <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
                         {message.fileName && (
                           <View style={[styles.fileAttachment, isUser ? styles.fileAttachmentUser : styles.fileAttachmentBot]}>
-                            <MaterialCommunityIcons name="file-document-outline" size={16} color={isUser ? "#FFF" : "#D32F2F"} />
+                            <MaterialCommunityIcons name="file-document-outline" size={16} color={isUser ? "#FFF" : "#800020"} />
                             <Text style={[styles.fileAttachmentText, isUser && { color: "#FFF" }]} numberOfLines={1}>
                               {message.fileName}
                             </Text>
@@ -829,11 +829,11 @@ export default function GeminiFloatingModal({
                 {loading && (
                   <View style={[styles.messageRow, styles.botRow]}>
                     <View style={styles.botLabelContainer}>
-                      <MaterialCommunityIcons name="robot-outline" size={14} color="#D32F2F" />
+                      <MaterialCommunityIcons name="robot-outline" size={14} color="#800020" />
                       <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
                     </View>
                     <View style={[styles.messageBubble, styles.botBubble]}>
-                      <ActivityIndicator color="#D32F2F" />
+                      <ActivityIndicator color="#800020" />
                     </View>
                   </View>
                 )}
@@ -846,7 +846,7 @@ export default function GeminiFloatingModal({
                   onPress={() => scrollToBottom(true)}
                   activeOpacity={0.8}
                 >
-                  <MaterialCommunityIcons name="chevron-down" size={24} color="#D32F2F" />
+                  <MaterialCommunityIcons name="chevron-down" size={24} color="#800020" />
                 </TouchableOpacity>
               )}
             </View>
@@ -855,7 +855,7 @@ export default function GeminiFloatingModal({
             <View style={styles.inputArea}>
               {selectedFile && (
                 <View style={styles.selectedFileBadge}>
-                  <MaterialCommunityIcons name="file-document-outline" size={16} color="#D32F2F" />
+                  <MaterialCommunityIcons name="file-document-outline" size={16} color="#800020" />
                   <Text style={styles.selectedFileText} numberOfLines={1} ellipsizeMode="middle">
                     {selectedFile.name}
                   </Text>
@@ -950,7 +950,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F3F4F6", 
     backgroundColor: "#FFFFFF" 
   },
-  title: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: "800", color: "#D32F2F" },
+  title: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: "800", color: "#800020" },
   subtitle: { fontFamily: FONT_BODY, marginTop: 4, fontSize: 12, color: "#6B7280", fontWeight: "500" },
   
   closeBtn: {
@@ -964,7 +964,7 @@ const styles = StyleSheet.create({
 
   modeSwitchWrap: { flexDirection: "row", marginHorizontal: 16, marginTop: 12, marginBottom: 4, backgroundColor: "#F3F4F6", borderRadius: 999, padding: 4 },
   modeButton: { flex: 1, height: 38, borderRadius: 999, alignItems: "center", justifyContent: "center" },
-  modeButtonActive: { backgroundColor: "#D32F2F", shadowColor: "#D32F2F", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  modeButtonActive: { backgroundColor: "#800020", shadowColor: "#800020", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
   modeButtonText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: "700", color: "#6B7280" },
   modeButtonTextActive: { color: "#FFF" },
 
@@ -984,7 +984,7 @@ const styles = StyleSheet.create({
   botRow: { alignSelf: "flex-start", alignItems: "flex-start" },
   
   botLabelContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginLeft: 4, gap: 4 },
-  botLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#D32F2F" },
+  botLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#800020" },
   
   messageBubble: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 18, maxWidth: '100%' },
   botBubble: { 
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
     borderRadius: 18, borderTopLeftRadius: 4, 
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 
   },
-  userBubble: { alignSelf: "flex-end", backgroundColor: "#D32F2F", borderRadius: 18, borderTopRightRadius: 4 },
+  userBubble: { alignSelf: "flex-end", backgroundColor: "#800020", borderRadius: 18, borderTopRightRadius: 4 },
   
   botText: { fontFamily: FONT_BODY, color: "#1F2937", fontSize: 14, lineHeight: 22, fontWeight: "400" },
   userText: { fontFamily: FONT_BODY, color: "#FFFFFF", fontSize: 14, lineHeight: 22, fontWeight: "400" },
@@ -1001,20 +1001,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, 
     borderRadius: 16, marginBottom: 8, gap: 6,
   },
-  fileAttachmentBot: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  fileAttachmentBot: { backgroundColor: '#F7F0F2', borderWidth: 1, borderColor: '#E6CCD2' },
   fileAttachmentUser: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  fileAttachmentText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '600', color: '#991B1B', flex: 1 },
+  fileAttachmentText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '600', color: '#660019', flex: 1 },
 
   inputArea: {
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14,
     borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#FFFFFF",
   },
   selectedFileBadge: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2',
-    borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 12, paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F0F2',
+    borderWidth: 1, borderColor: '#E6CCD2', paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: 14, marginBottom: 10, gap: 8,
   },
-  selectedFileText: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, color: '#991B1B', fontWeight: '600' },
+  selectedFileText: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, color: '#660019', fontWeight: '600' },
   
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   uploadBtn: {
@@ -1032,19 +1032,19 @@ const styles = StyleSheet.create({
   charCounter: { fontFamily: FONT_BODY, marginTop: 6, fontSize: 11, color: "#9CA3AF", textAlign: "right", fontWeight: "500" },
   charCounterError: { color: "#D32F2F", fontWeight: "700" },
   sendBtn: {
-    width: 42, height: 42, borderRadius: 21, backgroundColor: "#D32F2F",
+    width: 42, height: 42, borderRadius: 21, backgroundColor: "#800020",
     alignItems: "center", justifyContent: "center",
-    shadowColor: "#D32F2F", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
+    shadowColor: "#800020", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
-  sendBtnDisabled: { backgroundColor: "#F87171", shadowOpacity: 0 },
+  sendBtnDisabled: { backgroundColor: "#BF7F8F", shadowOpacity: 0 },
   
   tutorSuggestionWrap: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: "#FAFAFA" },
   tutorSuggestionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  tutorSuggestionTitle: { fontFamily: FONT_TITLE, fontSize: 12, fontWeight: "800", color: "#7A1F1F", textTransform: "uppercase", letterSpacing: 0.5 },
+  tutorSuggestionTitle: { fontFamily: FONT_TITLE, fontSize: 12, fontWeight: "800", color: "#660019", textTransform: "uppercase", letterSpacing: 0.5 },
   tutorSuggestionList: { paddingRight: 10 },
-  tutorSuggestionBubble: { maxWidth: 200, backgroundColor: "#FFF", borderWidth: 1, borderColor: "#FECACA", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, marginRight: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  tutorSuggestionBubble: { maxWidth: 200, backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E6CCD2", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, marginRight: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
   tutorSuggestionBubbleText: { fontFamily: FONT_BODY, color: "#111827", fontWeight: "700", fontSize: 13, lineHeight: 18 },
-  tutorSuggestionScore: { fontFamily: FONT_BODY, color: "#D32F2F", fontWeight: "700", fontSize: 11, marginTop: 4 },
+  tutorSuggestionScore: { fontFamily: FONT_BODY, color: "#800020", fontWeight: "700", fontSize: 11, marginTop: 4 },
   tutorSuggestionEmpty: { fontFamily: FONT_BODY, color: "#9CA3AF", fontSize: 13, paddingVertical: 8, fontStyle: "italic" },
 
   scrollToBottomBtn: {

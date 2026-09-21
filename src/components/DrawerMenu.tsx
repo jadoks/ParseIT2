@@ -4,7 +4,6 @@ import { signOut } from 'firebase/auth';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   LayoutChangeEvent,
   Modal,
   Platform,
@@ -326,16 +325,16 @@ const MenuItem = ({
             borderRadius: 16, 
           },
           highlighted && {
-            backgroundColor: '#D32F2F',
+            backgroundColor: '#800020',
           },
           active && !highlighted && {
-            backgroundColor: 'rgba(211,47,47,0.08)',
+            backgroundColor: 'rgba(128,0,32,0.08)',
           },
         ];
 
         if (Platform.OS === 'web' && (state as any).hovered) {
           if (highlighted) {
-            base.push({ backgroundColor: '#B71C1C' });
+            base.push({ backgroundColor: '#660019' });
           } else if (!active) {
             base.push({ backgroundColor: 'rgba(130,129,129,0.08)' });
           }
@@ -348,14 +347,14 @@ const MenuItem = ({
         <Ionicons
           name={ionIconName as any}
           size={22}
-          color={highlighted ? '#FFF' : active ? '#D32F2F' : '#444'}
+          color={highlighted ? '#FFF' : active ? '#800020' : '#444'}
           style={styles.vectorMenuIcon}
         />
       ) : (
         <MaterialCommunityIcons
           name={iconName as any}
           size={22}
-          color={highlighted ? '#FFF' : active ? '#D32F2F' : '#444'}
+          color={highlighted ? '#FFF' : active ? '#800020' : '#444'}
           style={styles.vectorMenuIcon}
         />
       )}
@@ -365,7 +364,7 @@ const MenuItem = ({
           styles.menuLabel,
           { fontSize: menuLabelFontSize },
           highlighted && { color: '#FFF', fontWeight: WEIGHT_EMPHASIS },
-          active && !highlighted && { color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
+          active && !highlighted && { color: '#800020', fontWeight: WEIGHT_EMPHASIS },
         ]}
       >
         {label}
@@ -524,7 +523,7 @@ const DrawerMenu = ({
   }, [userEmail]);
 
   // Hide the browser's default focus ring and built-in password
-  // reveal/autofill icons so our custom red focus border and eye icon are
+  // reveal/autofill icons so our custom burgundy focus border and eye icon are
   // the only visible affordances — mirrors the same effect in Register.tsx.
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -548,7 +547,7 @@ const DrawerMenu = ({
           visibility: hidden;
         }
 
-        /* Disable default browser focus outline (black ring) to allow custom red border */
+        /* Disable default browser focus outline (black ring) to allow custom burgundy border */
         input:focus, textarea:focus, select:focus {
           outline: none !important;
         }
@@ -861,6 +860,22 @@ const DrawerMenu = ({
 
   const handleUploadGrade = async () => {
     try {
+      // ✅ NEW: one upload per semester + school year. Check BEFORE opening the
+      // file picker so the student isn't asked to pick a file for nothing. If
+      // this check itself fails (e.g. network), continue — the server still
+      // enforces the limit.
+      try {
+        const statusResponse = await sharedApiFetch(
+          `/student-grade/upload-status/${encodeURIComponent(userId)}`,
+          { method: 'GET' }
+        );
+        const statusData = await statusResponse.json().catch(() => null);
+        if (statusResponse.ok && statusData?.canUpload === false) {
+          showToast(statusData.message || 'You have already uploaded your grade for this semester.', 'error');
+          return;
+        }
+      } catch {}
+
       onFilePickerOpen?.(); 
       
       const result = await DocumentPicker.getDocumentAsync({
@@ -882,7 +897,7 @@ const DrawerMenu = ({
       }
 
       if (asset.size && asset.size > 10 * 1024 * 1024) {
-        Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
+        showToast('File too large. Please select a file smaller than 10MB.', 'error');
         return;
       }
 
@@ -952,6 +967,12 @@ const DrawerMenu = ({
       if (processingTimer) clearTimeout(processingTimer);
 
       if (!ok) {
+        // ✅ NEW: already uploaded for this semester + school year
+        if (status === 409) {
+          showToast(data?.error || 'You have already uploaded your grade for this semester.', 'error');
+          return;
+        }
+
         // Handle Identity Mismatch
         if (status === 403) {
           onVerificationFailed?.(data?.error || 'Identity verification failed.');
@@ -960,13 +981,13 @@ const DrawerMenu = ({
 
         // Handle AI Service Outage (Strict Mode)
         if (status === 503) {
-          Alert.alert('Service Unavailable', data?.error || 'Please try uploading your grade again in a few minutes.');
+          showToast(data?.error || 'Service unavailable. Please try uploading your grade again in a few minutes.', 'error');
           return;
         }
 
         // Handle Internal Server Errors (500) - Usually means AI Key issue or File Too Large
         if (status === 500) {
-          Alert.alert('Upload Error', data?.error || 'The server encountered an error processing your file. Please try a smaller file or contact support.');
+          showToast(data?.error || 'The server encountered an error processing your file. Please try a smaller file or contact support.', 'error');
           return;
         }
 
@@ -978,7 +999,7 @@ const DrawerMenu = ({
 
     } catch (error: any) {
       console.error('Upload grade error:', error);
-      Alert.alert('Upload Failed', error?.message || 'Unable to upload grade file.');
+      showToast(error?.message || 'Unable to upload grade file.', 'error');
     } finally {
       setIsUploadingGrade(false);
       onUploadStageChange?.(null);
@@ -1017,7 +1038,7 @@ const DrawerMenu = ({
       >
         <Path
           d="M0,10 C40,45 60,0 100,35 C140,70 160,25 200,60 C230,85 260,50 300,120 L300,150 L0,150 Z"
-          fill="rgba(211,47,47,0.10)"
+          fill="rgba(128,0,32,0.10)"
         />
       </Svg>
       <Svg
@@ -1029,7 +1050,7 @@ const DrawerMenu = ({
       >
         <Path
           d="M0,40 C35,65 55,30 95,60 C130,90 155,55 195,85 C225,105 255,80 300,140 L300,150 L0,150 Z"
-          fill="rgba(211,47,47,0.16)"
+          fill="rgba(128,0,32,0.16)"
         />
       </Svg>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
@@ -1079,7 +1100,7 @@ const DrawerMenu = ({
       </ScrollView>
 
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
-        <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
+        <MaterialCommunityIcons name="logout" size={28} color="#800020" style={{ marginRight: 20 }} />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
 
@@ -1090,7 +1111,7 @@ const DrawerMenu = ({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={[styles.modalIconBox, isMobile && styles.modalIconBoxMobile]}>
-                  <Ionicons name="settings-outline" size={22} color="#D32F2F" />
+                  <Ionicons name="settings-outline" size={22} color="#800020" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={[styles.modalTitle, isMobile && styles.modalTitleMobile]}>Settings</Text>
@@ -1098,7 +1119,7 @@ const DrawerMenu = ({
                 </View>
               </View>
               <TouchableOpacity style={styles.modalCloseButton} onPress={() => setSettingsModalVisible(false)} activeOpacity={0.85}>
-                <Ionicons name="close" size={20} color="#7A4A4A" />
+                <Ionicons name="close" size={20} color="#6B4A53" />
               </TouchableOpacity>
             </View>
 
@@ -1108,14 +1129,14 @@ const DrawerMenu = ({
             >
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color="#D32F2F" />
+                  <Ionicons name="shield-checkmark-outline" size={18} color="#800020" />
                   <Text style={styles.modalSectionTitle}>Account & Security</Text>
                 </View>
 
                 <TouchableOpacity style={styles.actionCard} activeOpacity={0.85} onPress={openChangeEmailModal}>
                   <View style={styles.actionCardLeft}>
                     <View style={styles.smallIconBox}>
-                      <Ionicons name="mail-outline" size={18} color="#D32F2F" />
+                      <Ionicons name="mail-outline" size={18} color="#800020" />
                     </View>
                     <View style={styles.actionCardTextWrap}>
                       <Text style={styles.actionCardTitle}>Change Email</Text>
@@ -1128,7 +1149,7 @@ const DrawerMenu = ({
                 <TouchableOpacity style={styles.actionCard} activeOpacity={0.85} onPress={openChangePasswordModal}>
                   <View style={styles.actionCardLeft}>
                     <View style={styles.smallIconBox}>
-                      <Ionicons name="lock-closed-outline" size={18} color="#D32F2F" />
+                      <Ionicons name="lock-closed-outline" size={18} color="#800020" />
                     </View>
                     <View style={styles.actionCardTextWrap}>
                       <Text style={styles.actionCardTitle}>Change Password</Text>
@@ -1160,7 +1181,7 @@ const DrawerMenu = ({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={[styles.modalIconBox, isMobile && styles.modalIconBoxMobile]}>
-                  <Ionicons name="mail-outline" size={22} color="#D32F2F" />
+                  <Ionicons name="mail-outline" size={22} color="#800020" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={[styles.modalTitle, isMobile && styles.modalTitleMobile]}>Change Email</Text>
@@ -1168,7 +1189,7 @@ const DrawerMenu = ({
                 </View>
               </View>
               <TouchableOpacity style={styles.modalCloseButton} onPress={resetChangeEmailModal} activeOpacity={0.85}>
-                <Ionicons name="close" size={20} color="#7A4A4A" />
+                <Ionicons name="close" size={20} color="#6B4A53" />
               </TouchableOpacity>
             </View>
 
@@ -1179,7 +1200,7 @@ const DrawerMenu = ({
               {changeEmailStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="key-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="key-outline" size={18} color="#800020" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
@@ -1216,18 +1237,18 @@ const DrawerMenu = ({
               {changeEmailStep === 2 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="mail-open-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="mail-open-outline" size={18} color="#800020" />
                     <Text style={styles.modalSectionTitle}>New Email</Text>
                   </View>
 
                   <Text style={styles.fieldLabel}>Email Address</Text>
                   <View style={styles.inputField}>
-                    <Ionicons name="mail-outline" size={18} color="#8A6F6F" />
+                    <Ionicons name="mail-outline" size={18} color="#7A6268" />
                     <TextInput
                       value={newEmail}
                       onChangeText={setNewEmail}
                       placeholder="Enter new email address"
-                      placeholderTextColor="#B79A9A"
+                      placeholderTextColor="#A8969B"
                       style={styles.textInput}
                       keyboardType="email-address"
                       autoCapitalize="none"
@@ -1303,7 +1324,7 @@ const DrawerMenu = ({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={[styles.modalIconBox, isMobile && styles.modalIconBoxMobile]}>
-                  <Ionicons name="lock-closed-outline" size={22} color="#D32F2F" />
+                  <Ionicons name="lock-closed-outline" size={22} color="#800020" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={[styles.modalTitle, isMobile && styles.modalTitleMobile]}>Change Password</Text>
@@ -1311,7 +1332,7 @@ const DrawerMenu = ({
                 </View>
               </View>
               <TouchableOpacity style={styles.modalCloseButton} onPress={resetChangePasswordModal} activeOpacity={0.85}>
-                <Ionicons name="close" size={20} color="#7A4A4A" />
+                <Ionicons name="close" size={20} color="#6B4A53" />
               </TouchableOpacity>
             </View>
 
@@ -1322,7 +1343,7 @@ const DrawerMenu = ({
               {changePasswordStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="key-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="key-outline" size={18} color="#800020" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
@@ -1359,18 +1380,18 @@ const DrawerMenu = ({
               {changePasswordStep === 2 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#D32F2F" />
+                    <Ionicons name="lock-closed-outline" size={18} color="#800020" />
                     <Text style={styles.modalSectionTitle}>Set New Password</Text>
                   </View>
 
                   <Text style={styles.fieldLabel}>New Password</Text>
                   <View style={styles.inputField}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#8A6F6F" />
+                    <Ionicons name="lock-closed-outline" size={18} color="#7A6268" />
                     <TextInput
                       value={newPassword}
                       onChangeText={setNewPassword}
                       placeholder="Enter new password"
-                      placeholderTextColor="#B79A9A"
+                      placeholderTextColor="#A8969B"
                       style={styles.textInput}
                       secureTextEntry={!showNewPassword}
                       editable={!changePasswordLoading}
@@ -1381,7 +1402,7 @@ const DrawerMenu = ({
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={styles.passwordEyeButton}
                     >
-                      <Ionicons name={showNewPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#8A6F6F" />
+                      <Ionicons name={showNewPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#7A6268" />
                     </Pressable>
                     {newPassword.length > 0 && (
                       <Ionicons
@@ -1398,7 +1419,7 @@ const DrawerMenu = ({
                         <Ionicons
                           name={check.passed ? 'checkmark-circle' : 'ellipse-outline'}
                           size={15}
-                          color={check.passed ? '#15803D' : '#B79A9A'}
+                          color={check.passed ? '#15803D' : '#A8969B'}
                         />
                         <Text style={[styles.passwordCheckText, check.passed && styles.passwordCheckTextPassed]}>
                           {check.label}
@@ -1409,12 +1430,12 @@ const DrawerMenu = ({
 
                   <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>Confirm Password</Text>
                   <View style={styles.inputField}>
-                    <Ionicons name="lock-closed-outline" size={18} color="#8A6F6F" />
+                    <Ionicons name="lock-closed-outline" size={18} color="#7A6268" />
                     <TextInput
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       placeholder="Confirm new password"
-                      placeholderTextColor="#B79A9A"
+                      placeholderTextColor="#A8969B"
                       style={styles.textInput}
                       secureTextEntry={!showConfirmPassword}
                       editable={!changePasswordLoading}
@@ -1425,7 +1446,7 @@ const DrawerMenu = ({
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={styles.passwordEyeButton}
                     >
-                      <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#8A6F6F" />
+                      <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#7A6268" />
                     </Pressable>
                     {confirmPassword.length > 0 && (
                       <Ionicons
@@ -1565,7 +1586,7 @@ const styles = StyleSheet.create({
   vectorMenuIcon: { width: 22, marginRight: 20, textAlign: 'center' },
   menuLabel: { color: '#444', fontWeight: '500', fontFamily: FONT_BODY },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
-  logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
+  logoutLabel: { fontSize: 16, color: '#800020', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 24 },
   logoutModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 360 },
   logoutModalTitle: { fontSize: 20, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#222', textAlign: 'center' },
@@ -1573,7 +1594,7 @@ const styles = StyleSheet.create({
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
   modalCancelText: { color: '#444', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
-  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
+  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#800020' },
   logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
 
   // ─── Settings (mirrors Admin Settings.tsx's card modal styling) ───────
@@ -1583,7 +1604,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD6DB',
     overflow: 'hidden',
     width: '92%',
   },
@@ -1593,7 +1614,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD6DB',
     overflow: 'hidden',
     width: '92%',
   },
@@ -1607,7 +1628,7 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8E3E3',
+    borderBottomColor: '#F3E6E9',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -1618,20 +1639,20 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#F0E0E4',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
   modalIconBoxMobile: { width: 46, height: 46, borderRadius: 16, marginRight: 12 },
-  modalTitle: { fontSize: 22, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#2B1111', marginBottom: 4 },
+  modalTitle: { fontSize: 22, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#2A0F16', marginBottom: 4 },
   modalTitleMobile: { fontSize: 20 },
-  modalSubtitle: { fontSize: 14, lineHeight: 21, color: '#8A6F6F', fontFamily: FONT_BODY },
+  modalSubtitle: { fontSize: 14, lineHeight: 21, color: '#7A6268', fontFamily: FONT_BODY },
   modalCloseButton: {
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#FAF5F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1639,11 +1660,11 @@ const styles = StyleSheet.create({
   modalContentMobile: { padding: 18, paddingBottom: 10 },
   modalSection: { marginBottom: 22 },
   modalSectionHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  modalSectionTitle: { marginLeft: 8, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111' },
-  helperText: { fontSize: 14, color: '#8A6F6F', lineHeight: 21, marginBottom: 16, fontFamily: FONT_BODY },
+  modalSectionTitle: { marginLeft: 8, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2A0F16' },
+  helperText: { fontSize: 14, color: '#7A6268', lineHeight: 21, marginBottom: 16, fontFamily: FONT_BODY },
   passwordChecklist: { marginTop: 10, marginBottom: 16 },
   passwordCheckRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  passwordCheckText: { marginLeft: 8, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8A6F6F' },
+  passwordCheckText: { marginLeft: 8, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#7A6268' },
   passwordCheckTextPassed: { color: '#15803D' },
   passwordCheckTextError: { color: '#DC2626' },
   passwordMatchRow: { marginTop: 10 },
@@ -1651,7 +1672,7 @@ const styles = StyleSheet.create({
     minHeight: 70,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#F3D4D4',
+    borderColor: '#EBD6DB',
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1665,22 +1686,22 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#F0E0E4',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   actionCardTextWrap: { flex: 1 },
-  actionCardTitle: { fontSize: 15, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111', marginBottom: 4 },
-  actionCardSubtitle: { fontSize: 13, color: '#8A6F6F', lineHeight: 19, fontFamily: FONT_BODY },
-  fieldLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#5F3B3B', marginBottom: 10 },
+  actionCardTitle: { fontSize: 15, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2A0F16', marginBottom: 4 },
+  actionCardSubtitle: { fontSize: 13, color: '#7A6268', lineHeight: 19, fontFamily: FONT_BODY },
+  fieldLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#5A3A42', marginBottom: 10 },
   fieldLabelTop: { marginTop: 18 },
   inputField: {
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1CACA',
-    backgroundColor: '#FFF9F9',
+    borderColor: '#E6CCD2',
+    backgroundColor: '#FAF5F6',
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1690,7 +1711,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     fontSize: 14,
-    color: '#2B1111',
+    color: '#2A0F16',
     fontWeight: WEIGHT_EMPHASIS,
     fontFamily: FONT_BODY,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
@@ -1706,12 +1727,12 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1CACA',
-    backgroundColor: '#FFF9F9',
+    borderColor: '#E6CCD2',
+    backgroundColor: '#FAF5F6',
     fontSize: 22,
     fontWeight: WEIGHT_EMPHASIS,
     fontFamily: FONT_BODY,
-    color: '#2B1111',
+    color: '#2A0F16',
     paddingVertical: 0,
     paddingHorizontal: 0,
     textAlign: 'center',
@@ -1732,7 +1753,7 @@ const styles = StyleSheet.create({
     }),
   },
   resendLinkWrap: { marginTop: 14, alignItems: 'center' },
-  resendLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#DC2626' },
+  resendLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#800020' },
   // Toast — portal-based, matches Admin Settings/Chatbot/Register/Community/
   // Dashboard/ClassesScreen/SignIn.
   toastPortal: { ...StyleSheet.absoluteFillObject },
@@ -1741,7 +1762,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: '#F8E3E3',
+    borderTopColor: '#F3E6E9',
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
@@ -1753,19 +1774,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E7C0C0',
-    backgroundColor: '#FFF7F7',
+    borderColor: '#DDBFC6',
+    backgroundColor: '#FAF5F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     minWidth: 110,
   },
-  modalSecondaryButtonText: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#7A4A4A' },
+  modalSecondaryButtonText: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#6B4A53' },
   modalPrimaryButton: {
     height: 48,
     paddingHorizontal: 18,
     borderRadius: 14,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#800020',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',

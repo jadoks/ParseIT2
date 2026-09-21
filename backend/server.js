@@ -5686,6 +5686,69 @@ app.post("/create-admin", async (req, res) => {
 });
 
 
+  // ============================================================
+  // ONE GRADE UPLOAD PER SEMESTER + SCHOOL YEAR
+  // ============================================================
+  // Purely a limit on HOW MANY uploads a student gets per term. It does not
+  // look at the file's content and does not touch grade parsing/calculation.
+  //
+  // The current term is derived from today's date (Philippine time), using the
+  // same cut-off as MyJourney's default school year (June starts a new SY):
+  //   June - December -> 1st Semester of  YYYY-(YYYY+1)
+  //   January - May   -> 2nd Semester of (YYYY-1)-YYYY
+  // Adjust here if your school calendar differs.
+  const getCurrentAcademicTerm = (now = new Date()) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "numeric",
+    }).formatToParts(now);
+    const year = Number(parts.find((p) => p.type === "year")?.value);
+    const month = Number(parts.find((p) => p.type === "month")?.value);
+
+    if (month >= 6) {
+      return { schoolYear: `${year}-${year + 1}`, semester: "1st Semester" };
+    }
+    return { schoolYear: `${year - 1}-${year}`, semester: "2nd Semester" };
+  };
+
+  const buildGradeUploadLogRef = (studentId, term) => {
+    const safeSY = term.schoolYear.replace(/[^a-zA-Z0-9]/g, "_");
+    const safeSem = term.semester.replace(/[^a-zA-Z0-9]/g, "_");
+    return db.collection("studentGradeUploads").doc(`${studentId}_${safeSY}_${safeSem}`);
+  };
+
+  const buildGradeAlreadyUploadedMessage = (term) =>
+    `You have already uploaded your grade for ${term.semester} S.Y. ${term.schoolYear}. You can upload again next semester.`;
+
+  // Lets the app check the limit BEFORE the student picks a file.
+  app.get("/student-grade/upload-status/:studentId", requireAuth, async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (!profile || profile.role !== "student") {
+        return res.status(403).json({ error: "Only students can upload grades." });
+      }
+      if (profile.data.studentId !== studentId && profile.id !== studentId) {
+        return res.status(403).json({ error: "Unauthorized." });
+      }
+
+      const term = getCurrentAcademicTerm();
+      const logSnap = await buildGradeUploadLogRef(studentId, term).get();
+
+      return res.json({
+        success: true,
+        canUpload: !logSnap.exists,
+        schoolYear: term.schoolYear,
+        semester: term.semester,
+        message: logSnap.exists ? buildGradeAlreadyUploadedMessage(term) : null,
+      });
+    } catch (error) {
+      console.error("Grade upload status error:", error);
+      return res.status(500).json({ error: error.message || "Failed to check upload status." });
+    }
+  });
+
   app.post("/upload-student-grade", requireAuth, async (req, res) => {
     try {
       // 1. Accept studentId from frontend for verification
@@ -5702,6 +5765,18 @@ app.post("/create-admin", async (req, res) => {
       
       // Use the ID sent from frontend, fallback to profile ID if missing
       const currentStudentId = frontendStudentId || profile.data.studentId || profile.id;
+
+      // ✅ ONE UPLOAD PER SEMESTER + SCHOOL YEAR — reject early, before the file
+      // is stored or any AI call is made.
+      const currentTerm = getCurrentAcademicTerm();
+      const gradeUploadLogRef = buildGradeUploadLogRef(currentStudentId, currentTerm);
+      if ((await gradeUploadLogRef.get()).exists) {
+        return res.status(409).json({
+          error: buildGradeAlreadyUploadedMessage(currentTerm),
+          schoolYear: currentTerm.schoolYear,
+          semester: currentTerm.semester,
+        });
+      }
 
       const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
       const safeMimeType = fileType || "application/octet-stream";
@@ -5829,6 +5904,29 @@ app.post("/create-admin", async (req, res) => {
     return res.status(500).json({
       error: "Unable to verify document identity. Please check your internet connection or try a smaller file."
     });
+  }
+
+  // ✅ Identity verified -> this upload counts for the current semester.
+  // create() fails if the record already exists, which also blocks two
+  // simultaneous uploads from both getting through.
+  try {
+    await gradeUploadLogRef.create({
+      studentId: currentStudentId,
+      schoolYear: currentTerm.schoolYear,
+      semester: currentTerm.semester,
+      fileName: safeFileName,
+      storagePath,
+      uploadedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (logError) {
+    if (logError?.code === 6 || /already exists/i.test(logError?.message || "")) {
+      return res.status(409).json({
+        error: buildGradeAlreadyUploadedMessage(currentTerm),
+        schoolYear: currentTerm.schoolYear,
+        semester: currentTerm.semester,
+      });
+    }
+    throw logError;
   }
 
   // 3. Proceed with Grade Parsing (Only if verified)

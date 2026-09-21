@@ -182,7 +182,7 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
       style={style}
     >
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        {/* Outer arc — brand red */}
+        {/* Outer arc — brand burgundy */}
         <Animated.View
           pointerEvents="none"
           style={{
@@ -192,13 +192,13 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
             borderRadius: ringSize / 2,
             borderWidth: 2,
             borderColor: 'transparent',
-            borderTopColor: '#D32F2F',
-            borderRightColor: '#D32F2F',
+            borderTopColor: '#800020',
+            borderRightColor: '#800020',
             opacity: ringOpacity,
             transform: [{ scale: ringScale }, { rotate: spinA }],
           }}
         />
-        {/* Inner arc — soft red, spins the opposite way */}
+        {/* Inner arc — soft burgundy, spins the opposite way */}
         <Animated.View
           pointerEvents="none"
           style={{
@@ -208,8 +208,8 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
             borderRadius: innerRingSize / 2,
             borderWidth: 2,
             borderColor: 'transparent',
-            borderBottomColor: '#F87171',
-            borderLeftColor: '#F87171',
+            borderBottomColor: '#BF7F8F',
+            borderLeftColor: '#BF7F8F',
             opacity: ringOpacity,
             transform: [{ scale: ringScale }, { rotate: spinB }],
           }}
@@ -392,7 +392,7 @@ const Header: React.FC<HeaderProps> = ({
         activeScreen === 'fruitmania' ||
         activeScreen === 'quizmasters');
 
-    return activeScreen === screen || isGameGroupActive ? '#D32F2F' : '#000000';
+    return activeScreen === screen || isGameGroupActive ? '#800020' : '#000000';
   };
 
   const isActive = (
@@ -485,7 +485,7 @@ const Header: React.FC<HeaderProps> = ({
         <MaterialCommunityIcons
           name="human-male-board"
           size={size}
-          color={isActive(screen) ? '#D32F2F' : '#000000'}
+          color={isActive(screen) ? '#800020' : '#000000'}
         />
       );
     }
@@ -540,7 +540,7 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   // 👇 UPDATED: Facebook-style active indicator — a colored underline bar
-  // beneath the icon (same #D32F2F as the active icon color) instead of a
+  // beneath the icon (same #800020 as the active icon color) instead of a
   // background tint. The nav button itself now uses generous horizontal
   // padding like Facebook's desktop tabs. (Desktop/tablet only.)
   const renderNavButton = (
@@ -610,7 +610,7 @@ const renderSearchResults = () => {
             activeOpacity={0.7}
           >
             <View style={styles.resultIconBox}>
-              <MaterialCommunityIcons name={item.icon as any} size={20} color="#D32F2F" />
+              <MaterialCommunityIcons name={item.icon as any} size={20} color="#800020" />
             </View>
             <View style={styles.resultContent}>
               <Text style={styles.resultTitle}>{item.title}</Text>
@@ -774,7 +774,7 @@ const renderSearchResults = () => {
                   <MaterialCommunityIcons 
                     name="magnify" 
                     size={24} 
-                    color={searchQuery.trim() ? '#D32F2F' : '#888'} 
+                    color={searchQuery.trim() ? '#800020' : '#888'} 
                   />
                 </TouchableOpacity>
               </View>
@@ -991,7 +991,7 @@ const styles = StyleSheet.create({
 
   searchIconOnly: {
     borderWidth: 1,
-    borderColor: '#D32F2F',
+    borderColor: '#800020',
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1044,7 +1044,7 @@ const styles = StyleSheet.create({
   },
 
   // 👇 NEW: Facebook-style active indicator — a colored bar under the
-  // active icon, same color (#D32F2F) as the active icon itself.
+  // active icon, same color (#800020) as the active icon itself.
   activeUnderline: {
     position: 'absolute',
     bottom: -1,
@@ -1052,7 +1052,7 @@ const styles = StyleSheet.create({
     right: '20%',
     height: 3,
     borderRadius: 2,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#800020',
   },
 
   tooltip: {
@@ -1106,7 +1106,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -6,
     right: -8,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#800020',
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -1157,7 +1157,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 14,
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#F6EDEF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -1189,10 +1189,10 @@ const styles = StyleSheet.create({
 
   // 👇 highlighted-border focus state for the mobile expanded search
   // input, matching inputWrapperFocused / passwordContainerFocused in
-  // SignIn.tsx (red border + slightly thicker width on focus).
+  // SignIn.tsx (burgundy border + slightly thicker width on focus).
   expandedSearchInputFocused: {
     borderWidth: 1.5,
-    borderColor: '#D32F2F',
+    borderColor: '#800020',
   },
 
   // 👇 disables the browser's default black focus outline in

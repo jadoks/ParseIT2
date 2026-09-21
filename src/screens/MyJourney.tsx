@@ -49,6 +49,12 @@ const SEMS = [
   '2nd Semester'
 ];
 
+// Display only: blank grades are stored as 0/null and shown as "N/A".
+const hasRealGrade = (item: ParsedGrade) => {
+  const value = Number(item?.grade);
+  return Number.isFinite(value) && value > 0;
+};
+
 const getDefaultStartYear = () => {
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -152,7 +158,8 @@ const MyJourney = ({
         );
 
         if (!cancelled) {
-          if (response.ok && data.success && Array.isArray(data.data) && data.data.length > 0) {
+          // If every subject is N/A, show "No Uploaded Grade Yet".
+          if (response.ok && data.success && Array.isArray(data.data) && data.data.some(hasRealGrade)) {
             setUploadedGrades(data.data);
             setUploadedFileName(data.fileName || null);
           } else {
