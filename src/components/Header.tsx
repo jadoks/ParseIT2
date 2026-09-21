@@ -392,7 +392,7 @@ const Header: React.FC<HeaderProps> = ({
         activeScreen === 'fruitmania' ||
         activeScreen === 'quizmasters');
 
-    return activeScreen === screen || isGameGroupActive ? '#8B0000' : '#000000';
+    return activeScreen === screen || isGameGroupActive ? '#8B0000' : '#65676B';
   };
 
   const isActive = (
@@ -485,7 +485,7 @@ const Header: React.FC<HeaderProps> = ({
         <MaterialCommunityIcons
           name="human-male-board"
           size={size}
-          color={isActive(screen) ? '#8B0000' : '#000000'}
+          color={getIconColor(screen)}
         />
       );
     }

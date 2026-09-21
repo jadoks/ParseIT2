@@ -349,7 +349,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   };
 
   const getIconColor = (screen: ScreenType) =>
-    activeScreen === screen ? '#8B0000' : '#000000';
+    activeScreen === screen ? '#8B0000' : '#65676B';
 
   const isActive = (screen: ScreenType) => activeScreen === screen;
 

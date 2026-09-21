@@ -940,7 +940,7 @@ useEffect(() => {
                   { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
                 ]}
               >
-                ParseIt Community
+                ParseIT Community
               </Text>
             </View>
 
