@@ -57,7 +57,7 @@ export type Assignment = {
   storagePath?: string | null;
   bucketPath?: string | null;
   // ✅ NEW: byte size of the legacy single-file mirror above, used only to
-  // compute the 100MB total-attachment cap in the Create/Update Assignment
+  // compute the 30MB total-attachment cap in the Create/Update Assignment
   // form. Optional since older/legacy assignment docs won't have it.
   fileSize?: number;
   // ✅ NEW: full list of every file the teacher attached to this assignment
@@ -77,7 +77,7 @@ export type Assignment = {
     storagePath?: string | null;
     bucketPath?: string | null;
     source?: 'teacher' | 'student';
-    // ✅ NEW: byte size of this attachment, used to enforce the 100MB
+    // ✅ NEW: byte size of this attachment, used to enforce the 30MB
     // total-attachment cap. Optional since older attachments saved before
     // this field existed won't have it.
     size?: number;
@@ -180,7 +180,7 @@ type PickedUploadFile = {
   base64?: string;
   file?: File;
   // ✅ NEW: byte size of the picked file, used to enforce per-file and
-  // total-attachment size limits (e.g. the 100MB total cap on assignment
+  // total-attachment size limits (e.g. the 30MB total cap on assignment
   // attachments) without having to re-read the file from disk.
   size?: number;
 } | null;
@@ -265,9 +265,9 @@ const pad = (value: number) => String(value).padStart(2, '0');
 // ✅ NEW: shared byte-size limits + formatter for the Assignment attachment
 // picker (per-file cap + total cap across every attachment) and the Manual
 // Lesson file picker (per-file cap only).
-const MAX_ASSIGNMENT_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
-const MAX_ASSIGNMENT_TOTAL_SIZE_BYTES = 100 * 1024 * 1024; // 100MB total across all attachments
-const MAX_LESSON_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
+const MAX_ASSIGNMENT_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB per file
+const MAX_ASSIGNMENT_TOTAL_SIZE_BYTES = 30 * 1024 * 1024; // 30MB total across all attachments
+const MAX_LESSON_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB per file
 const MAX_TEMPLATE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per header/footer template image
 const ALLOWED_TEMPLATE_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
@@ -3098,7 +3098,7 @@ useEffect(() => {
   // ✅ NEW: total bytes already committed to this assignment's attachments —
   // every existing (already-uploaded) file that hasn't been removed, plus
   // every file already staged this session in pickedAssignmentFiles. Used to
-  // enforce the 100MB TOTAL cap below, on top of the existing 20MB-per-file
+  // enforce the 30MB TOTAL cap below, on top of the existing 25MB-per-file
   // cap. selectedAssignment is read directly since that's the same source
   // renderAssignmentAttachmentSection uses to display "existing" files.
   const getAssignmentExistingFilesList = (): Array<{
@@ -3147,7 +3147,7 @@ useEffect(() => {
       });
       if (result.canceled || !result.assets?.length) return;
 
-      // ✅ Enforce a 20MB-per-file limit, matching the syllabus upload check.
+      // ✅ Enforce a 25MB-per-file limit for assignment attachments.
       const oversized = result.assets.filter(
         (asset) => asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE_BYTES
       );
@@ -3159,18 +3159,18 @@ useEffect(() => {
           'error',
           'File Too Large',
           oversized.length === 1
-            ? `"${oversized[0].name}" exceeds the maximum size of 20 MB.`
-            : `${oversized.length} files exceed the maximum size of 20 MB and were skipped.`
+            ? `"${oversized[0].name}" exceeds the maximum size of ${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)}.`
+            : `${oversized.length} files exceed the maximum size of ${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)} and were skipped.`
         );
       }
       if (validAssets.length === 0) return;
 
-      // ✅ NEW: Enforce a 100MB TOTAL limit across every attachment on this
+      // ✅ NEW: Enforce a 30MB TOTAL limit across every attachment on this
       // assignment — existing (already-uploaded) files still attached, plus
       // whatever is already staged this session, plus the newly picked
-      // files. e.g. once 5 files at 20MB each are attached (100MB total),
+      // files. e.g. once a 25MB file is attached, only 5MB of room is left,
       // a 6th file is rejected even though it individually passes the
-      // 20MB-per-file check above.
+      // 25MB-per-file check above.
       let runningTotal = getAssignmentAttachedTotalSize();
       const acceptedAssets: typeof validAssets = [];
       const rejectedForTotalLimit: typeof validAssets = [];
@@ -4444,7 +4444,7 @@ useEffect(() => {
               const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
               if (res.canceled || !res.assets?.[0]) return;
               const asset = res.assets[0];
-              // ✅ NEW: enforce the same 20MB-per-file limit used for the
+              // ✅ NEW: enforce the same 25MB-per-file limit used for the
               // syllabus and assignment file pickers, so a Manual Lesson's
               // uploaded material can't silently balloon in size either.
               if (asset.size && asset.size > MAX_LESSON_FILE_SIZE_BYTES) {
@@ -4518,7 +4518,7 @@ useEffect(() => {
       (f) => !removedAssignmentFileKeys.includes(getAssignmentFileKey(f))
     );
     const totalFileCount = visibleExistingFiles.length + pickedAssignmentFiles.length;
-    // ✅ NEW: running total (existing + staged) against the 100MB cap, shown
+    // ✅ NEW: running total (existing + staged) against the 30MB cap, shown
     // under the attachment list so teachers can see how much room is left.
     const attachedTotalSize = getAssignmentAttachedTotalSize();
     const isAtTotalLimit = attachedTotalSize >= MAX_ASSIGNMENT_TOTAL_SIZE_BYTES;
@@ -4571,7 +4571,7 @@ useEffect(() => {
         <Text style={styles.attachmentSizeHint}>
           {isAtTotalLimit
             ? `Total attachment limit of ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} reached.`
-            : `${formatFileSizeMB(attachedTotalSize)} of ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} used (20 MB max per file).`}
+            : `${formatFileSizeMB(attachedTotalSize)} of ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} used (${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)} max per file).`}
         </Text>
       </>
     );
@@ -9569,7 +9569,7 @@ const styles = StyleSheet.create({
   },
   uploadBtnText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   // ✅ NEW: small caption under the assignment "Upload File" button showing
-  // running total vs. the 100MB cap.
+  // running total vs. the 30MB cap.
   attachmentSizeHint: { fontFamily: FONT_BODY, color: '#888', fontSize: 11, marginTop: 6, textAlign: 'center' },
   filePreviewBox: {
     marginTop: 10,

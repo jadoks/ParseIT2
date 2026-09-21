@@ -5212,6 +5212,21 @@ async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQ
   /**
    * FILE UPLOAD ROUTE
    */
+  // Per-file upload limit for class files (assignments, materials, lessons).
+  // Keep in sync with MAX_ASSIGNMENT_FILE_SIZE_BYTES and
+  // MAX_LESSON_FILE_SIZE_BYTES in TeacherCourseDetail2.tsx. Must stay below the
+  // express.json body limit (50mb) once base64 overhead (~33%) is added.
+  const CLASS_FILE_MAX_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
+  function getBase64ByteSize(fileBase64) {
+    if (!fileBase64 || typeof fileBase64 !== "string") return 0;
+    const cleaned = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+    return Math.floor((cleaned.length * 3) / 4);
+  }
+  function isClassFileTooLarge(fileBase64) {
+    return getBase64ByteSize(fileBase64) > CLASS_FILE_MAX_SIZE_BYTES;
+  }
+  const CLASS_FILE_TOO_LARGE_MESSAGE = `File exceeds maximum size of ${CLASS_FILE_MAX_SIZE_BYTES / (1024 * 1024)}MB.`;
+
   app.post("/upload-class-file", requireAuth, async (req, res) => {
     try {
       const {
@@ -5228,19 +5243,9 @@ async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQ
         return res.status(400).json({ error: "fileBase64 is required." });
       }
 
-      // ✅ Enforce a 20MB-per-file limit for assignment uploads, matching
-      // the syllabus upload limit.
-      if (kind === "assignment") {
-        const ASSIGNMENT_FILE_MAX_SIZE = 20 * 1024 * 1024;
-        const cleanedBase64 = fileBase64.includes(",")
-          ? fileBase64.split(",")[1]
-          : fileBase64;
-        const approxBytes = Math.floor((cleanedBase64.length * 3) / 4);
-        if (approxBytes > ASSIGNMENT_FILE_MAX_SIZE) {
-          return res.status(400).json({
-            error: `File exceeds maximum size of 20MB.`,
-          });
-        }
+      // ✅ Enforce the per-file limit for assignment and lesson/material uploads.
+      if ((kind === "assignment" || kind === "material") && isClassFileTooLarge(fileBase64)) {
+        return res.status(400).json({ error: CLASS_FILE_TOO_LARGE_MESSAGE });
       }
 
       const classSnap = await db.collection("classes").doc(classId).get();
@@ -20020,6 +20025,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         return res.status(400).json({ error: "Missing required fields." });
       }
 
+      if (fileBase64 && isClassFileTooLarge(fileBase64)) {
+        return res.status(400).json({ error: CLASS_FILE_TOO_LARGE_MESSAGE });
+      }
+
       // Duplicate title check — must be unique among all lessons already in
       // this module (AI-generated or manually created). Normalized
       // (trimmed, case-insensitive) to match the frontend's check.
@@ -20432,6 +20441,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       } = req.body;
 
       if (!lessonId) return res.status(400).json({ error: "Lesson ID is required." });
+
+      if (fileBase64 && isClassFileTooLarge(fileBase64)) {
+        return res.status(400).json({ error: CLASS_FILE_TOO_LARGE_MESSAGE });
+      }
 
       // Fetch existing lesson to verify it exists and get current data
       const lessonRef = db.collection("courseLessons").doc(lessonId);
