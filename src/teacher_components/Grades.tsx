@@ -78,6 +78,17 @@ type StudentRecord = {
 
 type DropdownKey = 'semester' | null;
 
+// The grade report can be looked up two ways: by the student's exact ID, or
+// by last name — which can legitimately match several students (siblings,
+// common surnames), so the lookup keeps a list and lets the user switch
+// between the matches and pick which ones to export.
+type SearchMode = 'studentId' | 'lastName';
+
+const searchModeOptions: { key: SearchMode; label: string }[] = [
+  { key: 'studentId', label: 'Student ID' },
+  { key: 'lastName', label: 'Student Last Name' },
+];
+
 type InlineDropdownProps = {
   options: string[];
   selectedValue: string;
@@ -309,17 +320,48 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       : 940;
   const mobileTableMinWidth = 640;
 
+  const [searchMode, setSearchMode] = useState<SearchMode>('studentId');
   const [studentId, setStudentId] = useState('');
+  const [lastNameQuery, setLastNameQuery] = useState('');
   const [startYear, setStartYear] = useState('2025');
   const [selectedSemester, setSelectedSemester] = useState('First Semester');
   const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
   const [showGrades, setShowGrades] = useState(false);
-  const [studentRecord, setStudentRecord] = useState<StudentRecord | null>(null);
+  // A Student ID lookup yields exactly one record; a last-name lookup can
+  // yield many. Both funnel into this list so the rest of the screen only
+  // ever deals with "the records I loaded" + "the one I'm looking at".
+  const [records, setRecords] = useState<StudentRecord[]>([]);
+  const [activeRecordIndex, setActiveRecordIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [notFoundMessage, setNotFoundMessage] = useState('');
 
+  // Excel export picker (only reachable when a last-name search returned
+  // more than one student).
+  const [showExportPicker, setShowExportPicker] = useState(false);
+  const [selectedExportIds, setSelectedExportIds] = useState<string[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const studentRecord = records[activeRecordIndex] || null;
+  const hasMultipleRecords = records.length > 1;
+
   const schoolYear = useMemo(() => buildSchoolYear(startYear), [startYear]);
+
+  const resetResults = () => {
+    setShowGrades(false);
+    setRecords([]);
+    setActiveRecordIndex(0);
+    setShowExportPicker(false);
+    setSelectedExportIds([]);
+  };
+
+  const handleSearchModeChange = (mode: SearchMode) => {
+    if (mode === searchMode) return;
+    setSearchMode(mode);
+    setOpenDropdown(null);
+    setNotFound(false);
+    resetResults();
+  };
 
   const closeDropdowns = () => {
     if (openDropdown !== null) {
@@ -331,23 +373,61 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
     setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4));
   };
 
+  // Shared shaping so an ID lookup and a last-name lookup produce identical
+  // StudentRecord objects for the report/export code below.
+  const buildStudentRecord = (
+    rawSubjects: any[],
+    fallbackId: string,
+    fallbackName: string | null,
+    normalizedStartYear: string,
+    serverTotalUnits?: number,
+    serverGwa?: number
+  ): StudentRecord => {
+    const gradeItems: GradeItem[] = (rawSubjects || []).map((item: any) => ({
+      code: String(item.subjectCode || 'N/A'),
+      desc: String(item.subjectTitle || 'Unknown Subject'),
+      unit: Number(item.units || 0),
+      grade: Number(item.grade || 0),
+    }));
+
+    gradeItems.sort((a, b) => a.code.localeCompare(b.code));
+
+    const totalUnits =
+      serverTotalUnits || gradeItems.reduce((sum, item) => sum + item.unit, 0);
+
+    return {
+      studentId: fallbackId,
+      fullName: fallbackName || fallbackId,
+      schoolYear: buildSchoolYear(normalizedStartYear),
+      semester: selectedSemester,
+      grades: gradeItems,
+      totalUnits,
+      gwa: serverGwa || 0,
+    };
+  };
+
   const loadStudentGradesFromDatabase = async () => {
     const trimmedId = studentId.trim();
+    const trimmedLastName = lastNameQuery.trim();
+    const isLastNameSearch = searchMode === 'lastName';
     const normalizedStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
     const parsedStartYear = Number(normalizedStartYear);
 
-    if (!trimmedId) {
-      Alert.alert('Missing Student ID', 'Please enter a student ID.');
-      setShowGrades(false);
-      setStudentRecord(null);
+    if (isLastNameSearch ? !trimmedLastName : !trimmedId) {
+      Alert.alert(
+        isLastNameSearch ? 'Missing Last Name' : 'Missing Student ID',
+        isLastNameSearch
+          ? "Please enter the student's last name."
+          : 'Please enter a student ID.'
+      );
+      resetResults();
       setNotFound(false);
       return;
     }
 
     if (!Number.isInteger(parsedStartYear) || normalizedStartYear.length !== 4) {
       Alert.alert('Invalid Start Year', 'Please enter a valid 4-digit academic start year. Example: 2025');
-      setShowGrades(false);
-      setStudentRecord(null);
+      resetResults();
       setNotFound(false);
       return;
     }
@@ -363,20 +443,64 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       if (targetSchoolYear) params.append('schoolYear', targetSchoolYear);
       if (selectedSemester) params.append('semester', selectedSemester);
 
-      const response = await fetch(
-        `${apiBaseUrl}/student-grade/parse/${encodeURIComponent(trimmedId)}?${params.toString()}`,
-        { credentials: 'include' }
-      );
+      const endpoint = isLastNameSearch
+        ? `${apiBaseUrl}/student-grade/parse-by-lastname/${encodeURIComponent(trimmedLastName)}?${params.toString()}`
+        : `${apiBaseUrl}/student-grade/parse/${encodeURIComponent(trimmedId)}?${params.toString()}`;
 
+      const response = await fetch(endpoint, { credentials: 'include' });
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load parsed grades.');
       }
 
+      // ── Last name: zero, one, or many students ──────────────────────────
+      if (isLastNameSearch) {
+        const matchedStudents = Array.isArray(data.students) ? data.students : [];
+
+        if (!data.success || matchedStudents.length === 0) {
+          resetResults();
+          setNotFoundMessage(
+            data?.message ||
+              `No uploaded/parsed grades found for students with the last name "${trimmedLastName}" in ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
+          );
+          setNotFound(true);
+          return;
+        }
+
+        const nextRecords = matchedStudents
+          .map((student: any) =>
+            buildStudentRecord(
+              student.data,
+              String(student.studentId || ''),
+              student.studentName || null,
+              normalizedStartYear,
+              student.totalUnits,
+              student.gwa
+            )
+          )
+          .filter((record: StudentRecord) => record.grades.length > 0);
+
+        if (nextRecords.length === 0) {
+          resetResults();
+          setNotFoundMessage(
+            `No uploaded/parsed grades found for students with the last name "${trimmedLastName}" in ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
+          );
+          setNotFound(true);
+          return;
+        }
+
+        setRecords(nextRecords);
+        setActiveRecordIndex(0);
+        setSelectedExportIds(nextRecords.map((record: StudentRecord) => record.studentId));
+        setNotFound(false);
+        setShowGrades(true);
+        return;
+      }
+
+      // ── Student ID: single record ───────────────────────────────────────
       if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
-        setShowGrades(false);
-        setStudentRecord(null);
+        resetResults();
         setNotFoundMessage(
           `No uploaded/parsed grades found for ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
         );
@@ -384,33 +508,23 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
         return;
       }
 
-      const gradeItems: GradeItem[] = data.data.map((item: any) => ({
-        code: String(item.subjectCode || 'N/A'),
-        desc: String(item.subjectTitle || 'Unknown Subject'),
-        unit: Number(item.units || 0),
-        grade: Number(item.grade || 0),
-      }));
+      const record = buildStudentRecord(
+        data.data,
+        trimmedId,
+        data.studentName || null,
+        normalizedStartYear,
+        data.totalUnits,
+        data.gwa
+      );
 
-      gradeItems.sort((a, b) => a.code.localeCompare(b.code));
-
-      const totalUnits = data.totalUnits || gradeItems.reduce((sum, item) => sum + item.unit, 0);
-      const gwa = data.gwa || 0;
-
-      setStudentRecord({
-        studentId: trimmedId,
-        fullName: data.studentName || trimmedId,
-        schoolYear: buildSchoolYear(normalizedStartYear),
-        semester: selectedSemester,
-        grades: gradeItems,
-        totalUnits,
-        gwa,
-      });
+      setRecords([record]);
+      setActiveRecordIndex(0);
+      setSelectedExportIds([record.studentId]);
       setNotFound(false);
       setShowGrades(true);
     } catch (error: any) {
       Alert.alert('Load Failed', error?.message || 'Unable to load student grades.');
-      setShowGrades(false);
-      setStudentRecord(null);
+      resetResults();
       setNotFound(false);
     } finally {
       setIsLoading(false);
@@ -652,27 +766,22 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
     `;
   };
 
-  const downloadGradeReportExcel = async () => {
-    if (!studentRecord) {
-      Alert.alert('No Report', 'Please view a grade report first.');
-      return;
+  // Excel sheet names are capped at 31 chars and must be unique inside a
+  // workbook, so multi-student exports get a deduped, trimmed name per tab.
+  const buildUniqueSheetName = (base: string, used: Set<string>) => {
+    let candidate = (base || 'Sheet').replace(/[\\/?*\[\]:]/g, ' ').trim().slice(0, 31) || 'Sheet';
+    let suffix = 2;
+    while (used.has(candidate.toLowerCase())) {
+      const tag = ` (${suffix})`;
+      candidate = `${candidate.slice(0, 31 - tag.length)}${tag}`;
+      suffix += 1;
     }
+    used.add(candidate.toLowerCase());
+    return candidate;
+  };
 
-    const safeSchoolYear = sanitizeFileName(studentRecord.schoolYear.replace(/S\.?Y\.?/gi, '').trim());
-    const safeSemester = sanitizeFileName(studentRecord.semester);
-    const fileName = `grade-report-${sanitizeFileName(studentRecord.studentId)}-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
-
-    const summaryRows = [
-      ['Student ID', studentRecord.studentId],
-      ['Student Name', studentRecord.fullName],
-      ['Academic Year', studentRecord.schoolYear],
-      ['Semester', studentRecord.semester],
-      ['Total Units', Number(studentRecord.totalUnits.toFixed(1))],
-      ['GWA', Number(formatGrade(studentRecord.gwa))],
-      ['Exported At', new Date().toLocaleString()],
-    ];
-
-    const gradeRows = studentRecord.grades.map((item, index) => ({
+  const buildGradeRows = (record: StudentRecord) =>
+    record.grades.map((item, index) => ({
       No: index + 1,
       'Course Code': item.code,
       'Course Detail': item.desc,
@@ -680,22 +789,98 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       'Final Grade': Number(formatGrade(item.grade)),
     }));
 
+  const gradesSheetColumnWidths = [
+    { wch: 6 },
+    { wch: 16 },
+    { wch: 48 },
+    { wch: 10 },
+    { wch: 14 },
+  ];
+
+  const exportRecordsToExcel = async (exportRecords: StudentRecord[]) => {
+    if (!exportRecords.length) {
+      Alert.alert('No Report', 'Please select at least one student to export.');
+      return;
+    }
+
+    const isBatch = exportRecords.length > 1;
+    const firstRecord = exportRecords[0];
+    const safeSchoolYear = sanitizeFileName(firstRecord.schoolYear.replace(/S\.?Y\.?/gi, '').trim());
+    const safeSemester = sanitizeFileName(firstRecord.semester);
+    const fileName = isBatch
+      ? `grade-reports-${sanitizeFileName(lastNameQuery.trim() || 'students')}-${exportRecords.length}-students-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`
+      : `grade-report-${sanitizeFileName(firstRecord.studentId)}-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
+
     try {
+      setIsExporting(true);
       const workbook = XLSX.utils.book_new();
+      const usedSheetNames = new Set<string>();
 
-      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-      summarySheet['!cols'] = [{ wch: 18 }, { wch: 42 }];
-      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Student Summary');
+      if (isBatch) {
+        // One overview tab listing every exported student, then one detail
+        // tab per student.
+        const overviewRows = exportRecords.map((record, index) => ({
+          No: index + 1,
+          'Student ID': record.studentId,
+          'Student Name': record.fullName,
+          'Academic Year': record.schoolYear,
+          Semester: record.semester,
+          'Total Units': Number(record.totalUnits.toFixed(1)),
+          GWA: Number(formatGrade(record.gwa)),
+        }));
 
-      const gradesSheet = XLSX.utils.json_to_sheet(gradeRows);
-      gradesSheet['!cols'] = [
-        { wch: 6 },
-        { wch: 16 },
-        { wch: 48 },
-        { wch: 10 },
-        { wch: 14 },
-      ];
-      XLSX.utils.book_append_sheet(workbook, gradesSheet, 'Grades');
+        const overviewSheet = XLSX.utils.json_to_sheet(overviewRows);
+        overviewSheet['!cols'] = [
+          { wch: 6 },
+          { wch: 16 },
+          { wch: 32 },
+          { wch: 18 },
+          { wch: 18 },
+          { wch: 12 },
+          { wch: 10 },
+        ];
+        XLSX.utils.book_append_sheet(
+          workbook,
+          overviewSheet,
+          buildUniqueSheetName('All Students', usedSheetNames)
+        );
+
+        exportRecords.forEach((record) => {
+          const sheet = XLSX.utils.json_to_sheet(buildGradeRows(record));
+          sheet['!cols'] = gradesSheetColumnWidths;
+          XLSX.utils.book_append_sheet(
+            workbook,
+            sheet,
+            buildUniqueSheetName(`${record.studentId} ${record.fullName}`, usedSheetNames)
+          );
+        });
+      } else {
+        const summaryRows = [
+          ['Student ID', firstRecord.studentId],
+          ['Student Name', firstRecord.fullName],
+          ['Academic Year', firstRecord.schoolYear],
+          ['Semester', firstRecord.semester],
+          ['Total Units', Number(firstRecord.totalUnits.toFixed(1))],
+          ['GWA', Number(formatGrade(firstRecord.gwa))],
+          ['Exported At', new Date().toLocaleString()],
+        ];
+
+        const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+        summarySheet['!cols'] = [{ wch: 18 }, { wch: 42 }];
+        XLSX.utils.book_append_sheet(
+          workbook,
+          summarySheet,
+          buildUniqueSheetName('Student Summary', usedSheetNames)
+        );
+
+        const gradesSheet = XLSX.utils.json_to_sheet(buildGradeRows(firstRecord));
+        gradesSheet['!cols'] = gradesSheetColumnWidths;
+        XLSX.utils.book_append_sheet(
+          workbook,
+          gradesSheet,
+          buildUniqueSheetName('Grades', usedSheetNames)
+        );
+      }
 
       if (Platform.OS === 'web') {
         XLSX.writeFile(workbook, fileName);
@@ -738,7 +923,54 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       Alert.alert('Downloaded', `Grade report Excel file saved successfully.\n${savedUri}`);
     } catch (error: any) {
       Alert.alert('Download Failed', error?.message || 'Unable to save the Excel file.');
+    } finally {
+      setIsExporting(false);
     }
+  };
+
+  // Single result → download straight away. Several results → let the user
+  // pick which students go into the workbook first.
+  const handleDownloadPress = () => {
+    if (!records.length) {
+      Alert.alert('No Report', 'Please view a grade report first.');
+      return;
+    }
+    if (!hasMultipleRecords) {
+      void exportRecordsToExcel(records);
+      return;
+    }
+    setSelectedExportIds(
+      selectedExportIds.length ? selectedExportIds : records.map((record) => record.studentId)
+    );
+    setShowExportPicker(true);
+  };
+
+  const toggleExportSelection = (id: string) => {
+    setSelectedExportIds((previous) =>
+      previous.includes(id) ? previous.filter((value) => value !== id) : [...previous, id]
+    );
+  };
+
+  const allExportSelected = records.length > 0 && selectedExportIds.length === records.length;
+
+  const toggleSelectAllExports = () => {
+    setSelectedExportIds(allExportSelected ? [] : records.map((record) => record.studentId));
+  };
+
+  const confirmExportSelection = async () => {
+    const chosen = records.filter((record) => selectedExportIds.includes(record.studentId));
+    if (!chosen.length) {
+      Alert.alert('Nothing Selected', 'Select at least one student to include in the Excel file.');
+      return;
+    }
+    setShowExportPicker(false);
+    await exportRecordsToExcel(chosen);
+  };
+
+  const exportCurrentRecordOnly = async () => {
+    if (!studentRecord) return;
+    setShowExportPicker(false);
+    await exportRecordsToExcel([studentRecord]);
   };
 
   return (
@@ -780,21 +1012,65 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             <View style={[styles.controlsCard, isPhone && styles.controlsCardMobile]}>
               <Text style={styles.controlsTitle}>Academic Record Lookup</Text>
               <Text style={styles.controlsSubtitle}>
-                Enter the student ID, academic start year, and semester to retrieve grades.
+                Search by {searchMode === 'studentId' ? 'Student ID' : 'student last name'}, then set the
+                academic start year and semester to retrieve grades.
               </Text>
+
+              {/* Search-by toggle: Student ID vs Student Last Name */}
+              <View style={styles.searchModeRow}>
+                {searchModeOptions.map((option) => {
+                  const isActive = searchMode === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      onPress={() => handleSearchModeChange(option.key)}
+                      style={[styles.searchModeChip, isActive && styles.searchModeChipActive]}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={option.key === 'studentId' ? 'id-card-outline' : 'person-outline'}
+                        size={15}
+                        color={isActive ? '#FFFFFF' : '#6B0F1A'}
+                      />
+                      <Text
+                        style={[
+                          styles.searchModeChipText,
+                          isActive && styles.searchModeChipTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
               {isStackedLayout ? (
                 <View style={styles.stackedControls}>
                   <View style={styles.academicFieldFull}>
-                    <Text style={styles.academicLabel}>Student ID</Text>
-                    <TextInput
-                      placeholder="Enter Student ID"
-                      placeholderTextColor="#8A8A8A"
-                      value={studentId}
-                      onChangeText={setStudentId}
-                      style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
-                      keyboardType="numeric"
-                    />
+                    <Text style={styles.academicLabel}>
+                      {searchMode === 'studentId' ? 'Student ID' : 'Student Last Name'}
+                    </Text>
+                    {searchMode === 'studentId' ? (
+                      <TextInput
+                        placeholder="Enter Student ID"
+                        placeholderTextColor="#8A8A8A"
+                        value={studentId}
+                        onChangeText={setStudentId}
+                        style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
+                        keyboardType="numeric"
+                      />
+                    ) : (
+                      <TextInput
+                        placeholder="Enter Student Last Name"
+                        placeholderTextColor="#8A8A8A"
+                        value={lastNameQuery}
+                        onChangeText={setLastNameQuery}
+                        style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
+                        autoCapitalize="words"
+                        autoCorrect={false}
+                      />
+                    )}
                   </View>
 
                   <View style={styles.academicFieldFull}>
@@ -864,15 +1140,29 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                 <View style={styles.controlsGrid}>
                   <View style={[styles.controlsGridRow, styles.controlsGridRowTop]}>
                     <View style={styles.academicField}>
-                      <Text style={styles.academicLabel}>Student ID</Text>
-                      <TextInput
-                        placeholder="Enter Student ID"
-                        placeholderTextColor="#8A8A8A"
-                        value={studentId}
-                        onChangeText={setStudentId}
-                        style={styles.mainInput}
-                        keyboardType="numeric"
-                      />
+                      <Text style={styles.academicLabel}>
+                        {searchMode === 'studentId' ? 'Student ID' : 'Student Last Name'}
+                      </Text>
+                      {searchMode === 'studentId' ? (
+                        <TextInput
+                          placeholder="Enter Student ID"
+                          placeholderTextColor="#8A8A8A"
+                          value={studentId}
+                          onChangeText={setStudentId}
+                          style={styles.mainInput}
+                          keyboardType="numeric"
+                        />
+                      ) : (
+                        <TextInput
+                          placeholder="Enter Student Last Name"
+                          placeholderTextColor="#8A8A8A"
+                          value={lastNameQuery}
+                          onChangeText={setLastNameQuery}
+                          style={styles.mainInput}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                        />
+                      )}
                     </View>
 
                     <View style={styles.academicField}>
@@ -952,6 +1242,54 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                     {notFoundMessage ||
                       'No grades were found for the selected school year and semester.'}
                   </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Several students share the searched last name — list them all
+                and let the user flip between their reports. */}
+            {showGrades && hasMultipleRecords && (
+              <View style={styles.matchesPanel}>
+                <View style={styles.matchesHeaderRow}>
+                  <Ionicons name="people-outline" size={16} color="#6B0F1A" />
+                  <Text style={styles.matchesTitle}>
+                    {records.length} students matched "{lastNameQuery.trim()}"
+                  </Text>
+                </View>
+                <Text style={styles.matchesSubtitle}>
+                  Select a student to view their report. Download Excel lets you export one,
+                  several, or all of them.
+                </Text>
+                <View style={styles.matchesList}>
+                  {records.map((record, index) => {
+                    const isActive = index === activeRecordIndex;
+                    return (
+                      <TouchableOpacity
+                        key={record.studentId || `${record.fullName}-${index}`}
+                        onPress={() => setActiveRecordIndex(index)}
+                        style={[styles.matchCard, isActive && styles.matchCardActive]}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.matchCardTextBlock}>
+                          <Text
+                            style={[styles.matchCardName, isActive && styles.matchCardNameActive]}
+                            numberOfLines={1}
+                          >
+                            {record.fullName}
+                          </Text>
+                          <Text
+                            style={[styles.matchCardMeta, isActive && styles.matchCardMetaActive]}
+                            numberOfLines={1}
+                          >
+                            ID {record.studentId} | GWA {formatGrade(record.gwa)}
+                          </Text>
+                        </View>
+                        {isActive && (
+                          <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -1138,12 +1476,27 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.downloadButton, isPhone && styles.downloadButtonMobile]}
-                  onPress={downloadGradeReportExcel}
+                  style={[
+                    styles.downloadButton,
+                    isPhone && styles.downloadButtonMobile,
+                    isExporting && styles.downloadButtonDisabled,
+                  ]}
+                  onPress={handleDownloadPress}
+                  disabled={isExporting}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.downloadButtonText}>Download Excel</Text>
+                  {isExporting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                  )}
+                  <Text style={styles.downloadButtonText}>
+                    {isExporting
+                      ? 'Preparing Excel...'
+                      : hasMultipleRecords
+                        ? 'Download Excel...'
+                        : 'Download Excel'}
+                  </Text>
                 </TouchableOpacity>
 
               </View>
@@ -1153,12 +1506,381 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
           </View>
         </ScrollView>
       </View>
+
+      {/* Excel export picker — only used when a last-name search returned
+          more than one student. */}
+      <Modal
+        visible={showExportPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowExportPicker(false)}
+      >
+        <View style={styles.exportModalOverlay}>
+          <View
+            style={[
+              styles.exportModalCard,
+              isPhone ? styles.exportModalCardMobile : styles.exportModalCardWeb,
+            ]}
+          >
+            <View style={styles.exportModalHeader}>
+              <View style={styles.exportModalHeaderText}>
+                <Text style={styles.exportModalTitle}>Download Excel</Text>
+                <Text style={styles.exportModalSubtitle}>
+                  Choose which students to include in the workbook.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowExportPicker(false)}
+                style={styles.exportModalClose}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color="#4A4A4A" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.exportQuickRow}>
+              <TouchableOpacity
+                onPress={toggleSelectAllExports}
+                style={styles.exportQuickButton}
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name={allExportSelected ? 'remove-circle-outline' : 'checkmark-done-outline'}
+                  size={15}
+                  color="#6B0F1A"
+                />
+                <Text style={styles.exportQuickButtonText}>
+                  {allExportSelected ? 'Clear All' : `Select All (${records.length})`}
+                </Text>
+              </TouchableOpacity>
+
+              {!!studentRecord && (
+                <TouchableOpacity
+                  onPress={exportCurrentRecordOnly}
+                  style={styles.exportQuickButton}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="person-outline" size={15} color="#6B0F1A" />
+                  <Text style={styles.exportQuickButtonText}>Current Student Only</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={styles.exportList} contentContainerStyle={styles.exportListContent}>
+              {records.map((record, index) => {
+                const isChecked = selectedExportIds.includes(record.studentId);
+                return (
+                  <TouchableOpacity
+                    key={record.studentId || `${record.fullName}-${index}`}
+                    onPress={() => toggleExportSelection(record.studentId)}
+                    style={[styles.exportRow, isChecked && styles.exportRowChecked]}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={isChecked ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color={isChecked ? '#6B0F1A' : '#9A9A9A'}
+                    />
+                    <View style={styles.exportRowTextBlock}>
+                      <Text style={styles.exportRowName} numberOfLines={1}>
+                        {record.fullName}
+                      </Text>
+                      <Text style={styles.exportRowMeta} numberOfLines={1}>
+                        ID {record.studentId} | {record.totalUnits.toFixed(1)} units | GWA{' '}
+                        {formatGrade(record.gwa)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.exportFooter}>
+              <Text style={styles.exportFooterCount}>
+                {selectedExportIds.length} of {records.length} selected
+              </Text>
+              <View style={styles.exportFooterButtons}>
+                <TouchableOpacity
+                  onPress={() => setShowExportPicker(false)}
+                  style={styles.exportCancelButton}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.exportCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmExportSelection}
+                  style={[
+                    styles.exportConfirmButton,
+                    (!selectedExportIds.length || isExporting) && styles.exportConfirmButtonDisabled,
+                  ]}
+                  disabled={!selectedExportIds.length || isExporting}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="download-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.exportConfirmButtonText}>
+                    {selectedExportIds.length > 1
+                      ? `Download ${selectedExportIds.length} Reports`
+                      : 'Download Report'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   flexOne: { flex: 1 },
+
+  // ── Search-by toggle ──────────────────────────────────────────────────────
+  searchModeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  searchModeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E3C9CD',
+    backgroundColor: '#FBF4F5',
+  },
+  searchModeChipActive: {
+    backgroundColor: '#6B0F1A',
+    borderColor: '#6B0F1A',
+  },
+  searchModeChipText: {
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#6B0F1A',
+    fontFamily,
+  },
+  searchModeChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // ── Last-name match list ──────────────────────────────────────────────────
+  matchesPanel: {
+    width: '100%',
+    maxWidth: 980,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E5EA',
+    backgroundColor: '#FAFBFC',
+  },
+  matchesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  matchesTitle: {
+    fontSize: 15,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#1A1A1A',
+    fontFamily,
+  },
+  matchesSubtitle: {
+    fontSize: 12.5,
+    color: '#5A5A5A',
+    marginTop: 4,
+    lineHeight: 18,
+    fontFamily,
+  },
+  matchesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 12,
+  },
+  matchCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 210,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E5EA',
+    backgroundColor: '#FFFFFF',
+  },
+  matchCardActive: {
+    backgroundColor: '#6B0F1A',
+    borderColor: '#6B0F1A',
+  },
+  matchCardTextBlock: { flex: 1 },
+  matchCardName: {
+    fontSize: 13.5,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#1A1A1A',
+    fontFamily,
+  },
+  matchCardNameActive: { color: '#FFFFFF' },
+  matchCardMeta: {
+    fontSize: 11.5,
+    color: '#6A6A6A',
+    marginTop: 2,
+    fontFamily,
+  },
+  matchCardMetaActive: { color: '#F0DADD' },
+
+  // ── Excel export picker modal ─────────────────────────────────────────────
+  exportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 17, 17, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  exportModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    maxHeight: '85%',
+  },
+  exportModalCardWeb: { width: 520 },
+  exportModalCardMobile: { width: '100%' },
+  exportModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  exportModalHeaderText: { flex: 1 },
+  exportModalTitle: {
+    fontSize: 18,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#111',
+    fontFamily,
+  },
+  exportModalSubtitle: {
+    fontSize: 12.5,
+    color: '#5A5A5A',
+    marginTop: 3,
+    lineHeight: 18,
+    fontFamily,
+  },
+  exportModalClose: {
+    padding: 4,
+  },
+  exportQuickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
+  exportQuickButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E3C9CD',
+    backgroundColor: '#FBF4F5',
+  },
+  exportQuickButtonText: {
+    fontSize: 12,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#6B0F1A',
+    fontFamily,
+  },
+  exportList: {
+    marginTop: 12,
+    maxHeight: 320,
+  },
+  exportListContent: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  exportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E5EA',
+    backgroundColor: '#FFFFFF',
+  },
+  exportRowChecked: {
+    borderColor: '#D8B4BA',
+    backgroundColor: '#FCF6F7',
+  },
+  exportRowTextBlock: { flex: 1 },
+  exportRowName: {
+    fontSize: 13.5,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#1A1A1A',
+    fontFamily,
+  },
+  exportRowMeta: {
+    fontSize: 11.5,
+    color: '#6A6A6A',
+    marginTop: 2,
+    fontFamily,
+  },
+  exportFooter: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 12,
+    gap: 10,
+  },
+  exportFooterCount: {
+    fontSize: 12,
+    color: '#6A6A6A',
+    fontFamily,
+  },
+  exportFooterButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'flex-end',
+  },
+  exportCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DADADA',
+    backgroundColor: '#FFFFFF',
+  },
+  exportCancelButtonText: {
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#444',
+    fontFamily,
+  },
+  exportConfirmButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#6B0F1A',
+  },
+  exportConfirmButtonDisabled: { opacity: 0.55 },
+  exportConfirmButtonText: {
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#FFFFFF',
+    fontFamily,
+  },
+  downloadButtonDisabled: { opacity: 0.6 },
 
   screen: {
     flex: 1,

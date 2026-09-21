@@ -973,20 +973,121 @@ const renderFormattedText = (text: string, baseStyle: any) => {
 };
 
 // ─── Inline Viewer ───────────────────────────────────────────────────────────
+// Mirrors the student-side viewer in CourseDetail.tsx: signed Firebase/GCS URLs
+// expire, so the preview can come back blank/404. When the caller passes a
+// storagePath (or bucketPath), the viewer re-signs the URL — once silently on
+// open, and again whenever the user taps the "Preview looks broken? Tap to
+// refresh" bar. Callers that resolve their URL through a different endpoint
+// (e.g. the syllabus viewer) can pass `onRefreshUrl` instead, which must
+// return a ready-to-embed viewer URL.
 function InlineMaterialViewer({
   viewerUrl,
   height,
+  fileName,
+  fileType,
+  storagePath,
+  bucketPath,
+  classId,
+  onRefreshUrl,
 }: {
   viewerUrl: string;
   height: number;
+  fileName?: string | null;
+  fileType?: string | null;
+  storagePath?: string | null;
+  bucketPath?: string | null;
+  classId?: string;
+  onRefreshUrl?: () => Promise<string | null>;
 }) {
+  const [resolvedViewerUrl, setResolvedViewerUrl] = useState(viewerUrl);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasAutoRefreshed, setHasAutoRefreshed] = useState(false);
+  const canRefresh = !!(storagePath || bucketPath || onRefreshUrl);
+  const identity = `${fileName || ''}|${storagePath || bucketPath || ''}`;
+
+  // Reset back to whatever the parent handed us when the previewed file
+  // changes, otherwise a stale re-signed URL leaks into the next preview.
+  useEffect(() => {
+    setResolvedViewerUrl(viewerUrl);
+    setHasAutoRefreshed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity, viewerUrl]);
+
+  const tryRefreshUrl = async (silent = false) => {
+    if (isRefreshing) return;
+    const path = storagePath || bucketPath;
+    if (!path && !onRefreshUrl) return;
+    try {
+      setIsRefreshing(true);
+      if (path) {
+        const response = await fetch(`${API_BASE_URL}/storage/signed-url`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storagePath: path, classId }),
+        });
+        const data = await response.json();
+        if (response.ok && data?.url) {
+          setResolvedViewerUrl(getViewerUrl(data.url, fileName, fileType));
+        }
+      } else if (onRefreshUrl) {
+        const nextUrl = await onRefreshUrl();
+        if (nextUrl) setResolvedViewerUrl(nextUrl);
+      }
+    } catch (err) {
+      if (!silent) console.warn('Failed to refresh preview link:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // One silent re-sign on open so an already-expired link is fixed before the
+  // teacher ever sees a broken preview.
+  useEffect(() => {
+    if (canRefresh && !hasAutoRefreshed) {
+      setHasAutoRefreshed(true);
+      void tryRefreshUrl(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity, hasAutoRefreshed, canRefresh]);
+
+  const RefreshBar = () =>
+    canRefresh ? (
+      <TouchableOpacity
+        onPress={() => tryRefreshUrl(false)}
+        disabled={isRefreshing}
+        style={inlineStyles.refreshBar}
+        activeOpacity={0.8}
+      >
+        {isRefreshing ? (
+          <ActivityIndicator size="small" color="#8B0000" />
+        ) : (
+          <Ionicons name="refresh" size={16} color="#8B0000" />
+        )}
+        <Text style={inlineStyles.refreshBarText}>
+          {isRefreshing ? 'Refreshing link...' : 'Preview looks broken? Tap to refresh'}
+        </Text>
+      </TouchableOpacity>
+    ) : null;
+
+  if (isRefreshing) {
+    return (
+      <View style={{ flex: 1, width: '100%', height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F0F0' }}>
+        <ActivityIndicator size="large" color="#8B0000" />
+        <Text style={inlineStyles.loadingText}>Refreshing link...</Text>
+      </View>
+    );
+  }
+
   if (Platform.OS === 'web') {
     return (
       <View style={{ flex: 1, width: '100%', height }}>
+        <RefreshBar />
         {/* @ts-ignore */}
         <iframe
-          src={viewerUrl}
-          style={{ width: '100%', height: '100%', border: 'none' }}
+          key={resolvedViewerUrl}
+          src={resolvedViewerUrl}
+          style={{ width: '100%', height: canRefresh ? height - 34 : '100%', border: 'none' }}
           allow="autoplay"
           title="Document Viewer"
         />
@@ -995,23 +1096,27 @@ function InlineMaterialViewer({
   }
   if (WebView) {
     return (
-      <WebView
-        source={{ uri: viewerUrl }}
-        style={{ flex: 1, width: '100%', height }}
-        startInLoadingState
-        renderLoading={() => (
-          <View style={inlineStyles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#8B0000" />
-            <Text style={inlineStyles.loadingText}>Loading document...</Text>
-          </View>
-        )}
-        javaScriptEnabled
-        domStorageEnabled
-        allowsFullscreenVideo
-        mediaPlaybackRequiresUserAction={false}
-        originWhitelist={['*']}
-        mixedContentMode="always"
-      />
+      <View style={{ flex: 1, width: '100%', height }}>
+        <RefreshBar />
+        <WebView
+          key={resolvedViewerUrl}
+          source={{ uri: resolvedViewerUrl }}
+          style={{ flex: 1, width: '100%', height: canRefresh ? height - 34 : height }}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={inlineStyles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#8B0000" />
+              <Text style={inlineStyles.loadingText}>Loading document...</Text>
+            </View>
+          )}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsFullscreenVideo
+          mediaPlaybackRequiresUserAction={false}
+          originWhitelist={['*']}
+          mixedContentMode="always"
+        />
+      </View>
     );
   }
   return (
@@ -1020,6 +1125,16 @@ function InlineMaterialViewer({
       <Text style={inlineStyles.noWebViewText}>
         Install react-native-webview to preview files inline.
       </Text>
+      {canRefresh && (
+        <TouchableOpacity
+          onPress={() => tryRefreshUrl(false)}
+          style={{ marginTop: 6, padding: 8, backgroundColor: '#8B0000', borderRadius: 4 }}
+        >
+          <Text style={{ color: '#FFF', fontWeight: 'bold' }}>
+            {isRefreshing ? 'Refreshing...' : 'Refresh Link'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1044,6 +1159,22 @@ const inlineStyles = StyleSheet.create({
     gap: 12,
   },
   noWebViewText: { fontFamily: FONT_BODY, color: '#888', textAlign: 'center', fontSize: 13, lineHeight: 20 },
+  refreshBar: {
+    height: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F8F0F0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EBD4D4',
+  },
+  refreshBarText: {
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#8B0000',
+  },
 });
 
 // ─── Confirmation Modal (used for delete confirmations) ─────────────────────
@@ -2509,6 +2640,23 @@ useEffect(() => {
         }
       }
     );
+  };
+
+  // Re-signs the syllabus preview URL through the same endpoint the viewer
+  // was opened with, so the inline viewer's "Tap to refresh" bar works for
+  // syllabi too (they have no storagePath on the client).
+  const refreshSyllabusViewerUrl = async (): Promise<string | null> => {
+    if (!currentSyllabus?.id) return null;
+    try {
+      const res = await fetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok && data?.url) return getGoogleDocsViewerUrl(data.url);
+    } catch (e) {
+      console.warn('Failed to refresh syllabus preview link:', e);
+    }
+    return null;
   };
 
   const handleViewSyllabus = async () => {
@@ -6914,7 +7062,15 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
             </View>
           </View>
           {viewerShouldUseInline && viewerUrl ? (
-            <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
+            <InlineMaterialViewer
+              viewerUrl={viewerUrl}
+              height={height - 62}
+              fileName={viewerMaterial?.fileName}
+              fileType={viewerMaterial?.fileType}
+              storagePath={viewerMaterial?.storagePath}
+              bucketPath={viewerMaterial?.bucketPath}
+              classId={course?.id}
+            />
           ) : viewerIsVideo && viewerFileUrl ? (
             <View style={styles.viewerExternalPrompt}>
               <Ionicons name="videocam-outline" size={56} color="#8B0000" />
@@ -7549,7 +7705,14 @@ SYLLABUS VIEWER MODAL
               <Text style={styles.viewerTitle} numberOfLines={1}>{currentSyllabus?.fileName || 'Syllabus'}</Text>
             </View>
           </View>
-          {syllabusViewerUrl && <InlineMaterialViewer viewerUrl={syllabusViewerUrl} height={height - 62} />}
+          {syllabusViewerUrl && (
+            <InlineMaterialViewer
+              viewerUrl={syllabusViewerUrl}
+              height={height - 62}
+              fileName={currentSyllabus?.fileName}
+              onRefreshUrl={refreshSyllabusViewerUrl}
+            />
+          )}
         </SafeAreaView>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════

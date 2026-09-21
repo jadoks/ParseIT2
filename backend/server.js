@@ -6272,6 +6272,169 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
+  // ==========================================================================
+  // LOOKUP BY LAST NAME
+  // Registrar/teacher-side grade report lookup. Firestore has no case-
+  // insensitive or substring operator, so we try an exact `lastName` equality
+  // query first (indexed, cheap) and only fall back to a normalized in-memory
+  // scan when that misses — which also covers casing/spacing differences.
+  // Returns EVERY student sharing the last name that has parsed grades for the
+  // requested school year + semester, so the client can show a picker and
+  // export one / several / all of them.
+  // ==========================================================================
+  app.get("/student-grade/parse-by-lastname/:lastName", requireAuth, async (req, res) => {
+    try {
+      const { lastName } = req.params;
+      const { schoolYear, semester } = req.query;
+
+      if (!schoolYear || !semester) {
+        return res.status(400).json({ error: "schoolYear and semester are required." });
+      }
+
+      const rawLastName = String(lastName || "").trim();
+      if (!rawLastName) {
+        return res.status(400).json({ error: "lastName is required." });
+      }
+
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (!profile) {
+        return res.status(403).json({ error: "Unauthorized." });
+      }
+
+      // Students may only ever read their own record, so name search — which
+      // by definition returns other people's grades — is staff-only.
+      if (profile.role === "student") {
+        return res.status(403).json({ error: "Unauthorized to search grades by last name." });
+      }
+
+      const normalizeName = (value = "") =>
+        String(value || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+
+      const expectedLastNameKey = normalizeName(rawLastName);
+
+      // --- 1. Resolve matching students -------------------------------------
+      const matchedStudents = new Map(); // studentId -> { studentId, studentName }
+
+      const addStudentDoc = (doc) => {
+        const data = doc.data() || {};
+        const studentId = String(data.studentId || doc.id || "").trim();
+        if (!studentId) return;
+        const fullName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
+        matchedStudents.set(studentId, {
+          studentId,
+          studentName: fullName || studentId,
+          firstName: data.firstName || "",
+          lastName: data.lastName || "",
+        });
+      };
+
+      const exactSnapshot = await db
+        .collection("students")
+        .where("lastName", "==", rawLastName)
+        .get();
+      exactSnapshot.docs.forEach(addStudentDoc);
+
+      if (matchedStudents.size === 0) {
+        const allStudentsSnapshot = await db.collection("students").get();
+        allStudentsSnapshot.docs.forEach((doc) => {
+          const data = doc.data() || {};
+          if (normalizeName(data.lastName) === expectedLastNameKey) addStudentDoc(doc);
+        });
+      }
+
+      if (matchedStudents.size === 0) {
+        return res.json({
+          success: true,
+          students: [],
+          matchedStudentCount: 0,
+          message: `No student found with the last name "${rawLastName}".`,
+        });
+      }
+
+      // --- 2. Pull their parsed grades for the requested SY + semester ------
+      const normalizeSchoolYearKey = (value = "") => String(value || "").replace(/[^0-9]/g, "");
+      const normalizeSemesterKey = (value = "") => {
+        const text = String(value || "").toLowerCase().trim();
+        if (text.includes("first") || text.includes("1st")) return "first";
+        if (text.includes("second") || text.includes("2nd")) return "second";
+        return text;
+      };
+
+      const expectedSchoolYearKey = normalizeSchoolYearKey(schoolYear);
+      const expectedSemesterKey = normalizeSemesterKey(semester);
+
+      const studentIds = [...matchedStudents.keys()];
+
+      // Firestore caps `in` queries at 30 values, so chunk the id list.
+      const chunkSize = 30;
+      const gradeDocsByStudent = new Map();
+
+      for (let i = 0; i < studentIds.length; i += chunkSize) {
+        const chunk = studentIds.slice(i, i + chunkSize);
+        const snapshot = await db
+          .collection("studentParsedGrades")
+          .where("studentId", "in", chunk)
+          .get();
+
+        for (const doc of snapshot.docs) {
+          const data = doc.data() || {};
+          if (
+            normalizeSchoolYearKey(data.schoolYear) === expectedSchoolYearKey &&
+            normalizeSemesterKey(data.semester) === expectedSemesterKey
+          ) {
+            gradeDocsByStudent.set(String(data.studentId), data);
+          }
+        }
+      }
+
+      const students = [];
+      const studentsWithoutGrades = [];
+
+      for (const studentId of studentIds) {
+        const student = matchedStudents.get(studentId);
+        const matchedData = gradeDocsByStudent.get(studentId);
+
+        if (!matchedData) {
+          studentsWithoutGrades.push({
+            studentId,
+            studentName: student.studentName,
+          });
+          continue;
+        }
+
+        students.push({
+          studentId,
+          studentName: matchedData.studentName || student.studentName,
+          data: matchedData.subjects || [],
+          gwa: matchedData.gwa || null,
+          totalUnits: matchedData.totalUnits || 0,
+          section: matchedData.section || null,
+          yearLevel: matchedData.yearLevel || null,
+        });
+      }
+
+      // Stable, predictable ordering for the client-side picker.
+      students.sort((a, b) =>
+        String(a.studentName).localeCompare(String(b.studentName)) ||
+        String(a.studentId).localeCompare(String(b.studentId))
+      );
+
+      return res.json({
+        success: true,
+        students,
+        matchedStudentCount: studentIds.length,
+        studentsWithoutGrades,
+      });
+    } catch (error) {
+      console.error("Fetch parsed student grades by last name error:", error);
+      return res.status(500).json({
+        error: error.message || "Failed to fetch student grades by last name.",
+      });
+    }
+  });
+
   app.get("/student-grade/:studentId", requireAuth, async (req, res) => {
     try {
       const { studentId } = req.params;
