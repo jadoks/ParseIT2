@@ -82,12 +82,38 @@ type DropdownKey = 'semester' | null;
 // by last name — which can legitimately match several students (siblings,
 // common surnames), so the lookup keeps a list and lets the user switch
 // between the matches and pick which ones to export.
+//
+// There is a single "STUDENT ID / LAST NAME" input, so the lookup type is
+// decided by the FIRST character typed:
+//   - a digit  -> Student ID   (digits only, e.g. "20210123")
+//   - a letter -> Last Name    (letters and spaces only, e.g. "Dela Cruz")
+//   - anything else (space, symbol) as the first character is rejected.
+// Once the first character picks the mode, characters that don't belong to
+// that mode are dropped as the user types (or pastes).
 type SearchMode = 'studentId' | 'lastName';
 
-const searchModeOptions: { key: SearchMode; label: string }[] = [
-  { key: 'studentId', label: 'Student ID' },
-  { key: 'lastName', label: 'Student Last Name' },
-];
+// Basic Latin + Latin-1 letters, so names such as "Muñoz" or "Ibañez" work.
+const LETTER_CHAR = 'A-Za-zÀ-ÖØ-öø-ÿ';
+const FIRST_LETTER_REGEX = new RegExp(`^[${LETTER_CHAR}]`);
+const NON_LAST_NAME_CHARS_REGEX = new RegExp(`[^${LETTER_CHAR} ]`, 'g');
+
+const sanitizeSearchInput = (value: string): string => {
+  const first = value.charAt(0);
+
+  if (/\d/.test(first)) {
+    return value.replace(/\D/g, '');
+  }
+
+  if (FIRST_LETTER_REGEX.test(first)) {
+    return value.replace(NON_LAST_NAME_CHARS_REGEX, '').replace(/ {2,}/g, ' ');
+  }
+
+  // Empty, or the first character is a space / special character.
+  return '';
+};
+
+const detectSearchMode = (value: string): SearchMode =>
+  /^\d/.test(value) ? 'studentId' : 'lastName';
 
 type InlineDropdownProps = {
   options: string[];
@@ -320,9 +346,8 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       : 940;
   const mobileTableMinWidth = 640;
 
-  const [searchMode, setSearchMode] = useState<SearchMode>('studentId');
-  const [studentId, setStudentId] = useState('');
-  const [lastNameQuery, setLastNameQuery] = useState('');
+  // Single input for both lookups — see detectSearchMode().
+  const [searchQuery, setSearchQuery] = useState('');
   const [startYear, setStartYear] = useState('2025');
   const [selectedSemester, setSelectedSemester] = useState('First Semester');
   const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
@@ -355,18 +380,14 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
     setSelectedExportIds([]);
   };
 
-  const handleSearchModeChange = (mode: SearchMode) => {
-    if (mode === searchMode) return;
-    setSearchMode(mode);
-    setOpenDropdown(null);
-    setNotFound(false);
-    resetResults();
-  };
-
   const closeDropdowns = () => {
     if (openDropdown !== null) {
       setOpenDropdown(null);
     }
+  };
+
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(sanitizeSearchInput(value));
   };
 
   const handleStartYearChange = (value: string) => {
@@ -407,18 +428,17 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   };
 
   const loadStudentGradesFromDatabase = async () => {
-    const trimmedId = studentId.trim();
-    const trimmedLastName = lastNameQuery.trim();
-    const isLastNameSearch = searchMode === 'lastName';
+    const trimmedQuery = searchQuery.trim();
+    const trimmedId = trimmedQuery;
+    const trimmedLastName = trimmedQuery;
+    const isLastNameSearch = detectSearchMode(trimmedQuery) === 'lastName';
     const normalizedStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
     const parsedStartYear = Number(normalizedStartYear);
 
-    if (isLastNameSearch ? !trimmedLastName : !trimmedId) {
+    if (!trimmedQuery) {
       Alert.alert(
-        isLastNameSearch ? 'Missing Last Name' : 'Missing Student ID',
-        isLastNameSearch
-          ? "Please enter the student's last name."
-          : 'Please enter a student ID.'
+        'Missing Student ID / Last Name',
+        "Please enter the student's ID or last name."
       );
       resetResults();
       setNotFound(false);
@@ -808,7 +828,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
     const safeSchoolYear = sanitizeFileName(firstRecord.schoolYear.replace(/S\.?Y\.?/gi, '').trim());
     const safeSemester = sanitizeFileName(firstRecord.semester);
     const fileName = isBatch
-      ? `grade-reports-${sanitizeFileName(lastNameQuery.trim() || 'students')}-${exportRecords.length}-students-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`
+      ? `grade-reports-${sanitizeFileName(searchQuery.trim() || 'students')}-${exportRecords.length}-students-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`
       : `grade-report-${sanitizeFileName(firstRecord.studentId)}-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
 
     try {
@@ -1012,65 +1032,25 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             <View style={[styles.controlsCard, isPhone && styles.controlsCardMobile]}>
               <Text style={styles.controlsTitle}>Academic Record Lookup</Text>
               <Text style={styles.controlsSubtitle}>
-                Search by {searchMode === 'studentId' ? 'Student ID' : 'student last name'}, then set the
-                academic start year and semester to retrieve grades.
+                Enter a Student ID or last name, then set the academic start year and
+                semester to retrieve grades.
               </Text>
-
-              {/* Search-by toggle: Student ID vs Student Last Name */}
-              <View style={styles.searchModeRow}>
-                {searchModeOptions.map((option) => {
-                  const isActive = searchMode === option.key;
-                  return (
-                    <TouchableOpacity
-                      key={option.key}
-                      onPress={() => handleSearchModeChange(option.key)}
-                      style={[styles.searchModeChip, isActive && styles.searchModeChipActive]}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons
-                        name={option.key === 'studentId' ? 'id-card-outline' : 'person-outline'}
-                        size={15}
-                        color={isActive ? '#FFFFFF' : '#6B0F1A'}
-                      />
-                      <Text
-                        style={[
-                          styles.searchModeChipText,
-                          isActive && styles.searchModeChipTextActive,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
 
               {isStackedLayout ? (
                 <View style={styles.stackedControls}>
                   <View style={styles.academicFieldFull}>
-                    <Text style={styles.academicLabel}>
-                      {searchMode === 'studentId' ? 'Student ID' : 'Student Last Name'}
-                    </Text>
-                    {searchMode === 'studentId' ? (
-                      <TextInput
-                        placeholder="Enter Student ID"
-                        placeholderTextColor="#8A8A8A"
-                        value={studentId}
-                        onChangeText={setStudentId}
-                        style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
-                        keyboardType="numeric"
-                      />
-                    ) : (
-                      <TextInput
-                        placeholder="Enter Student Last Name"
-                        placeholderTextColor="#8A8A8A"
-                        value={lastNameQuery}
-                        onChangeText={setLastNameQuery}
-                        style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
-                        autoCapitalize="words"
-                        autoCorrect={false}
-                      />
-                    )}
+                    <Text style={styles.academicLabel}>STUDENT ID / LAST NAME</Text>
+                    <TextInput
+                      placeholder="Enter Student ID or Last Name"
+                      placeholderTextColor="#8A8A8A"
+                      value={searchQuery}
+                      onChangeText={handleSearchQueryChange}
+                      style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                      onSubmitEditing={handleShowJourney}
+                    />
                   </View>
 
                   <View style={styles.academicFieldFull}>
@@ -1140,29 +1120,18 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                 <View style={styles.controlsGrid}>
                   <View style={[styles.controlsGridRow, styles.controlsGridRowTop]}>
                     <View style={styles.academicField}>
-                      <Text style={styles.academicLabel}>
-                        {searchMode === 'studentId' ? 'Student ID' : 'Student Last Name'}
-                      </Text>
-                      {searchMode === 'studentId' ? (
-                        <TextInput
-                          placeholder="Enter Student ID"
-                          placeholderTextColor="#8A8A8A"
-                          value={studentId}
-                          onChangeText={setStudentId}
-                          style={styles.mainInput}
-                          keyboardType="numeric"
-                        />
-                      ) : (
-                        <TextInput
-                          placeholder="Enter Student Last Name"
-                          placeholderTextColor="#8A8A8A"
-                          value={lastNameQuery}
-                          onChangeText={setLastNameQuery}
-                          style={styles.mainInput}
-                          autoCapitalize="words"
-                          autoCorrect={false}
-                        />
-                      )}
+                      <Text style={styles.academicLabel}>STUDENT ID / LAST NAME</Text>
+                      <TextInput
+                        placeholder="Enter Student ID or Last Name"
+                        placeholderTextColor="#8A8A8A"
+                        value={searchQuery}
+                        onChangeText={handleSearchQueryChange}
+                        style={styles.mainInput}
+                        autoCapitalize="words"
+                        autoCorrect={false}
+                        returnKeyType="search"
+                        onSubmitEditing={handleShowJourney}
+                      />
                     </View>
 
                     <View style={styles.academicField}>
@@ -1253,7 +1222,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                 <View style={styles.matchesHeaderRow}>
                   <Ionicons name="people-outline" size={16} color="#6B0F1A" />
                   <Text style={styles.matchesTitle}>
-                    {records.length} students matched "{lastNameQuery.trim()}"
+                    {records.length} students matched "{searchQuery.trim()}"
                   </Text>
                 </View>
                 <Text style={styles.matchesSubtitle}>
@@ -1634,39 +1603,6 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
 
 const styles = StyleSheet.create({
   flexOne: { flex: 1 },
-
-  // ── Search-by toggle ──────────────────────────────────────────────────────
-  searchModeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  searchModeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#E3C9CD',
-    backgroundColor: '#FBF4F5',
-  },
-  searchModeChipActive: {
-    backgroundColor: '#6B0F1A',
-    borderColor: '#6B0F1A',
-  },
-  searchModeChipText: {
-    fontSize: 13,
-    fontWeight: WEIGHT_EMPHASIS,
-    color: '#6B0F1A',
-    fontFamily,
-  },
-  searchModeChipTextActive: {
-    color: '#FFFFFF',
-  },
 
   // ── Last-name match list ──────────────────────────────────────────────────
   matchesPanel: {
