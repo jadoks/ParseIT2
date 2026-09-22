@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import React, { useState } from 'react';
@@ -27,6 +28,8 @@ import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/t
 import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
+// Same footer image used in Grades.tsx — reused here for the Deans List Word form.
+const footerImage = require('../../assets/images/footer.png');
 
 // REMOVED: const API_BASE_URL = Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
 
@@ -62,6 +65,42 @@ const getExportTimestamp = () => {
   const pad = (value: number) => String(value).padStart(2, '0');
 
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+};
+
+// ─── Local asset → base64 data URI (for embedding the header/footer images
+// into the exported Word form's HTML) ────────────────────────────────────
+// Cached per module id so the header/footer images are only resolved once
+// per app session instead of on every export.
+const imageDataUriCache = new Map<number, string>();
+
+const getImageDataUri = async (moduleId: number): Promise<string> => {
+  const cached = imageDataUriCache.get(moduleId);
+  if (cached) return cached;
+
+  const asset = Asset.fromModule(moduleId);
+  await asset.downloadAsync();
+
+  let dataUri: string;
+
+  if (Platform.OS === 'web') {
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+    dataUri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } else {
+    const localUri = asset.localUri || asset.uri;
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    dataUri = `data:image/png;base64,${base64}`;
+  }
+
+  imageDataUriCache.set(moduleId, dataUri);
+  return dataUri;
 };
 
 type Student = {
@@ -671,6 +710,8 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [isGenerating, setIsGenerating] = useState(false);
   // NEW: Loading state for Download Excel button
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  // NEW: Loading state for Download Form (Word) button
+  const [isExportingForm, setIsExportingForm] = useState(false);
 
   // NEW: Controls the full-screen "how is this list generated" explainer,
   // opened from the (?) icon beside the "Deans List" title.
@@ -1028,6 +1069,229 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         </body>
       </html>
     `;
+  };
+
+  // ─── Deans List Form (Word) ──────────────────────────────────────────────
+  // Builds the letter-style submission form shown in the reference image:
+  // CTU letterhead image, addressee block, a short body paragraph, the
+  // qualified students listed by section (No. / Name / GWA only — no
+  // Latin Honors / Deans List column), then the signatory blocks and the
+  // same footer image used in Grades.tsx.
+  const buildDeansListFormHtml = async () => {
+    const [headerUri, footerUri] = await Promise.all([
+      getImageDataUri(headerImage),
+      getImageDataUri(footerImage),
+    ]);
+
+    const todayLabel = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const sectionBlocks = generatedSections
+      .map((section) => {
+        const rows = section.students
+          .map(
+            (student, index) => `
+              <tr>
+                <td class="num">${index + 1}</td>
+                <td>${escapeHtml(student.name)}</td>
+                <td class="center">${escapeHtml(student.gpa)}</td>
+              </tr>
+            `
+          )
+          .join('');
+
+        return `
+          <div class="section-block">
+            <div class="section-title">${escapeHtml(section.yearLevel)} - Section ${escapeHtml(section.sectionName)}</div>
+            <table class="list-table">
+              <thead>
+                <tr>
+                  <th class="num">No.</th>
+                  <th>Name</th>
+                  <th class="center">GWA</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join('');
+
+    return `
+      <!DOCTYPE html>
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset="utf-8" />
+          <title>Deans List Form</title>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <style>
+            @page { size: A4; margin: 20mm 18mm; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              font-family: 'Times New Roman', Times, serif;
+              color: #111;
+              font-size: 12pt;
+              line-height: 1.5;
+            }
+            .header-image { width: 100%; display: block; margin-bottom: 22px; }
+            .footer-image { width: 100%; display: block; margin-top: 30px; }
+            .date-line { margin-bottom: 18px; }
+            .addressee { margin-bottom: 2px; }
+            .addressee strong { display: block; }
+            .thru { margin-top: 14px; margin-bottom: 14px; }
+            .salutation { margin-bottom: 12px; }
+            .body-text { margin-bottom: 20px; text-align: justify; }
+            .section-block { margin-bottom: 20px; page-break-inside: avoid; }
+            .section-title {
+              font-weight: 700;
+              margin-bottom: 6px;
+              text-transform: uppercase;
+              font-size: 11pt;
+            }
+            table.list-table { width: 100%; border-collapse: collapse; font-size: 11pt; }
+            table.list-table th, table.list-table td {
+              border: 1px solid #000;
+              padding: 6px 8px;
+            }
+            table.list-table th { background: #f0f0f0; font-weight: 700; text-align: left; }
+            .num { width: 50px; text-align: center; }
+            .center { text-align: center; }
+            .closing { margin-top: 22px; }
+            .sign-block { margin-top: 26px; }
+            .sign-name { font-weight: 700; margin-top: 32px; margin-bottom: 0; }
+            .sign-title { margin-top: 0; }
+          </style>
+        </head>
+        <body>
+          <img class="header-image" src="${headerUri}" />
+
+          <div class="date-line">${escapeHtml(todayLabel)}</div>
+
+          <div class="addressee">
+            <strong>EINGILBERT C. BENOLIRAO, Dev.Ed.D.</strong>
+            Campus Director<br />
+            This University
+          </div>
+
+          <div class="thru">
+            THRU:<br />
+            <strong>FITZGERALD C. KINTANAR, Dev.Ed.D</strong><br />
+            Dean of Instruction
+          </div>
+
+          <div class="salutation">Sir:</div>
+
+          <div class="body-text">
+            I am pleased to submit the list of candidates for Dean's List for the Bachelor of Science in
+            Information Technology for the Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')}
+            (${escapeHtml(semester)}). The said candidates have been carefully reviewed and verified in
+            accordance with the university's academic standards and guidelines.
+          </div>
+
+          ${sectionBlocks}
+
+          <div class="closing">
+            Should you have any questions or require further information, please do not hesitate to contact me.
+            <br /><br />
+            Thank you for your attention to this matter.
+          </div>
+
+          <div class="sign-block">
+            Sincerely,
+            <div class="sign-name">MELANIE R. ALBARRACIN, Dev. Ed. D.</div>
+            <div class="sign-title">OIC, BSIT Department</div>
+          </div>
+
+          <div class="sign-block">
+            Noted by:
+            <div class="sign-name">HELMER M. BAÑADOS, Ph.D.</div>
+            <div class="sign-title">Dean, College of Technology &amp; Engineering</div>
+          </div>
+
+          <div class="sign-block">
+            Certified True and Correct:
+            <div class="sign-name">Mrs. JOSEPHINE M. CABARDO</div>
+            <div class="sign-title">Registrar</div>
+          </div>
+
+          <img class="footer-image" src="${footerUri}" />
+        </body>
+      </html>
+    `;
+  };
+
+  const downloadDeansListForm = async () => {
+    if (generatedSections.length === 0) {
+      showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
+      return;
+    }
+
+    setIsExportingForm(true);
+    try {
+      const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
+      const safeSemester = sanitizeFileName(semester);
+      const fileName = `deans-list-form-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.doc`;
+
+      const html = await buildDeansListFormHtml();
+
+      if (Platform.OS === 'web') {
+        // A .doc file whose content is HTML — Word opens this natively and
+        // renders the embedded header/footer images and tables correctly.
+        const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showFeedback('success', 'Downloaded', 'Deans List form downloaded successfully.');
+        return;
+      }
+
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+        if (!permissions.granted) {
+          showFeedback('info', 'Cancelled', 'No folder selected.');
+          return;
+        }
+
+        const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          fileName,
+          'application/msword'
+        );
+
+        await FileSystem.writeAsStringAsync(savedFileUri, html);
+
+        showFeedback('success', 'Downloaded', 'Deans List form saved successfully.');
+        return;
+      }
+
+      const savedUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.writeAsStringAsync(savedUri, html);
+
+      showFeedback('success', 'Downloaded', `Deans List form saved successfully.\n${savedUri}`);
+    } catch (error: any) {
+      showFeedback('error', 'Download Failed', error?.message || 'Unable to save the Deans List form.');
+    } finally {
+      setIsExportingForm(false);
+    }
   };
 
   const downloadHonorPdfOnWeb = async (fileName: string) => {
@@ -1487,25 +1751,48 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               </Text>
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.exportHonorBtn,
-                isMobile && styles.exportHonorBtnMobile,
-                (generatedSections.length === 0 || isExportingExcel) && styles.exportHonorBtnDisabled,
-              ]}
-              onPress={downloadHonorExcel}
-              disabled={generatedSections.length === 0 || isExportingExcel}
-              activeOpacity={0.85}
-            >
-              {isExportingExcel ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-              )}
-              <Text style={styles.exportHonorBtnText}>
-                {isExportingExcel ? 'Exporting...' : 'Download Excel'}
-              </Text>
-            </TouchableOpacity>
+            <View style={[styles.exportButtonsRow, isMobile && styles.exportButtonsRowMobile]}>
+              <TouchableOpacity
+                style={[
+                  styles.exportHonorBtn,
+                  isMobile && styles.exportHonorBtnMobile,
+                  (generatedSections.length === 0 || isExportingExcel) && styles.exportHonorBtnDisabled,
+                ]}
+                onPress={downloadHonorExcel}
+                disabled={generatedSections.length === 0 || isExportingExcel}
+                activeOpacity={0.85}
+              >
+                {isExportingExcel ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                )}
+                <Text style={styles.exportHonorBtnText}>
+                  {isExportingExcel ? 'Exporting...' : 'Download Excel'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.exportHonorBtn,
+                  styles.exportFormBtn,
+                  isMobile && styles.exportHonorBtnMobile,
+                  (generatedSections.length === 0 || isExportingForm) && styles.exportHonorBtnDisabled,
+                ]}
+                onPress={downloadDeansListForm}
+                disabled={generatedSections.length === 0 || isExportingForm}
+                activeOpacity={0.85}
+              >
+                {isExportingForm ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
+                )}
+                <Text style={styles.exportHonorBtnText}>
+                  {isExportingForm ? 'Exporting...' : 'Download Form'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
@@ -1756,6 +2043,18 @@ const styles = StyleSheet.create({
   flowHelpBtn: {
     padding: 2,
   },
+  // 🔥 NEW: wraps "Download Excel" and "Download Form" side by side, and
+  // stacks them full-width on mobile so neither button gets squeezed.
+  exportButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  exportButtonsRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+  },
   exportHonorBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1771,6 +2070,12 @@ const styles = StyleSheet.create({
   exportHonorBtnMobile: {
     minHeight: 40,
     paddingHorizontal: 12,
+  },
+  // NEW: "Download Form" (Word) button — same shape as Download Excel,
+  // maroon to match the school brand color used across the app.
+  exportFormBtn: {
+    backgroundColor: '#8B0000',
+    borderBottomColor: '#5C0000',
   },
   exportHonorBtnDisabled: {
     opacity: 0.45,
