@@ -10,6 +10,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
+// Used to fill the Deans List Word (.docx) template — see the
+// /deans-list/export-docx route below.
+import Docxtemplater from "docxtemplater";
+import PizZip from "pizzip";
 
   import mammoth from "mammoth";
 import { createRequire } from "module";
@@ -14908,6 +14912,117 @@ app.get(
       console.error("Honor roll error:", error);
       return res.status(500).json({
         error: error.message || "Failed to generate honor roll.",
+      });
+    }
+  });
+
+  /**
+   * DEANS LIST WORD (.docx) EXPORT
+   * Fills a real .docx template (templates/deans-list-template.docx) that
+   * already has the CTU letterhead as a native Word header/footer — so the
+   * downloaded file opens with a real header/footer instead of relying on
+   * the HTML-in-a-.doc trick the frontend used before.
+   *
+   * Body expected from the client (Honors.tsx already builds this from the
+   * on-screen Deans List, so the exported form always matches what the
+   * user is looking at):
+   *   {
+   *     schoolYear: "S.Y 2025 - 2026",
+   *     semester: "1st Semester",
+   *     sections: [
+   *       { yearLevel: "3rd Year", sectionName: "Java", students: [{ name, gpa }, ...] },
+   *       ...
+   *     ]
+   *   }
+   */
+  app.post("/deans-list/export-docx", async (req, res) => {
+    try {
+      const { schoolYear, semester, sections } = req.body || {};
+
+      if (!Array.isArray(sections) || sections.length === 0) {
+        return res.status(400).json({
+          error: "sections is required and must be a non-empty array.",
+        });
+      }
+
+      const templatePath = path.join(
+        process.cwd(),
+        "templates",
+        "deans-list-template.docx"
+      );
+
+      if (!fs.existsSync(templatePath)) {
+        return res.status(500).json({
+          error:
+            "Deans List Word template is missing on the server (templates/deans-list-template.docx).",
+        });
+      }
+
+      const templateContent = fs.readFileSync(templatePath, "binary");
+      const zip = new PizZip(templateContent);
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+      });
+
+      const todayLabel = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      const templateData = {
+        date: todayLabel,
+        schoolYear: schoolYear || "",
+        semester: semester || "",
+        sections: sections.map((section) => {
+          const students = Array.isArray(section.students) ? section.students : [];
+          return {
+            yearLevel: section.yearLevel || "",
+            sectionName: section.sectionName || "",
+            totalStudents: String(students.length),
+            students: students.map((student, index) => ({
+              no: String(index + 1),
+              name: student.name || "",
+              gwa: student.gpa != null ? String(student.gpa) : student.gwa || "",
+            })),
+          };
+        }),
+      };
+
+      doc.render(templateData);
+
+      const buffer = doc.getZip().generate({ type: "nodebuffer" });
+
+      const sanitize = (value) =>
+        String(value || "").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "");
+
+      const fileName = `deans-list-form-${sanitize(schoolYear)}-${sanitize(
+        semester
+      )}.docx`;
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileName}"`
+      );
+      return res.send(buffer);
+    } catch (error) {
+      console.error("Deans List docx export error:", error);
+
+      // docxtemplater throws a structured error with .properties.errors
+      // when a template tag is missing/mismatched — surface that detail
+      // instead of a generic 500 so a bad template is easy to fix.
+      const templateErrors = error?.properties?.errors;
+      const detail = Array.isArray(templateErrors)
+        ? templateErrors.map((e) => e?.properties?.explanation).filter(Boolean).join("; ")
+        : null;
+
+      return res.status(500).json({
+        error: detail || error.message || "Failed to generate the Deans List Word form.",
       });
     }
   });

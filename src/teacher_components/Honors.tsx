@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import React, { useState } from 'react';
@@ -28,8 +27,6 @@ import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/t
 import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
-// Same footer image used in Grades.tsx — reused here for the Deans List Word form.
-const footerImage = require('../../assets/images/footer.png');
 
 // REMOVED: const API_BASE_URL = Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
 
@@ -65,42 +62,6 @@ const getExportTimestamp = () => {
   const pad = (value: number) => String(value).padStart(2, '0');
 
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-};
-
-// ─── Local asset → base64 data URI (for embedding the header/footer images
-// into the exported Word form's HTML) ────────────────────────────────────
-// Cached per module id so the header/footer images are only resolved once
-// per app session instead of on every export.
-const imageDataUriCache = new Map<number, string>();
-
-const getImageDataUri = async (moduleId: number): Promise<string> => {
-  const cached = imageDataUriCache.get(moduleId);
-  if (cached) return cached;
-
-  const asset = Asset.fromModule(moduleId);
-  await asset.downloadAsync();
-
-  let dataUri: string;
-
-  if (Platform.OS === 'web') {
-    const response = await fetch(asset.uri);
-    const blob = await response.blob();
-    dataUri = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } else {
-    const localUri = asset.localUri || asset.uri;
-    const base64 = await FileSystem.readAsStringAsync(localUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    dataUri = `data:image/png;base64,${base64}`;
-  }
-
-  imageDataUriCache.set(moduleId, dataUri);
-  return dataUri;
 };
 
 type Student = {
@@ -1072,214 +1033,10 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   };
 
   // ─── Deans List Form (Word) ──────────────────────────────────────────────
-  // Builds the letter-style submission form shown in the reference image:
-  // CTU letterhead image, addressee block, a short body paragraph, the
-  // qualified students listed by section (No. / Name / GWA only — no
-  // Latin Honors / Deans List column), then the signatory blocks and the
-  // same footer image used in Grades.tsx.
-  const buildDeansListFormHtml = async () => {
-    const [headerUri, footerUri] = await Promise.all([
-      getImageDataUri(headerImage),
-      getImageDataUri(footerImage),
-    ]);
-
-    const todayLabel = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    // Content area on an 8.5in-wide short/letter bond page with 1in side
-    // margins = 6.5in. Fixed width (not %) keeps Word from blowing the
-    // header/footer images up to the image's native pixel size.
-    const contentWidthIn = 6.5;
-
-    // Matches the reference sample's "Course Year / Section : BSIT 4A
-    // Total No. of Students: 36" / "Adviser : " (left blank) meta lines,
-    // but keeps the original table contents: No. / Name / GWA — no Rank
-    // column, no Latin Honors / Deans List column.
-    const sectionBlocks = generatedSections
-      .map((section) => {
-        const rows = section.students
-          .map(
-            (student, index) => `
-              <tr>
-                <td class="num">${index + 1}</td>
-                <td>${escapeHtml(student.name)}</td>
-                <td class="center">${escapeHtml(student.gpa)}</td>
-              </tr>
-            `
-          )
-          .join('');
-
-        return `
-          <div class="section-block">
-            <table class="meta-table">
-              <tr>
-                <td class="meta-label">Course Year / Section</td>
-                <td class="meta-colon">:</td>
-                <td class="meta-value"><u><strong>${escapeHtml(section.yearLevel)} ${escapeHtml(section.sectionName)}</strong></u></td>
-                <td class="meta-label2">Total No. of Students:</td>
-                <td class="meta-value2"><u><strong>${section.students.length}</strong></u></td>
-              </tr>
-              <tr>
-                <td class="meta-label">Adviser</td>
-                <td class="meta-colon">:</td>
-                <td class="meta-value"><u>&nbsp;</u></td>
-                <td></td>
-                <td></td>
-              </tr>
-            </table>
-
-            <table class="list-table">
-              <thead>
-                <tr>
-                  <th class="num">No.</th>
-                  <th>Name</th>
-                  <th class="center">GWA</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-        `;
-      })
-      .join('');
-
-    return `
-      <!DOCTYPE html>
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-          <meta charset="utf-8" />
-          <title>Deans List Form</title>
-          <!--[if gte mso 9]>
-          <xml>
-            <w:WordDocument>
-              <w:View>Print</w:View>
-              <w:Zoom>100</w:Zoom>
-              <w:DoNotOptimizeForBrowser/>
-            </w:WordDocument>
-          </xml>
-          <![endif]-->
-          <style>
-            /* Real Word header/footer (repeats every page, editable via
-               Header & Footer Tools) instead of inline body images. */
-            @page Section1 {
-              size: 8.5in 11in;
-              margin: 1in 1in 1in 1in;
-              mso-header-margin: .5in;
-              mso-footer-margin: .5in;
-              mso-header: h1;
-              mso-footer: f1;
-              mso-paper-source: 0;
-            }
-            div.Section1 { page: Section1; }
-
-            * { box-sizing: border-box; }
-            body {
-              margin: 0;
-              font-family: 'Times New Roman', Times, serif;
-              color: #111;
-              font-size: 12pt;
-              line-height: 1.5;
-            }
-            .header-image { width: ${contentWidthIn}in; height: auto; display: block; }
-            .footer-image { width: ${contentWidthIn}in; height: auto; display: block; }
-            .date-line { margin-bottom: 18px; }
-            .addressee { margin-bottom: 2px; }
-            .addressee strong { display: block; }
-            .thru { margin-top: 14px; margin-bottom: 14px; }
-            .salutation { margin-bottom: 12px; }
-            .body-text { margin-bottom: 20px; text-align: justify; }
-            .section-block { margin-bottom: 20px; page-break-inside: avoid; }
-            table.meta-table { width: 100%; border-collapse: collapse; font-size: 11pt; margin-bottom: 8px; }
-            table.meta-table td { padding: 2px 4px; border: none; }
-            .meta-label { white-space: nowrap; }
-            .meta-colon { width: 14px; }
-            .meta-value { width: 40%; }
-            .meta-label2 { white-space: nowrap; padding-left: 16px; }
-            .meta-value2 { width: 10%; }
-            table.list-table { width: 100%; border-collapse: collapse; font-size: 11pt; }
-            table.list-table th, table.list-table td {
-              border: 1px solid #000;
-              padding: 6px 8px;
-            }
-            table.list-table th { background: #f0f0f0; font-weight: 700; text-align: center; }
-            table.list-table td { text-align: left; }
-            .num { width: 50px; text-align: center; }
-            .center { text-align: center; }
-            .closing { margin-top: 22px; }
-            .sign-block { margin-top: 26px; }
-            .sign-name { font-weight: 700; margin-top: 32px; margin-bottom: 0; }
-            .sign-title { margin-top: 0; }
-          </style>
-        </head>
-        <body>
-          <!-- Word header: repeats on every page, editable via Header & Footer Tools -->
-          <div style='mso-element:header' id=h1>
-            <p class=MsoHeader style="margin:0;"><img class="header-image" src="${headerUri}" /></p>
-          </div>
-
-          <!-- Word footer: repeats on every page, editable via Header & Footer Tools -->
-          <div style='mso-element:footer' id=f1>
-            <p class=MsoFooter style="margin:0;"><img class="footer-image" src="${footerUri}" /></p>
-          </div>
-
-          <div class="Section1">
-            <div class="date-line">${escapeHtml(todayLabel)}</div>
-
-            <div class="addressee">
-              <strong>EINGILBERT C. BENOLIRAO, Dev.Ed.D.</strong>
-              Campus Director<br />
-              This University
-            </div>
-
-            <div class="thru">
-              THRU:<br />
-              <strong>FITZGERALD C. KINTANAR, Dev.Ed.D</strong><br />
-              Dean of Instruction
-            </div>
-
-            <div class="salutation">Sir:</div>
-
-            <div class="body-text">
-              I am pleased to submit the list of candidates for Dean's List for the Bachelor of Science in
-              Information Technology for the Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')}
-              (${escapeHtml(semester)}). The said candidates have been carefully reviewed and verified in
-              accordance with the university's academic standards and guidelines.
-            </div>
-
-            ${sectionBlocks}
-
-            <div class="closing">
-              Should you have any questions or require further information, please do not hesitate to contact me.
-              <br /><br />
-              Thank you for your attention to this matter.
-            </div>
-
-            <div class="sign-block">
-              Sincerely,
-              <div class="sign-name">MELANIE R. ALBARRACIN, Dev. Ed. D.</div>
-              <div class="sign-title">OIC, BSIT Department</div>
-            </div>
-
-            <div class="sign-block">
-              Noted by:
-              <div class="sign-name">HELMER M. BAÑADOS, Ph.D.</div>
-              <div class="sign-title">Dean, College of Technology &amp; Engineering</div>
-            </div>
-
-            <div class="sign-block">
-              Certified True and Correct:
-              <div class="sign-name">Mrs. JOSEPHINE M. CABARDO</div>
-              <div class="sign-title">Registrar</div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-  };
-
+  // Asks the backend (/deans-list/export-docx) to fill the real .docx
+  // template — which already has the CTU letterhead as a native Word
+  // header/footer — with the on-screen Deans List data, then downloads the
+  // returned .docx binary. Replaces the old HTML-in-a-.doc approach.
   const downloadDeansListForm = async () => {
     if (generatedSections.length === 0) {
       showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
@@ -1290,14 +1047,39 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     try {
       const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
       const safeSemester = sanitizeFileName(semester);
-      const fileName = `deans-list-form-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.doc`;
+      const fileName = `deans-list-form-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.docx`;
 
-      const html = await buildDeansListFormHtml();
+      const response = await fetch(`${apiBaseUrl}/deans-list/export-docx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          schoolYear: schoolYear || 'S.Y ---- - ----',
+          semester,
+          sections: generatedSections.map((section) => ({
+            yearLevel: section.yearLevel,
+            sectionName: section.sectionName,
+            students: section.students.map((student) => ({
+              name: student.name,
+              gpa: student.gpa,
+            })),
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        let message = 'Failed to generate the Deans List form.';
+        try {
+          const errorData = await response.json();
+          message = errorData?.error || message;
+        } catch {
+          // response wasn't JSON — keep the default message
+        }
+        throw new Error(message);
+      }
 
       if (Platform.OS === 'web') {
-        // A .doc file whose content is HTML — Word opens this natively and
-        // renders the embedded header/footer images and tables correctly.
-        const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+        const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -1310,6 +1092,22 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         return;
       }
 
+      // Native: read the binary response as base64 so it can be written
+      // straight to disk via expo-file-system.
+      const blob = await response.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1] || '');
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const docxMimeType =
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
       if (Platform.OS === 'android') {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
@@ -1321,10 +1119,12 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
           permissions.directoryUri,
           fileName,
-          'application/msword'
+          docxMimeType
         );
 
-        await FileSystem.writeAsStringAsync(savedFileUri, html);
+        await FileSystem.writeAsStringAsync(savedFileUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
         showFeedback('success', 'Downloaded', 'Deans List form saved successfully.');
         return;
@@ -1332,7 +1132,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       const savedUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      await FileSystem.writeAsStringAsync(savedUri, html);
+      await FileSystem.writeAsStringAsync(savedUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
       showFeedback('success', 'Downloaded', `Deans List form saved successfully.\n${savedUri}`);
     } catch (error: any) {
