@@ -1089,6 +1089,15 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       day: 'numeric',
     });
 
+    // Content area on an 8.5in-wide short/letter bond page with 1in side
+    // margins = 6.5in. Fixed width (not %) keeps Word from blowing the
+    // header/footer images up to the image's native pixel size.
+    const contentWidthIn = 6.5;
+
+    // Matches the reference sample's "Course Year / Section : BSIT 4A
+    // Total No. of Students: 36" / "Adviser : " (left blank) meta lines,
+    // but keeps the original table contents: No. / Name / GWA — no Rank
+    // column, no Latin Honors / Deans List column.
     const sectionBlocks = generatedSections
       .map((section) => {
         const rows = section.students
@@ -1105,7 +1114,23 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
         return `
           <div class="section-block">
-            <div class="section-title">${escapeHtml(section.yearLevel)} - Section ${escapeHtml(section.sectionName)}</div>
+            <table class="meta-table">
+              <tr>
+                <td class="meta-label">Course Year / Section</td>
+                <td class="meta-colon">:</td>
+                <td class="meta-value"><u><strong>${escapeHtml(section.yearLevel)} ${escapeHtml(section.sectionName)}</strong></u></td>
+                <td class="meta-label2">Total No. of Students:</td>
+                <td class="meta-value2"><u><strong>${section.students.length}</strong></u></td>
+              </tr>
+              <tr>
+                <td class="meta-label">Adviser</td>
+                <td class="meta-colon">:</td>
+                <td class="meta-value"><u>&nbsp;</u></td>
+                <td></td>
+                <td></td>
+              </tr>
+            </table>
+
             <table class="list-table">
               <thead>
                 <tr>
@@ -1132,11 +1157,24 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             <w:WordDocument>
               <w:View>Print</w:View>
               <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
             </w:WordDocument>
           </xml>
           <![endif]-->
           <style>
-            @page { size: A4; margin: 20mm 18mm; }
+            /* Real Word header/footer (repeats every page, editable via
+               Header & Footer Tools) instead of inline body images. */
+            @page Section1 {
+              size: 8.5in 11in;
+              margin: 1in 1in 1in 1in;
+              mso-header-margin: .5in;
+              mso-footer-margin: .5in;
+              mso-header: h1;
+              mso-footer: f1;
+              mso-paper-source: 0;
+            }
+            div.Section1 { page: Section1; }
+
             * { box-sizing: border-box; }
             body {
               margin: 0;
@@ -1145,8 +1183,8 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               font-size: 12pt;
               line-height: 1.5;
             }
-            .header-image { width: 100%; display: block; margin-bottom: 22px; }
-            .footer-image { width: 100%; display: block; margin-top: 30px; }
+            .header-image { width: ${contentWidthIn}in; height: auto; display: block; }
+            .footer-image { width: ${contentWidthIn}in; height: auto; display: block; }
             .date-line { margin-bottom: 18px; }
             .addressee { margin-bottom: 2px; }
             .addressee strong { display: block; }
@@ -1154,18 +1192,20 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             .salutation { margin-bottom: 12px; }
             .body-text { margin-bottom: 20px; text-align: justify; }
             .section-block { margin-bottom: 20px; page-break-inside: avoid; }
-            .section-title {
-              font-weight: 700;
-              margin-bottom: 6px;
-              text-transform: uppercase;
-              font-size: 11pt;
-            }
+            table.meta-table { width: 100%; border-collapse: collapse; font-size: 11pt; margin-bottom: 8px; }
+            table.meta-table td { padding: 2px 4px; border: none; }
+            .meta-label { white-space: nowrap; }
+            .meta-colon { width: 14px; }
+            .meta-value { width: 40%; }
+            .meta-label2 { white-space: nowrap; padding-left: 16px; }
+            .meta-value2 { width: 10%; }
             table.list-table { width: 100%; border-collapse: collapse; font-size: 11pt; }
             table.list-table th, table.list-table td {
               border: 1px solid #000;
               padding: 6px 8px;
             }
-            table.list-table th { background: #f0f0f0; font-weight: 700; text-align: left; }
+            table.list-table th { background: #f0f0f0; font-weight: 700; text-align: center; }
+            table.list-table td { text-align: left; }
             .num { width: 50px; text-align: center; }
             .center { text-align: center; }
             .closing { margin-top: 22px; }
@@ -1175,58 +1215,66 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           </style>
         </head>
         <body>
-          <img class="header-image" src="${headerUri}" />
-
-          <div class="date-line">${escapeHtml(todayLabel)}</div>
-
-          <div class="addressee">
-            <strong>EINGILBERT C. BENOLIRAO, Dev.Ed.D.</strong>
-            Campus Director<br />
-            This University
+          <!-- Word header: repeats on every page, editable via Header & Footer Tools -->
+          <div style='mso-element:header' id=h1>
+            <p class=MsoHeader style="margin:0;"><img class="header-image" src="${headerUri}" /></p>
           </div>
 
-          <div class="thru">
-            THRU:<br />
-            <strong>FITZGERALD C. KINTANAR, Dev.Ed.D</strong><br />
-            Dean of Instruction
+          <!-- Word footer: repeats on every page, editable via Header & Footer Tools -->
+          <div style='mso-element:footer' id=f1>
+            <p class=MsoFooter style="margin:0;"><img class="footer-image" src="${footerUri}" /></p>
           </div>
 
-          <div class="salutation">Sir:</div>
+          <div class="Section1">
+            <div class="date-line">${escapeHtml(todayLabel)}</div>
 
-          <div class="body-text">
-            I am pleased to submit the list of candidates for Dean's List for the Bachelor of Science in
-            Information Technology for the Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')}
-            (${escapeHtml(semester)}). The said candidates have been carefully reviewed and verified in
-            accordance with the university's academic standards and guidelines.
+            <div class="addressee">
+              <strong>EINGILBERT C. BENOLIRAO, Dev.Ed.D.</strong>
+              Campus Director<br />
+              This University
+            </div>
+
+            <div class="thru">
+              THRU:<br />
+              <strong>FITZGERALD C. KINTANAR, Dev.Ed.D</strong><br />
+              Dean of Instruction
+            </div>
+
+            <div class="salutation">Sir:</div>
+
+            <div class="body-text">
+              I am pleased to submit the list of candidates for Dean's List for the Bachelor of Science in
+              Information Technology for the Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')}
+              (${escapeHtml(semester)}). The said candidates have been carefully reviewed and verified in
+              accordance with the university's academic standards and guidelines.
+            </div>
+
+            ${sectionBlocks}
+
+            <div class="closing">
+              Should you have any questions or require further information, please do not hesitate to contact me.
+              <br /><br />
+              Thank you for your attention to this matter.
+            </div>
+
+            <div class="sign-block">
+              Sincerely,
+              <div class="sign-name">MELANIE R. ALBARRACIN, Dev. Ed. D.</div>
+              <div class="sign-title">OIC, BSIT Department</div>
+            </div>
+
+            <div class="sign-block">
+              Noted by:
+              <div class="sign-name">HELMER M. BAÑADOS, Ph.D.</div>
+              <div class="sign-title">Dean, College of Technology &amp; Engineering</div>
+            </div>
+
+            <div class="sign-block">
+              Certified True and Correct:
+              <div class="sign-name">Mrs. JOSEPHINE M. CABARDO</div>
+              <div class="sign-title">Registrar</div>
+            </div>
           </div>
-
-          ${sectionBlocks}
-
-          <div class="closing">
-            Should you have any questions or require further information, please do not hesitate to contact me.
-            <br /><br />
-            Thank you for your attention to this matter.
-          </div>
-
-          <div class="sign-block">
-            Sincerely,
-            <div class="sign-name">MELANIE R. ALBARRACIN, Dev. Ed. D.</div>
-            <div class="sign-title">OIC, BSIT Department</div>
-          </div>
-
-          <div class="sign-block">
-            Noted by:
-            <div class="sign-name">HELMER M. BAÑADOS, Ph.D.</div>
-            <div class="sign-title">Dean, College of Technology &amp; Engineering</div>
-          </div>
-
-          <div class="sign-block">
-            Certified True and Correct:
-            <div class="sign-name">Mrs. JOSEPHINE M. CABARDO</div>
-            <div class="sign-title">Registrar</div>
-          </div>
-
-          <img class="footer-image" src="${footerUri}" />
         </body>
       </html>
     `;
