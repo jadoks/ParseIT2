@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -76,6 +77,11 @@ const isAssignmentClosed = (item: Assignment) => {
   return item.assignmentType === 'game_based' ? true : !!item.repositoryDisabledAfterDue;
 };
 
+// Same grid rules as the student Assignments tab: cards are at least 320px
+// wide, up to 3 columns, 14px apart.
+const ASSIGNMENT_GAP = 14;
+const ASSIGNMENT_MIN_CARD_WIDTH = 320;
+
 const TeacherAssignmentSection = ({
   assignments,
   onCreate,
@@ -86,7 +92,37 @@ const TeacherAssignmentSection = ({
   const isTablet = width >= 768 && width < 1200;
   
   const containerPadding = isMobile ? 16 : isTablet ? 40 : 80;
-  const cardPaddingHorizontal = isMobile ? 14 : isTablet ? 22 : 38;
+  // Cards now sit side by side, so they're narrower than the old full-width
+  // rows — the inner padding is tightened to match the student cards.
+  const cardPaddingHorizontal = isMobile ? 14 : 16;
+
+  // ── Assignments grid ─────────────────────────────────────────────────
+  // Web: CSS grid, so the browser picks the columns itself (as many >=320px
+  // columns as fit, capped at 3) and nothing has to be measured — a measured
+  // width can be stale on first render. The `- 1px` keeps the 3-column case
+  // off the exact rounding boundary.
+  // Native: no CSS grid, so use flex-wrap with the real measured width; both
+  // the width and each cell are floored so 3 cells can never add up to more
+  // than the row (a fractional width used to make the 3rd card wrap).
+  const isWeb = Platform.OS === 'web';
+  const [gridWidth, setGridWidth] = useState(0);
+  const availableWidth =
+    gridWidth > 0 ? gridWidth : Math.max(0, Math.floor(width - containerPadding * 2));
+  const columns = Math.max(
+    1,
+    Math.min(3, Math.floor((availableWidth + ASSIGNMENT_GAP) / (ASSIGNMENT_MIN_CARD_WIDTH + ASSIGNMENT_GAP)))
+  );
+  const cellWidth =
+    columns === 1
+      ? '100%'
+      : Math.floor((availableWidth - ASSIGNMENT_GAP * (columns - 1)) / columns);
+  const gridStyle: any = isWeb
+    ? {
+        display: 'grid',
+        gap: ASSIGNMENT_GAP,
+        gridTemplateColumns: `repeat(auto-fill, minmax(max(${ASSIGNMENT_MIN_CARD_WIDTH}px, calc((100% - ${ASSIGNMENT_GAP * 2}px) / 3 - 1px)), 1fr))`,
+      }
+    : { flexDirection: 'row', flexWrap: 'wrap', gap: ASSIGNMENT_GAP };
 
   const renderAssignmentItem = ({ item }: { item: Assignment }) => {
     const closed = isAssignmentClosed(item);
@@ -95,7 +131,11 @@ const TeacherAssignmentSection = ({
     <TouchableOpacity
       style={[
         styles.assignmentCard,
-        { paddingHorizontal: cardPaddingHorizontal },
+        {
+          paddingHorizontal: cardPaddingHorizontal,
+          // Left accent like the student cards: maroon = open, grey = closed.
+          borderLeftColor: closed ? '#BDBDBD' : '#8B0000',
+        },
       ]}
       activeOpacity={0.85}
       onPress={() => onOpenMembers(item.id)}
@@ -178,11 +218,26 @@ const TeacherAssignmentSection = ({
     </View>
     {assignments.length > 0 ? (
       <View style={{ paddingBottom: hp('10') }}>
-        {assignments.map((item, index) => (
-          <View key={item.id} style={index > 0 ? { marginTop: 12 } : undefined}>
-            {renderAssignmentItem({ item })}
-          </View>
-        ))}
+        <View
+          onLayout={
+            isWeb
+              ? undefined
+              : (e) => {
+                  const w = Math.floor(e.nativeEvent.layout.width);
+                  if (w && w !== gridWidth) setGridWidth(w);
+                }
+          }
+          style={gridStyle}
+        >
+          {assignments.map((item) => (
+            <View
+              key={item.id}
+              style={isWeb ? { minWidth: 0 } : { width: cellWidth as any }}
+            >
+              {renderAssignmentItem({ item })}
+            </View>
+          ))}
+        </View>
       </View>
     ) : (
       <Text style={styles.emptyText}>No assignments yet</Text>
@@ -198,7 +253,9 @@ const styles = StyleSheet.create({
   topActionRow: { marginBottom: hp('1.5'), alignItems: 'flex-start' },
   createButton: { backgroundColor: '#8B0000', borderRadius: 16, minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   createButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: '700', fontSize: 13 },
-  assignmentCard: { borderWidth: 1, borderColor: '#E6E6E6', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  // flexGrow: 1 makes every card stretch to the height of the tallest card in
+  // its row, so the grid rows line up. Chrome mirrors the student cards.
+  assignmentCard: { flexGrow: 1, borderWidth: 1, borderColor: '#EEE', borderLeftWidth: 4, backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
   assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   assignmentInfo: { flex: 1, marginRight: 8 },
   assignmentTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 4 },
