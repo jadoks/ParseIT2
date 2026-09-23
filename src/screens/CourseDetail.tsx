@@ -2390,12 +2390,21 @@ const fetchModules = useCallback(async (silent = false) => {
   );
 
   // ── Assignments layout ────────────────────────────────────────────────
-  // Same outer width as the Modules tab (both live in `contentContainer`),
-  // and the same 14px rhythm between cards that Module cards use.
+  // Same grid math as Assignments.tsx (min card width 320, up to 3 columns,
+  // 14px gap) — with one difference in how the numbers are rounded.
+  //
+  // `contentContainer` is `width: 94%`, so the measured grid width is very
+  // often fractional (e.g. 1353.6px). Assignments.tsx never hits this because
+  // its width is (window width − fixed padding), i.e. a whole number. If the
+  // width is ROUNDED UP (1353.6 → 1354) and the cells are sized off that
+  // number, 3 cells + 2 gaps end up a fraction of a pixel wider than the real
+  // row, so the 3rd card wraps and the grid drops to 2 columns. So both the
+  // measured width and each cell width are floored: the row can then never be
+  // wider than its container.
   const ASSIGNMENT_GAP = 14;
   const ASSIGNMENT_MIN_CARD_WIDTH = 320;
   const assignmentAvailableWidth =
-    assignmentGridWidth > 0 ? assignmentGridWidth : Math.min(width * 0.9, 1600);
+    assignmentGridWidth > 0 ? assignmentGridWidth : Math.floor(Math.min(width * 0.94, 1600));
   const assignmentColumns = Math.max(
     1,
     Math.min(3, Math.floor((assignmentAvailableWidth + ASSIGNMENT_GAP) / (ASSIGNMENT_MIN_CARD_WIDTH + ASSIGNMENT_GAP)))
@@ -2403,7 +2412,21 @@ const fetchModules = useCallback(async (silent = false) => {
   const assignmentCellWidth =
     assignmentColumns === 1
       ? "100%"
-      : (assignmentAvailableWidth - ASSIGNMENT_GAP * (assignmentColumns - 1)) / assignmentColumns;
+      : Math.floor((assignmentAvailableWidth - ASSIGNMENT_GAP * (assignmentColumns - 1)) / assignmentColumns);
+
+  // On web the browser can work out the columns itself, so nothing has to be
+  // measured (measuring is what left the first render stuck on 2 columns until
+  // the filter forced a re-layout). CSS grid: as many columns as fit at >=320px,
+  // capped at 3 — the `- 1px` keeps the 3-column case off the exact rounding
+  // boundary. Native (no CSS grid) keeps the measured flex-wrap layout above.
+  const useCssGrid = Platform.OS === "web";
+  const assignmentGridStyle: any = useCssGrid
+    ? {
+        display: "grid",
+        gap: ASSIGNMENT_GAP,
+        gridTemplateColumns: `repeat(auto-fill, minmax(max(${ASSIGNMENT_MIN_CARD_WIDTH}px, calc((100% - ${ASSIGNMENT_GAP * 2}px) / 3 - 1px)), 1fr))`,
+      }
+    : { flexDirection: "row", flexWrap: "wrap", gap: ASSIGNMENT_GAP };
 
   const allAssignments = safeCourse.assignments as any[];
   const assignmentCounts = allAssignments.reduce(
@@ -2901,14 +2924,22 @@ const fetchModules = useCallback(async (silent = false) => {
                 </View>
                 {filteredAssignments.length > 0 ? (
                   <View
-                    onLayout={(e) => {
-                      const w = Math.round(e.nativeEvent.layout.width);
-                      if (w && Math.abs(w - assignmentGridWidth) > 1) setAssignmentGridWidth(w);
-                    }}
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: ASSIGNMENT_GAP }}
+                    onLayout={
+                      useCssGrid
+                        ? undefined
+                        : (e) => {
+                            // floor (not round) so cells never add up to more than the real row width
+                            const w = Math.floor(e.nativeEvent.layout.width);
+                            if (w && w !== assignmentGridWidth) setAssignmentGridWidth(w);
+                          }
+                    }
+                    style={assignmentGridStyle}
                   >
                     {filteredAssignments.map((item) => (
-                      <View key={item.id} style={{ width: assignmentCellWidth as any }}>
+                      <View
+                        key={item.id}
+                        style={useCssGrid ? { minWidth: 0 } : { width: assignmentCellWidth as any }}
+                      >
                         {renderAssignmentItem({ item })}
                       </View>
                     ))}
