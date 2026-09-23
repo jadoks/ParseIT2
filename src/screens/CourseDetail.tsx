@@ -182,6 +182,68 @@ const getDisplayStatus = (assignment: {
   return assignment.status;
 };
 
+// ── Assignment card helpers ─────────────────────────────────────────────
+// Accent colour per display status — drives the card's left edge + icon tile.
+const STATUS_ACCENT: Record<DisplayStatus, string> = {
+  pending: "#F9A825",
+  submitted: "#1976D2",
+  late: "#E64A19",
+  graded: "#2E7D32",
+  missing: "#C62828",
+};
+
+const STATUS_ICON: Record<DisplayStatus, string> = {
+  pending: "time-outline",
+  submitted: "checkmark-done-outline",
+  late: "alert-circle-outline",
+  graded: "ribbon-outline",
+  missing: "close-circle-outline",
+};
+
+// "Due in 5 hr" / "Overdue by 8 days". `soon` = under 48 hours left.
+const formatRelativeDue = (dueDate?: string) => {
+  const parsed = parseDueDateTime(dueDate);
+  if (!parsed) return null;
+  const diff = parsed.getTime() - Date.now();
+  const abs = Math.abs(diff);
+  const mins = Math.max(1, Math.round(abs / 60000));
+  const hrs = Math.round(abs / 3600000);
+  const days = Math.round(abs / 86400000);
+  const span =
+    mins < 60 ? `${mins} min` : hrs < 24 ? `${hrs} hr` : `${days} day${days === 1 ? "" : "s"}`;
+  return {
+    label: diff < 0 ? `Overdue by ${span}` : `Due in ${span}`,
+    overdue: diff < 0,
+    soon: diff >= 0 && diff < 48 * 3600000,
+  };
+};
+
+// Pressable that swaps in `hoverStyle` while the pointer is over it (web) or
+// while it is pressed (native). Owns its hover state so hovering a card never
+// re-renders the whole screen.
+const HoverPressable = ({ style, hoverStyle, children, ...rest }: any) => {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Pressable
+      {...rest}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      style={({ pressed }: any) => [
+        style,
+        (hovered || pressed) && hoverStyle,
+        Platform.OS === "web" &&
+          ({
+            cursor: "pointer",
+            transitionProperty: "background-color",
+            transitionDuration: "150ms",
+          } as any),
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+};
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return "Uploaded file";
   if (bytes < 1024) return `${bytes} B`;
@@ -872,6 +934,7 @@ const CourseDetail = ({
 
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
+  const [assignmentFilter, setAssignmentFilter] = useState<"all" | DisplayStatus>("all");
   const [selectedMaterial, setSelectedMaterial] = useState<
     AssignmentCourse["materials"][number] | null
   >(null);
@@ -2321,15 +2384,64 @@ const fetchModules = useCallback(async (silent = false) => {
     </TouchableOpacity>
   );
 
+  // ── Assignments layout ────────────────────────────────────────────────
+  // Same outer width as the Modules tab (both live in `contentContainer`),
+  // and the same 14px rhythm between cards that Module cards use.
+  const ASSIGNMENT_GAP = 14;
+  const assignmentColumns = width >= 1200 ? 3 : width >= 768 ? 2 : 1;
+  const assignmentContentWidth = Math.min(width * 0.9, 1200);
+  const assignmentCellWidth =
+    assignmentColumns === 1
+      ? "100%"
+      : (assignmentContentWidth - ASSIGNMENT_GAP * (assignmentColumns - 1)) / assignmentColumns;
+
+  const allAssignments = safeCourse.assignments as any[];
+  const assignmentCounts = allAssignments.reduce(
+    (acc: Record<string, number>, a) => {
+      const st = getDisplayStatus(a);
+      acc[st] = (acc[st] || 0) + 1;
+      return acc;
+    },
+    {}
+  );
+  const filteredAssignments =
+    assignmentFilter === "all"
+      ? allAssignments
+      : allAssignments.filter((a) => getDisplayStatus(a) === assignmentFilter);
+  const ASSIGNMENT_FILTERS: { key: "all" | DisplayStatus; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "pending", label: "Pending" },
+    { key: "missing", label: "Missing" },
+    { key: "submitted", label: "Submitted" },
+    { key: "late", label: "Late" },
+    { key: "graded", label: "Graded" },
+  ];
+
   const renderAssignmentItem = ({ item }: { item: AssignmentItem }) => {
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
-    const relatedMaterials = getRelatedMaterials(item);
     const displayStatus = getDisplayStatus(item);
+    const accent = STATUS_ACCENT[displayStatus] || "#999";
+    const isGame = item.assignmentType === "game_based";
+    const closed = isSubmissionLocked(item) && !isAssignmentSubmitted(item);
+    const relDue =
+      displayStatus === "pending" || displayStatus === "missing"
+        ? formatRelativeDue(item.dueDate)
+        : null;
+    const relColor = relDue ? (relDue.overdue ? "#C62828" : relDue.soon ? "#E65100" : "#666") : "#666";
+    const pointsLabel =
+      percent !== null
+        ? `${item.points}/${item.maxPoints} pts · ${percent}%`
+        : item.maxPoints
+        ? `${item.maxPoints} pts`
+        : null;
+    const scoreColor = percent === null ? "#999" : percent >= 75 ? "#2E7D32" : percent >= 60 ? "#F57C00" : "#C62828";
+    const instruction = (item as any).description || item.topic;
+
     return (
-      <TouchableOpacity
-        style={styles.assignmentCard}
-        activeOpacity={0.85}
+      <HoverPressable
+        style={[styles.assignmentCard, { borderLeftColor: accent }]}
+        hoverStyle={styles.assignmentCardHover}
         onPress={() => {
           setSelectedAssignment(item);
           if (item.assignmentType === "game_based") fetchGameAttempts(item.id);
@@ -2339,11 +2451,14 @@ const fetchModules = useCallback(async (silent = false) => {
         }}
       >
         <View style={styles.assignmentHeader}>
+          <View style={[styles.assignmentIconTile, { backgroundColor: `${accent}1F` }]}>
+            <Ionicons name={STATUS_ICON[displayStatus] as any} size={20} color={accent} />
+          </View>
           <View style={styles.assignmentInfo}>
-            <Text style={styles.assignmentTitle}>{item.title}</Text>
-            {!!((item as any).description || item.topic) && (
-              <Text style={styles.assignmentTopicText}>
-                Instruction: {(item as any).description || item.topic}
+            <Text style={styles.assignmentTitle} numberOfLines={2}>{item.title}</Text>
+            {!!instruction && (
+              <Text style={styles.assignmentTopicText} numberOfLines={2}>
+                Instruction: {instruction}
               </Text>
             )}
           </View>
@@ -2353,22 +2468,45 @@ const fetchModules = useCallback(async (silent = false) => {
             </Text>
           </View>
         </View>
-        <View style={styles.assignmentFooter}>
-          <Text style={styles.dueDateText}>Due: {formatDueDateForDisplay(item.dueDate)}</Text>
-          {isSubmissionLocked(item) && !isAssignmentSubmitted(item) ? (
-            <Text style={styles.dueDateText}>Submissions closed</Text>
-          ) : null}
-          {percent !== null ? (
-            <Text style={styles.pointsText}>
-              Score: {item.points}/{item.maxPoints} ({percent}%)
-            </Text>
-          ) : item.points !== undefined && item.maxPoints ? (
-            <Text style={styles.pointsText}>
-              Points: {item.points}/{item.maxPoints}
-            </Text>
-          ) : null}
+
+        <View style={styles.assignmentPillRow}>
+          {!!item.dueDate && (
+            <View style={styles.assignmentPill}>
+              <Ionicons name="calendar-outline" size={12} color="#666" />
+              <Text style={styles.assignmentPillText}>{formatDueDateForDisplay(item.dueDate)}</Text>
+            </View>
+          )}
+          {!!pointsLabel && (
+            <View style={styles.assignmentPill}>
+              <Ionicons name="star-outline" size={12} color="#666" />
+              <Text style={styles.assignmentPillText}>{pointsLabel}</Text>
+            </View>
+          )}
+          {isGame && (
+            <View style={styles.assignmentPill}>
+              <Ionicons name="game-controller-outline" size={12} color="#666" />
+              <Text style={styles.assignmentPillText}>Game-based</Text>
+            </View>
+          )}
+          {closed && (
+            <View style={[styles.assignmentPill, { backgroundColor: "#FDECEA" }]}>
+              <Ionicons name="lock-closed-outline" size={12} color="#B71C1C" />
+              <Text style={[styles.assignmentPillText, { color: "#B71C1C" }]}>Submissions closed</Text>
+            </View>
+          )}
         </View>
-        
+
+        {percent !== null && (
+          <View style={styles.scoreTrack}>
+            <View
+              style={[
+                styles.scoreFill,
+                { width: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: scoreColor },
+              ]}
+            />
+          </View>
+        )}
+
         {hasMasteredGeneratedActivity(item) ? (
           <View style={styles.masteredActivityBadge}>
             <Ionicons name="checkmark-circle" size={14} color="#2E7D32" />
@@ -2388,7 +2526,24 @@ const fetchModules = useCallback(async (silent = false) => {
             </Text>
           </View>
         ) : null}
-      </TouchableOpacity>
+
+        <View style={styles.assignmentFooter}>
+          {relDue ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 }}>
+              <Ionicons name="time-outline" size={13} color={relColor} />
+              <Text style={[styles.assignmentRelDue, { color: relColor }]} numberOfLines={1}>
+                {relDue.label}
+              </Text>
+            </View>
+          ) : (
+            <View />
+          )}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+            <Text style={styles.assignmentViewText}>View details</Text>
+            <Ionicons name="chevron-forward" size={14} color="#8B0000" />
+          </View>
+        </View>
+      </HoverPressable>
     );
   };
 
@@ -2611,11 +2766,40 @@ const fetchModules = useCallback(async (silent = false) => {
         ) : activeTab === "assignments" ? (
             safeCourse.assignments.length > 0 ? (
               <View>
-                {(safeCourse.assignments as any[]).map((item, index) => (
-                  <View key={item.id} style={index > 0 ? { marginTop: 12 } : undefined}>
-                    {renderAssignmentItem({ item })}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginBottom: ASSIGNMENT_GAP }}
+                  contentContainerStyle={styles.filterRow}
+                >
+                  {ASSIGNMENT_FILTERS.map((f) => {
+                    const count = f.key === "all" ? allAssignments.length : assignmentCounts[f.key] || 0;
+                    const active = assignmentFilter === f.key;
+                    return (
+                      <TouchableOpacity
+                        key={f.key}
+                        activeOpacity={0.8}
+                        onPress={() => setAssignmentFilter(f.key)}
+                        style={[styles.filterChip, active && styles.filterChipActive]}
+                      >
+                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                          {f.label} {count}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                {filteredAssignments.length > 0 ? (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: ASSIGNMENT_GAP }}>
+                    {filteredAssignments.map((item) => (
+                      <View key={item.id} style={{ width: assignmentCellWidth as any }}>
+                        {renderAssignmentItem({ item })}
+                      </View>
+                    ))}
                   </View>
-                ))}
+                ) : (
+                  <Text style={styles.emptyText}>No {assignmentFilter} assignments</Text>
+                )}
               </View>
             ) : (
               <Text style={styles.emptyText}>No assignments yet</Text>
@@ -4395,6 +4579,7 @@ const styles = StyleSheet.create({
     paddingVertical: hp("2"),
     backgroundColor: "#FFFFFF",
     width: '90%',
+    maxWidth: 1200,
     alignSelf: 'center',
     
   },
@@ -4439,31 +4624,77 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   pdfPreviewBadgeText: { fontFamily: FONT_BODY, fontSize: 10, fontWeight: WEIGHT_EMPHASIS, color: "#1565C0" },
+  // Card chrome mirrors the Module cards (radius 16, 1px #EEE border, 16px
+  // padding, 14px gaps) so the two tabs read as one system.
   assignmentCard: {
+    flexGrow: 1,
     borderWidth: 1,
-    borderColor: "#E6E6E6",
-    backgroundColor: "#fff",
+    borderColor: "#EEE",
+    borderLeftWidth: 4,
+    backgroundColor: "#FFF",
     borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 1,
   },
+  assignmentCardHover: { backgroundColor: "#F7EDED" },
   assignmentHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: 12,
     marginBottom: 10,
   },
-  assignmentInfo: { flex: 1, marginRight: 8 },
-  assignmentTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: "#000", marginBottom: 4 },
-  assignmentTopicText: { fontFamily: FONT_BODY, color: "#444", fontSize: 12, fontWeight: WEIGHT_EMPHASIS, marginTop: 4 },
+  assignmentIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  assignmentInfo: { flex: 1 },
+  assignmentTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: "#000", marginBottom: 2 },
+  assignmentTopicText: { fontFamily: FONT_BODY, color: "#555", fontSize: 12, fontWeight: WEIGHT_EMPHASIS, marginTop: 2, lineHeight: 17 },
+  assignmentPillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 4 },
+  assignmentPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#F3F3F3",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  assignmentPillText: { fontFamily: FONT_BODY, fontSize: 11, color: "#444", fontWeight: WEIGHT_EMPHASIS },
+  scoreTrack: { height: 6, borderRadius: 3, backgroundColor: "#EEE", overflow: "hidden", marginTop: 8 },
+  scoreFill: { height: 6, borderRadius: 3 },
+  assignmentFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "#EEE",
+    paddingTop: 10,
+    marginTop: 12,
+  },
+  assignmentRelDue: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
+  assignmentViewText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: "#8B0000" },
+  filterRow: { flexDirection: "row", gap: 8, paddingRight: 8 },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E6E6E6",
+    backgroundColor: "#FFF",
+  },
+  filterChipActive: { backgroundColor: "#8B0000", borderColor: "#8B0000" },
+  filterChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: "#555" },
+  filterChipTextActive: { color: "#FFF" },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   statusText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, textTransform: "capitalize", fontSize: 12 },
-  assignmentFooter: { borderTopWidth: 1, borderTopColor: "#E6E6E6", paddingTop: 8 },
   dueDateText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: WEIGHT_EMPHASIS, fontSize: 13, marginBottom: 4 },
   pointsText: { fontFamily: FONT_BODY, fontSize: 12, color: "#666", fontWeight: WEIGHT_EMPHASIS },
   relatedPreviewText: { fontFamily: FONT_BODY, fontSize: 12, color: "#666", marginTop: 8, lineHeight: 18 },

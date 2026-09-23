@@ -539,7 +539,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setShowResults(false);
   };
 
-  const goToGameScreen = () => {
+  const goToGameScreen = async () => {
     const scoreSnapshotMode = mode;
     const triviaScoreSnapshot = triviaScore;
     const fillScoreSnapshot = fillScore;
@@ -557,7 +557,13 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     resetAll();
     // 🆕 RESUME SUPPORT: leaving the quiz this way submits whatever progress
     // was made as the final attempt, so there's nothing left to resume.
-    clearSavedProgress();
+    // 🐛 FIX: must be awaited — onBack() below immediately navigates back to
+    // Game.tsx, which re-reads the active-session key from storage on
+    // mount. If we don't wait for the removal to actually finish writing
+    // first, Game can still see the stale (not-yet-deleted) session and
+    // incorrectly pop the "Resume" banner right after the student backed
+    // out.
+    await clearSavedProgress();
 
     if (onComplete && !alreadySavedByResultsScreen) {
         let score = 0;
@@ -794,11 +800,14 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </Pressable>
           <Pressable 
             style={styles.saveBtn} 
-            onPress={() => {
+            onPress={async () => {
               // 🆕 LEADERBOARD: no need to save here — the score was already
               // recorded the moment this results screen was reached (see the
               // effect above). This just leaves the results screen.
-              clearSavedProgress();
+              // 🐛 FIX: await so the storage removal finishes before onBack()
+              // navigates away and Game.tsx re-checks for a resumable
+              // session (otherwise it can still see the stale entry).
+              await clearSavedProgress();
               onBack();
             }}
           >
@@ -1139,13 +1148,16 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
         <View style={styles.modalButtonRow}>
           <Pressable
                 style={styles.cancelBtn}
-                onPress={() => {
+                onPress={async () => {
                   // 🆕 LEADERBOARD: no need to worry about saving here — the
                   // score was already recorded the moment this results
                   // screen was reached (see the effect above). This just
                   // clears the "unfinished quiz" resume state and hands off
                   // to the parent to reopen the new-quiz modal.
-                  clearSavedProgress();
+                  // 🐛 FIX: await so the removal finishes before we navigate
+                  // away — otherwise Game.tsx can remount and re-check
+                  // storage before the old session is actually gone.
+                  await clearSavedProgress();
                   if (onPlayAgain) onPlayAgain();
                   else onBack();
                 }}
@@ -1154,10 +1166,12 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </Pressable>
           <Pressable
             style={styles.saveBtn}
-            onPress={() => {
+            onPress={async () => {
               // 🆕 LEADERBOARD: score is already saved (see the effect
               // above) — this button now just leaves the results screen.
-              clearSavedProgress();
+              // 🐛 FIX: await so this finishes before onBack() navigates
+              // away (see note above).
+              await clearSavedProgress();
               onBack();
             }}
           >
