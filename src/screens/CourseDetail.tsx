@@ -935,6 +935,11 @@ const CourseDetail = ({
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
   const [assignmentFilter, setAssignmentFilter] = useState<"all" | DisplayStatus>("all");
+  const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
+  // Real rendered width of the assignments grid (measured via onLayout) so the
+  // columns fill the space next to the sidebar instead of guessing from the
+  // window width.
+  const [assignmentGridWidth, setAssignmentGridWidth] = useState(0);
   const [selectedMaterial, setSelectedMaterial] = useState<
     AssignmentCourse["materials"][number] | null
   >(null);
@@ -2388,12 +2393,17 @@ const fetchModules = useCallback(async (silent = false) => {
   // Same outer width as the Modules tab (both live in `contentContainer`),
   // and the same 14px rhythm between cards that Module cards use.
   const ASSIGNMENT_GAP = 14;
-  const assignmentColumns = width >= 1200 ? 3 : width >= 768 ? 2 : 1;
-  const assignmentContentWidth = Math.min(width * 0.9, 1200);
+  const ASSIGNMENT_MIN_CARD_WIDTH = 320;
+  const assignmentAvailableWidth =
+    assignmentGridWidth > 0 ? assignmentGridWidth : Math.min(width * 0.9, 1600);
+  const assignmentColumns = Math.max(
+    1,
+    Math.min(3, Math.floor((assignmentAvailableWidth + ASSIGNMENT_GAP) / (ASSIGNMENT_MIN_CARD_WIDTH + ASSIGNMENT_GAP)))
+  );
   const assignmentCellWidth =
     assignmentColumns === 1
       ? "100%"
-      : (assignmentContentWidth - ASSIGNMENT_GAP * (assignmentColumns - 1)) / assignmentColumns;
+      : (assignmentAvailableWidth - ASSIGNMENT_GAP * (assignmentColumns - 1)) / assignmentColumns;
 
   const allAssignments = safeCourse.assignments as any[];
   const assignmentCounts = allAssignments.reduce(
@@ -2408,14 +2418,9 @@ const fetchModules = useCallback(async (silent = false) => {
     assignmentFilter === "all"
       ? allAssignments
       : allAssignments.filter((a) => getDisplayStatus(a) === assignmentFilter);
-  const ASSIGNMENT_FILTERS: { key: "all" | DisplayStatus; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "pending", label: "Pending" },
-    { key: "missing", label: "Missing" },
-    { key: "submitted", label: "Submitted" },
-    { key: "late", label: "Late" },
-    { key: "graded", label: "Graded" },
-  ];
+  // Same option order as Assignments.tsx
+  const ASSIGNMENT_FILTERS: ("all" | DisplayStatus)[] = ["all", "pending", "submitted", "late", "graded", "missing"];
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
   const renderAssignmentItem = ({ item }: { item: AssignmentItem }) => {
     const percent = getScorePercent(item);
@@ -2766,31 +2771,142 @@ const fetchModules = useCallback(async (silent = false) => {
         ) : activeTab === "assignments" ? (
             safeCourse.assignments.length > 0 ? (
               <View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginBottom: ASSIGNMENT_GAP }}
-                  contentContainerStyle={styles.filterRow}
+                {/* Filter dropdown — same style/layout as Assignments.tsx:
+                    inline menu on large screens, bottom-sheet Modal on small. */}
+                <View
+                  style={[
+                    styles.filterDropdownContainer,
+                    isLargeScreen && styles.filterDropdownContainerLarge,
+                  ]}
                 >
-                  {ASSIGNMENT_FILTERS.map((f) => {
-                    const count = f.key === "all" ? allAssignments.length : assignmentCounts[f.key] || 0;
-                    const active = assignmentFilter === f.key;
-                    return (
+                  <TouchableOpacity
+                    style={styles.filterDropdownButton}
+                    onPress={() => setFilterDropdownVisible((prev) => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.filterDropdownButtonLeft}>
+                      {assignmentFilter !== "all" && (
+                        <View
+                          style={[
+                            styles.filterDropdownDot,
+                            { backgroundColor: getStatusTextColor(assignmentFilter) },
+                          ]}
+                        />
+                      )}
+                      <Text style={styles.filterDropdownButtonText} numberOfLines={1}>
+                        {cap(assignmentFilter)}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={filterDropdownVisible ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color="#000"
+                    />
+                  </TouchableOpacity>
+
+                  {!isLargeScreen ? (
+                    <Modal
+                      visible={filterDropdownVisible}
+                      transparent
+                      animationType="fade"
+                      onRequestClose={() => setFilterDropdownVisible(false)}
+                      statusBarTranslucent
+                    >
                       <TouchableOpacity
-                        key={f.key}
-                        activeOpacity={0.8}
-                        onPress={() => setAssignmentFilter(f.key)}
-                        style={[styles.filterChip, active && styles.filterChipActive]}
+                        style={styles.filterDropdownModalOverlay}
+                        activeOpacity={1}
+                        onPress={() => setFilterDropdownVisible(false)}
                       >
-                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                          {f.label} {count}
-                        </Text>
+                        <TouchableOpacity
+                          style={styles.filterDropdownModalSheet}
+                          activeOpacity={1}
+                          onPress={() => {}}
+                        >
+                          <View style={styles.filterDropdownModalHandle} />
+                          <View style={styles.filterDropdownModalHeader}>
+                            <Text style={styles.filterDropdownModalTitle}>Filter Assignments</Text>
+                            <TouchableOpacity onPress={() => setFilterDropdownVisible(false)} hitSlop={8}>
+                              <Ionicons name="close" size={22} color="#3B332E" />
+                            </TouchableOpacity>
+                          </View>
+                          <ScrollView style={styles.filterDropdownModalScroll} showsVerticalScrollIndicator={false}>
+                            {ASSIGNMENT_FILTERS.map((item) => {
+                              const isSelected = item === assignmentFilter;
+                              return (
+                                <TouchableOpacity
+                                  key={item}
+                                  style={[
+                                    styles.filterDropdownModalItem,
+                                    isSelected && styles.filterDropdownModalItemSelected,
+                                  ]}
+                                  onPress={() => {
+                                    setAssignmentFilter(item);
+                                    setFilterDropdownVisible(false);
+                                  }}
+                                  activeOpacity={0.8}
+                                >
+                                  <View style={styles.filterDropdownButtonLeft}>
+                                    {item !== "all" && (
+                                      <View
+                                        style={[
+                                          styles.filterDropdownDot,
+                                          { backgroundColor: getStatusTextColor(item) },
+                                        ]}
+                                      />
+                                    )}
+                                    <Text
+                                      style={[
+                                        styles.filterDropdownModalItemText,
+                                        isSelected && styles.filterDropdownModalItemTextSelected,
+                                      ]}
+                                    >
+                                      {cap(item)}
+                                    </Text>
+                                  </View>
+                                  {isSelected ? <Ionicons name="checkmark" size={18} color="#6B0000" /> : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+                    </Modal>
+                  ) : filterDropdownVisible ? (
+                    <View style={styles.filterInlineDropdownMenu}>
+                      <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                        {ASSIGNMENT_FILTERS.map((item) => (
+                          <TouchableOpacity
+                            key={item}
+                            style={styles.filterDropdownItem}
+                            onPress={() => {
+                              setAssignmentFilter(item);
+                              setFilterDropdownVisible(false);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            {item !== "all" && (
+                              <View
+                                style={[
+                                  styles.filterDropdownDot,
+                                  { backgroundColor: getStatusTextColor(item) },
+                                ]}
+                              />
+                            )}
+                            <Text style={styles.filterDropdownItemText}>{cap(item)}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+                </View>
                 {filteredAssignments.length > 0 ? (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: ASSIGNMENT_GAP }}>
+                  <View
+                    onLayout={(e) => {
+                      const w = Math.round(e.nativeEvent.layout.width);
+                      if (w && Math.abs(w - assignmentGridWidth) > 1) setAssignmentGridWidth(w);
+                    }}
+                    style={{ flexDirection: "row", flexWrap: "wrap", gap: ASSIGNMENT_GAP }}
+                  >
                     {filteredAssignments.map((item) => (
                       <View key={item.id} style={{ width: assignmentCellWidth as any }}>
                         {renderAssignmentItem({ item })}
@@ -4578,8 +4694,8 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingVertical: hp("2"),
     backgroundColor: "#FFFFFF",
-    width: '90%',
-    maxWidth: 1200,
+    width: '94%',
+    maxWidth: 1600,
     alignSelf: 'center',
     
   },
@@ -4681,18 +4797,95 @@ const styles = StyleSheet.create({
   },
   assignmentRelDue: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
   assignmentViewText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: "#8B0000" },
-  filterRow: { flexDirection: "row", gap: 8, paddingRight: 8 },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
+  // Filter dropdown — copied from Assignments.tsx so both screens match.
+  filterDropdownContainer: { position: "relative", width: "100%", zIndex: 4000, marginBottom: 16 },
+  filterDropdownContainerLarge: { width: "15%", minWidth: 160 },
+  filterDropdownButton: {
+    width: "100%",
+    height: 46,
     borderWidth: 1,
-    borderColor: "#E6E6E6",
-    backgroundColor: "#FFF",
+    borderColor: "#B8AFA7",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    zIndex: 4001,
   },
-  filterChipActive: { backgroundColor: "#8B0000", borderColor: "#8B0000" },
-  filterChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: "#555" },
-  filterChipTextActive: { color: "#FFF" },
+  filterDropdownButtonLeft: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
+  filterDropdownDot: { width: 8, height: 8, borderRadius: 4 },
+  filterDropdownButtonText: {
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    color: "#111",
+    fontWeight: WEIGHT_EMPHASIS,
+    flexShrink: 1,
+    marginRight: 8,
+  },
+  filterInlineDropdownMenu: {
+    position: "absolute",
+    top: 50,
+    left: 0,
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#CFCFCF",
+    overflow: "hidden",
+    zIndex: 5000,
+    maxHeight: 260,
+  },
+  filterDropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  filterDropdownItemText: { fontFamily: FONT_BODY, fontSize: 13, color: "#000" },
+  filterDropdownModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  filterDropdownModalSheet: {
+    width: "100%",
+    maxHeight: "70%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  filterDropdownModalHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 14,
+    backgroundColor: "#DDD6CE",
+    marginBottom: 12,
+  },
+  filterDropdownModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0EBE4",
+  },
+  filterDropdownModalTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: WEIGHT_TITLE, color: "#3B332E" },
+  filterDropdownModalScroll: { maxHeight: 320 },
+  filterDropdownModalItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  filterDropdownModalItemSelected: { backgroundColor: "#F7EDED" },
+  filterDropdownModalItemText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: "#111" },
+  filterDropdownModalItemTextSelected: { fontFamily: FONT_BODY, color: "#6B0000", fontWeight: WEIGHT_EMPHASIS },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   statusText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, textTransform: "capitalize", fontSize: 12 },
   dueDateText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: WEIGHT_EMPHASIS, fontSize: 13, marginBottom: 4 },
