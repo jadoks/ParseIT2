@@ -3,7 +3,6 @@ import Constants from 'expo-constants';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -17,6 +16,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+// ✅ Same shared Toast component used across Admin/Teacher/Assignments — used
+// instead of the native Alert (which does nothing on web).
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import { QuizQuestion } from './games/quiz-masters';
 
@@ -98,6 +100,9 @@ const gameOptions = [
 // 🌟 NEW: Daily AI generation limit config
 const MAX_QUESTIONS_PER_GENERATION = 20;
 const MAX_GENERATIONS_PER_DAY = 10;
+// Max number of lessons (materials) a student can select for one generation.
+const MAX_MODULE_LESSONS = 5;
+const MAX_MODULE_LESSONS_MESSAGE = `You can select up to ${MAX_MODULE_LESSONS} Module Lessons only.`;
 
 function getTodayKey() {
   const now = new Date();
@@ -169,6 +174,16 @@ const Game = ({
   const isInvalidCount = parsedCount > MAX_QUESTIONS_PER_GENERATION || parsedCount < 1;
   const remainingGenerations = Math.max(0, MAX_GENERATIONS_PER_DAY - generationsUsedToday);
   const hasReachedDailyLimit = generationsUsedToday >= MAX_GENERATIONS_PER_DAY;
+
+  // ✅ Toast state — same shape/usage as Assignments / TeacherCourseDetail.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>({ visible: false, message: '', type: 'success' });
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') =>
+    setToast({ visible: true, message, type });
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
@@ -350,21 +365,32 @@ const Game = ({
   };
 
   const toggleMaterial = (materialId: string) => {
+    const isSelected = selectedMaterialIds.includes(materialId);
+    // Block adding a 6th lesson (deselecting is always allowed).
+    if (!isSelected && selectedMaterialIds.length >= MAX_MODULE_LESSONS) {
+      showToast(MAX_MODULE_LESSONS_MESSAGE, 'error');
+      return;
+    }
     setSelectedMaterialIds(prev =>
-      prev.includes(materialId) ? prev.filter(id => id !== materialId) : [...prev, materialId]
+      prev.includes(materialId)
+        ? prev.filter(id => id !== materialId)
+        : prev.length >= MAX_MODULE_LESSONS
+          ? prev
+          : [...prev, materialId]
     );
   };
 
   const generateFromMaterials = async () => {
-    if (!gameType) return Alert.alert('Selection required', 'Please select a game type first.');
-    if (!selectedClassId || selectedMaterialIds.length === 0) return Alert.alert('Selection required', 'Please select a class and at least one material.');
-    if (!studentId) return Alert.alert('Not logged in', 'Student ID missing.');
-    if (isInvalidCount) return Alert.alert('Invalid count', `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`);
+    if (!gameType) return showToast('Please select a game type first.', 'error');
+    if (!selectedClassId || selectedMaterialIds.length === 0) return showToast('Please select a class and at least one material.', 'error');
+    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) return showToast(`${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`, 'error');
+    if (!studentId) return showToast('Not logged in: Student ID missing.', 'error');
+    if (isInvalidCount) return showToast(`Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
     // 🌟 NEW: Enforce daily AI generation limit
     if (hasReachedDailyLimit) {
-      return Alert.alert(
-        'Daily limit reached',
-        `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations for today. Please try again tomorrow.`
+      return showToast(
+        `Daily limit reached: You've used all ${MAX_GENERATIONS_PER_DAY} AI generations for today. Please try again tomorrow.`,
+        'error'
       );
     }
 
@@ -425,7 +451,7 @@ const Game = ({
           materialIds: selectedMaterialIds,
         });
     } catch (error: any) {
-      Alert.alert('Generation failed', error.message);
+      showToast(`Generation failed: ${error.message}`, 'error');
     } finally {
       setIsGenerating(false);
     }
@@ -541,10 +567,10 @@ const Game = ({
         {selectedClassId !== '' && (
           <View style={styles.materialsSection}>
             <View style={styles.materialsHeaderRow}>
-              <Text style={styles.inputLabel}>Select one or more Lessons</Text>
+              <Text style={styles.inputLabel}>{`Select one or more Lessons (max ${MAX_MODULE_LESSONS})`}</Text>
               {selectedMaterialIds.length > 0 && (
                 <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
-                  <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length})</Text>
+                  <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length}/{MAX_MODULE_LESSONS})</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -557,10 +583,11 @@ const Game = ({
               <View style={styles.materialsGrid}>
                 {availableMaterials.map(mat => {
                   const isSelected = selectedMaterialIds.includes(mat.id);
+                  const limitReached = !isSelected && selectedMaterialIds.length >= MAX_MODULE_LESSONS;
                   return (
                     <Pressable
                       key={mat.id}
-                      style={[styles.materialChip, isSelected && styles.materialChipSelected]}
+                      style={[styles.materialChip, isSelected && styles.materialChipSelected, limitReached && { opacity: 0.45 }]}
                       onPress={() => toggleMaterial(mat.id)}
                     >
                       <Ionicons
@@ -728,6 +755,13 @@ const Game = ({
           </View>
         </View>
       </Modal>
+
+      {/* Shared toast, rendered in its own transparent Modal so it shows above the full-screen "Start a New Quiz" modal too. */}
+      <Modal visible={toast.visible} transparent animationType="fade" onRequestClose={hideToast} statusBarTranslucent>
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast visible={toast.visible} message={toast.message} type={toast.type} onHide={hideToast} />
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -735,6 +769,7 @@ const Game = ({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB' },
+  toastPortal: { ...StyleSheet.absoluteFillObject },
   contentContainer: { padding: 24, paddingBottom: 40 },
 
   // 🔥 NEW: outer white card wrapping the "Games" title/subtitle, the

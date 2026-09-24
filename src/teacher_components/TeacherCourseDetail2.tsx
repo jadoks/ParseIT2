@@ -566,6 +566,10 @@ const monthLabel = (value: Date) =>
 // ─── Game Question Generation Limits ────────────────────────────────────────
 const DAILY_GENERATION_LIMIT = 30;
 const MAX_QUESTIONS_PER_GENERATION = 45;
+// Max number of Module Lessons a teacher can select when creating / editing /
+// updating an assignment (also the cap enforced before AI Generate runs).
+const MAX_MODULE_LESSONS = 5;
+const MAX_MODULE_LESSONS_MESSAGE = `You can select up to ${MAX_MODULE_LESSONS} Module Lessons only.`;
 const GENERATION_USAGE_KEY = 'teacher_question_gen_usage_v1';
 
 const getTodayDateKey = () => {
@@ -4083,13 +4087,19 @@ useEffect(() => {
   };
 
   const toggleRelatedMaterial = (materialId: string) => {
-    setSelectedMaterialIds((prev) => {
-      const isSelected = prev.includes(materialId);
-      if (isSelected) {
-        return prev.filter((id) => id !== materialId);
-      }
-      return [...prev, materialId];
-    });
+    const isSelected = selectedMaterialIds.includes(materialId);
+    // Block adding a 6th Module Lesson (deselecting is always allowed).
+    if (!isSelected && selectedMaterialIds.length >= MAX_MODULE_LESSONS) {
+      toast.show('error', 'Limit Reached', MAX_MODULE_LESSONS_MESSAGE);
+      return;
+    }
+    setSelectedMaterialIds((prev) =>
+      prev.includes(materialId)
+        ? prev.filter((id) => id !== materialId)
+        : prev.length >= MAX_MODULE_LESSONS
+          ? prev
+          : [...prev, materialId]
+    );
     setErrors((prev) => ({ ...prev, materials: undefined }));
   };
 
@@ -4732,6 +4742,8 @@ useEffect(() => {
 
     if (selectedMaterialIds.length === 0)
       nextErrors.materials = 'Select at least one related material.';
+    else if (selectedMaterialIds.length > MAX_MODULE_LESSONS)
+      nextErrors.materials = `${MAX_MODULE_LESSONS_MESSAGE} Please deselect ${selectedMaterialIds.length - MAX_MODULE_LESSONS} lesson(s).`;
 
     if (assignmentType === 'game_based') {
       if (!gameType) nextErrors.gameType = 'Please select a game type.';
@@ -4776,6 +4788,10 @@ useEffect(() => {
     }
     if (selectedMaterialIds.length === 0) {
       toast.show('error', 'Error', 'Please select at least one learning material.');
+      return;
+    }
+    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) {
+      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`);
       return;
     }
     const parsedCount = parseInt(numberOfQuestions, 10) || 0;
@@ -4944,6 +4960,10 @@ useEffect(() => {
   const handleGenerateMoreQuestions = async () => {
     if (selectedMaterialIds.length === 0) {
       toast.show('error', 'Error', 'Please select at least one learning material.');
+      return;
+    }
+    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) {
+      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`);
       return;
     }
     const parsedCount = parseInt(extraQuestionsCount, 10) || 0;
@@ -5745,11 +5765,14 @@ useEffect(() => {
           <Text style={styles.sectionLabel}>Module Lessons</Text>
           {hasSelection && (
             <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
-              <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length})</Text>
+              <Text style={styles.clearSelectionText}>
+                Clear ({selectedMaterialIds.length}/{MAX_MODULE_LESSONS})
+              </Text>
             </TouchableOpacity>
           )}
         </View>
         <Text style={styles.helperText}>
+          {`Maximum of ${MAX_MODULE_LESSONS} lessons. `}
           {assignmentType === 'game_based'
             ? 'Select one or more lessons the AI should use for follow-up activity generation or game content.'
             : "Select one or more lessons to link as this assignment's Related Lesson. If a student scores below 75%, these will be used to generate a Review Activity under Suggested Learning Actions."}
@@ -5762,6 +5785,7 @@ useEffect(() => {
           >
             {materials.map((material) => {
               const active = selectedMaterialIds.includes(material.id);
+              const limitReached = !active && selectedMaterialIds.length >= MAX_MODULE_LESSONS;
               const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
               return (
                 <TouchableOpacity
@@ -5770,7 +5794,8 @@ useEffect(() => {
                     styles.materialChip,
                     { width: isMobile ? '48%' : '32%' },
                     active && styles.materialChipActive,
-                    isLesson && styles.lessonChip
+                    isLesson && styles.lessonChip,
+                    limitReached && { opacity: 0.45 }
                   ]}
                   onPress={() => toggleRelatedMaterial(material.id)}
                   activeOpacity={0.85}
@@ -6726,31 +6751,6 @@ useEffect(() => {
               <Text style={styles.checkboxLabel}>Disable repository after due</Text>
             </View>
           )}
-          <View style={styles.inlineSaveWrap}>
-            <TouchableOpacity
-              style={[
-                styles.inlineSaveButton,
-                Object.keys(errors).length > 0 ? styles.floatingSaveButtonWarn : null,
-                isSaving ? styles.floatingSaveButtonDisabled : null,
-                { width: '100%' },
-              ]}
-              onPress={handleCreate}
-              disabled={isSaving}
-              activeOpacity={isSaving ? 1 : 0.85}
-            >
-              {isSaving ? (
-                <>
-                  <ActivityIndicator size="small" color="#FFF" />
-                  <Text style={styles.floatingSaveButtonText}>Saving Assignment...</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="save-outline" size={18} color="#FFF" />
-                  <Text style={styles.floatingSaveButtonText}>Save</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
         </View>
       </View>
     );
@@ -7080,75 +7080,71 @@ useEffect(() => {
         initialStudentId={initialCommentStudentId}
         onInitialStudentHandled={onInitialCommentStudentHandled}
       />
-        <Modal visible={showUpdateModal} transparent animationType="fade">
-          <View style={styles.modalOverlayCenter}>
-            <View
-              style={[
-                styles.modalCardElevated,
-                // 🔥 FIX: same card width as the Create Assignment Modal
-                // (was 360/820) so both modals feel like the same component.
-                { width: isMobile ? Math.min(width - 28, 370) : 900, maxHeight: height * 0.9 },
-              ]}
+        {/* Full-screen inline form (same layout language as the student-side assignment detail) */}
+        <Modal
+          visible={showUpdateModal}
+          animationType="slide"
+          transparent={false}
+          statusBarTranslucent
+          onRequestClose={() => {
+            if (!isSaving) setShowUpdateModal(false);
+          }}
+        >
+          <SafeAreaView style={styles.fsScreen} edges={['top', 'bottom']}>
+          <View style={styles.fsTopBar}>
+            <TouchableOpacity
+              onPress={() => setShowUpdateModal(false)}
+              disabled={isSaving}
+              style={styles.fsCloseBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Close"
             >
-              <View style={styles.createHeaderRow}>
-                <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.createTitle}>Update Assignment</Text>
-                  <Text style={styles.modalSubtitle}>Edit the selected assignment details.</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setShowUpdateModal(false)}
-                  disabled={isSaving}
-                >
-                  <Ionicons name="close" size={24} color="#111" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.modalScrollContent}
-                keyboardShouldPersistTaps="handled"
-              >
-                {renderAssignmentFields()}
-
-                {/* 🔥 FIX: Delete/Update now sit inline at the bottom of the
-                    scrollable content — same layout the Create Assignment
-                    Modal uses for its Save button — instead of a separate
-                    fixed action bar outside the ScrollView. */}
-                <View style={styles.inlineSaveWrap}>
-                  <TouchableOpacity
-                    style={[styles.inlineDeleteButton, isSaving && styles.disabledButton]}
-                    onPress={handleDelete}
-                    disabled={isSaving}
-                    activeOpacity={isSaving ? 1 : 0.85}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#D32F2F" />
-                    <Text style={styles.inlineDeleteButtonText}>Delete</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.inlineSaveButton,
-                      { flex: 1 },
-                      isSaving && styles.floatingSaveButtonDisabled,
-                    ]}
-                    onPress={handleUpdate}
-                    disabled={isSaving}
-                    activeOpacity={isSaving ? 1 : 0.85}
-                  >
-                    {isSaving ? (
-                      <>
-                        <ActivityIndicator size="small" color="#FFF" />
-                        <Text style={styles.floatingSaveButtonText}>Updating...</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Ionicons name="save-outline" size={18} color="#FFF" />
-                        <Text style={styles.floatingSaveButtonText}>Update</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
+              <Ionicons name="close" size={24} color="#5F6368" />
+            </TouchableOpacity>
+            <View style={styles.fsTopTitleWrap}>
+              <Text style={styles.fsTopTitle} numberOfLines={1}>
+                Update Assignment
+              </Text>
+              <Text style={styles.fsTopSubtitle} numberOfLines={1}>
+                Edit the selected assignment details.
+              </Text>
             </View>
+            <TouchableOpacity
+              style={[styles.fsIconBtn, isSaving && styles.disabledButton]}
+              onPress={handleDelete}
+              disabled={isSaving}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Delete assignment"
+            >
+              <Ionicons name="trash-outline" size={22} color="#D32F2F" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.fsSaveBtn, isSaving && styles.floatingSaveButtonDisabled]}
+              onPress={handleUpdate}
+              disabled={isSaving}
+              activeOpacity={isSaving ? 1 : 0.85}
+            >
+              {isSaving ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFF" />
+                  <Text style={styles.fsSaveBtnText}>Updating...</Text>
+                </>
+              ) : (
+                <Text style={styles.fsSaveBtnText}>Update</Text>
+              )}
+            </TouchableOpacity>
           </View>
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.fsScrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.fsBody}>
+                {renderAssignmentFields()}
+              </View>
+            </ScrollView>
+          </SafeAreaView>
         </Modal>
         {/* ══════════════════════════════════════════════════════════════════════
 DATE TIME MODAL
@@ -8223,82 +8219,83 @@ EDIT MATERIAL MODAL
       {/* ══════════════════════════════════════════════════════════════════════
 CREATE MODAL
 ════════════════════════════════════════════════════════════════════════ */}
-      <Modal visible={showCreateModal} transparent animationType="fade">
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 370) : 900, maxHeight: height * 0.9 },
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>
-                  Create{' '}
-                  {activeTab === 'materials'
-                    ? 'Material'
-                    : assignmentType === 'game_based'
-                      ? 'Game-Based Learning Assignment'
-                      : 'Assignment'}
-                </Text>
-                <Text style={styles.modalSubtitle}>
-                  {activeTab === 'materials'
-                    ? 'Add a new class material with optional file attachment.'
-                    : assignmentType === 'game_based'
-                      ? 'Create a new game-based assignment with interactive challenges.'
-                      : 'Create a new assignment with professional responsive layout.'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  if (isSaving) return;
-                  setShowCreateModal(false);
-                  resetCreateForm();
-                }}
-                disabled={isSaving}
-              >
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.modalScrollContent}
-              keyboardShouldPersistTaps="handled"
+      {/* Full-screen inline form (same layout language as the student-side assignment detail) */}
+      <Modal
+        visible={showCreateModal}
+        animationType="slide"
+        transparent={false}
+        statusBarTranslucent
+        onRequestClose={() => {
+                if (isSaving) return;
+                setShowCreateModal(false);
+                resetCreateForm();
+              }}
+      >
+        <SafeAreaView style={styles.fsScreen} edges={['top', 'bottom']}>
+          <View style={styles.fsTopBar}>
+            <TouchableOpacity
+              onPress={() => {
+                if (isSaving) return;
+                setShowCreateModal(false);
+                resetCreateForm();
+              }}
+              disabled={isSaving}
+              style={styles.fsCloseBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Close"
             >
-              {renderCreateModalBody()}
-            </ScrollView>
-            {activeTab === 'materials' && (
-              <View
-                style={[
-                  styles.floatingSaveWrap,
-                  isMobile && styles.floatingSaveWrapMobile,
-                ]}
-              >
-                <TouchableOpacity
-                  style={[
-                    styles.floatingSaveButton,
-                    isSaving ? styles.floatingSaveButtonDisabled : null,
-                  ]}
-                  onPress={handleCreate}
-                  disabled={isSaving}
-                  activeOpacity={isSaving ? 1 : 0.85}
-                >
-                  {isSaving ? (
-                    <>
-                      <ActivityIndicator size="small" color="#FFF" />
-                      <Text style={styles.floatingSaveButtonText}>Saving Material...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="save-outline" size={18} color="#FFF" />
-                      <Text style={styles.floatingSaveButtonText}>Save</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
+              <Ionicons name="close" size={24} color="#5F6368" />
+            </TouchableOpacity>
+            <View style={styles.fsTopTitleWrap}>
+              <Text style={styles.fsTopTitle} numberOfLines={1}>
+                Create{' '}
+                {activeTab === 'materials'
+                  ? 'Material'
+                  : assignmentType === 'game_based'
+                    ? 'Game-Based Learning Assignment'
+                    : 'Assignment'}
+              </Text>
+              <Text style={styles.fsTopSubtitle} numberOfLines={1}>
+                {activeTab === 'materials'
+                  ? 'Add a new class material with optional file attachment.'
+                  : assignmentType === 'game_based'
+                    ? 'Create a new game-based assignment with interactive challenges.'
+                    : 'Create a new assignment with professional responsive layout.'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.fsSaveBtn,
+                activeTab !== 'materials' && Object.keys(errors).length > 0
+                  ? styles.floatingSaveButtonWarn
+                  : null,
+                isSaving ? styles.floatingSaveButtonDisabled : null,
+              ]}
+              onPress={handleCreate}
+              disabled={isSaving}
+              activeOpacity={isSaving ? 1 : 0.85}
+            >
+              {isSaving ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFF" />
+                  <Text style={styles.fsSaveBtnText}>Saving...</Text>
+                </>
+              ) : (
+                <Text style={styles.fsSaveBtnText}>Save</Text>
+              )}
+            </TouchableOpacity>
           </View>
-        </View>
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.fsScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.fsBody}>
+              {renderCreateModalBody()}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 DATE TIME MODAL
@@ -10667,6 +10664,39 @@ const styles = StyleSheet.create({
   dateTimeCard: { backgroundColor: '#FFF', borderRadius: 18, padding: 18, maxHeight: '92%' },
   dateTimeScroll: { flexGrow: 0 },
   dateTimeScrollContent: { paddingBottom: 4 },
+  // ─── Full-screen inline form modal (Create / Update Assignment) ───
+  fsScreen: { flex: 1, backgroundColor: '#FFFFFF' },
+  fsTopBar: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DADCE0',
+  },
+  fsCloseBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  fsTopTitleWrap: { flex: 1, minWidth: 0 },
+  fsTopTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#3C4043' },
+  fsTopSubtitle: { fontFamily: FONT_BODY, fontSize: 12, color: '#80868B', marginTop: 2 },
+  fsIconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  fsSaveBtn: {
+    backgroundColor: '#8B0000',
+    borderRadius: 20,
+    minHeight: 38,
+    paddingHorizontal: 20,
+    marginRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  fsSaveBtnText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
+  fsScrollContent: { flexGrow: 1, paddingBottom: 48 },
+  fsBody: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 20 },
+
   modalScrollContent: { paddingBottom: 10 },
   createHeaderRow: {
     flexDirection: 'row',

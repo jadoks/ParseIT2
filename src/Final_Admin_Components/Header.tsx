@@ -37,7 +37,7 @@ type AdminNotification = {
   instructorName?: string | null;
 };
 
-const NAV_ITEMS = ["Dashboard", "Class", "Admin", "Student", "Teacher"] as const;
+const NAV_ITEMS = ["Dashboard", "Class", "Admin", "Student", "Teacher", "User Data"] as const;
 
 const NAV_ICONS: Record<
   (typeof NAV_ITEMS)[number],
@@ -48,6 +48,7 @@ const NAV_ICONS: Record<
   Admin: "settings-outline",
   Student: "school-outline",
   Teacher: "person-outline",
+  "User Data": "cloud-upload-outline",
 };
 
 const NAV_ICONS_ACTIVE: Record<
@@ -59,6 +60,7 @@ const NAV_ICONS_ACTIVE: Record<
   Admin: "settings",
   Student: "school",
   Teacher: "person",
+  "User Data": "cloud-upload",
 };
 
 function getApiBaseUrl() {
@@ -306,6 +308,7 @@ export default function Header({
   activeItem,
   onChange,
   isMobile,
+  isTablet,
   onMenuPress,
   isSidebarOpen,
   adminId,
@@ -425,16 +428,22 @@ export default function Header({
               return (
                 <TouchableOpacity
                   key={item}
-                  style={[styles.navItem, active && styles.navItemActive]}
+                  style={[
+                    styles.navItem,
+                    isTablet && styles.navItemTablet,
+                    active && styles.navItemActive,
+                  ]}
                   onPress={() => onChange(item)}
                   activeOpacity={0.85}
                 >
-                  <Ionicons
-                    name={active ? NAV_ICONS_ACTIVE[item] : NAV_ICONS[item]}
-                    size={18}
-                    color={active ? "#8B0000" : "#9CA3AF"}
-                    style={styles.navIcon}
-                  />
+                  {!isTablet && (
+                    <Ionicons
+                      name={active ? NAV_ICONS_ACTIVE[item] : NAV_ICONS[item]}
+                      size={18}
+                      color={active ? "#8B0000" : "#9CA3AF"}
+                      style={styles.navIcon}
+                    />
+                  )}
 
                   <Text style={[styles.navText, active && styles.navTextActive]}>
                     {item}
@@ -619,11 +628,15 @@ const styles = StyleSheet.create({
   navIcon: {
     marginRight: 6,
   },
+  navItemTablet: {
+    paddingHorizontal: 8,
+    marginHorizontal: 2,
+  },
   navItemMobile: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 4, // 6 items now — keep them on one row on narrow phones
     borderRadius: 10,
   },
   navItemActive: {

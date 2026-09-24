@@ -24,6 +24,7 @@ import ManageAdmin from "./Final_Admin_Components/ManageAdmin";
 import ManageClass from "./Final_Admin_Components/ManageClass";
 import ManageStudent from "./Final_Admin_Components/ManageStudent";
 import ManageTeacher from "./Final_Admin_Components/ManageTeacher";
+import ManageUserData from "./Final_Admin_Components/ManageUserData";
 import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
 import StudentAtRisk from "./Final_Admin_Components/StudentAtRisk";
@@ -338,6 +339,10 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
 
     if (activeTopNav === "Teacher" || activeContentScreen === "Teacher") {
       return <ManageTeacher width={width} />;
+    }
+
+    if (activeTopNav === "User Data" || activeContentScreen === "User Data") {
+      return <ManageUserData width={width} apiBaseUrl={API_BASE_URL} />;
     }
 
     if (activeTopNav === "Dashboard" || activeContentScreen === "Dashboard") {

@@ -1253,7 +1253,12 @@ export default function Register({
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data?.error || 'Registration failed.');
+      if (!response.ok) {
+        const requestError: any = new Error(data?.error || 'Registration failed.');
+        // Machine-readable reason from the server (e.g. NOT_IN_RECORDS).
+        requestError.code = data?.code;
+        throw requestError;
+      }
 
       showFeedback('success', 'Success', 'Account successfully created!', () => {
         setTimeout(() => {
@@ -1267,7 +1272,11 @@ export default function Register({
       // Give the duplicate-ID case (and duplicate-email, same pattern) a more
       // specific toast title instead of the generic "Registration Failed",
       // while still reusing the exact same Toast component/flow.
-      if (/id already exists/i.test(errorMessage)) {
+      if (error?.code === 'NOT_IN_RECORDS') {
+        // The admin's uploaded student/teacher list doesn't contain a matching
+        // record, so the server refused to create the account.
+        showFeedback('error', 'Not in School Records', errorMessage);
+      } else if (/id already exists/i.test(errorMessage)) {
         showFeedback('error', 'ID Already Exists', 'This User ID is already registered. Please use a different one.');
       } else if (/email already exists/i.test(errorMessage)) {
         showFeedback('error', 'Email Already Exists', 'This email is already registered. Please use a different one.');

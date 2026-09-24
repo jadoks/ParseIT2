@@ -20,6 +20,7 @@ import PizZip from "pizzip";
 import { createRequire } from "module";
 import multer from "multer";
 import { createAvatarThumbs } from "./avatarThumbs.js";
+import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster.js";
 
   import officeparser from "officeparser";
 
@@ -3107,6 +3108,21 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
 
 
 
+  // ============================================================
+  // USER DATA MANAGEMENT (admin-uploaded student/teacher lists)
+  // Admin endpoints live under /admin/user-data/*. /auth/register below
+  // uses verifyRegistration() so only people on those lists can sign up.
+  // ============================================================
+  const userDataRoster = createUserDataRoster({
+    db,
+    FieldValue,
+    requireAuth,
+    findUserProfileByAuthUid,
+    pdfParse: pdf,
+    mammoth,
+  });
+  userDataRoster.registerRoutes(app);
+
   app.post("/auth/register", async (req, res) => {
     try {
       const {
@@ -3141,6 +3157,28 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       if (!["student", "teacher"].includes(normalizedRole)) {
         return res.status(400).json({
           error: "Role must be student or teacher.",
+        });
+      }
+
+      // Only people the admin uploaded in User Data Management may register.
+      // User ID, name, and birthday must all match the uploaded record. Checked
+      // before the duplicate-ID/email checks so unlisted people learn nothing
+      // about which accounts already exist.
+      const rosterCheck = await userDataRoster.verifyRegistration({
+        role: normalizedRole,
+        id: normalizedId,
+        firstName,
+        lastName,
+        birthday,
+      });
+
+      if (!rosterCheck.ok) {
+        console.warn(
+          `Registration rejected (${rosterCheck.reason}) for ${normalizedRole} ID "${normalizedId}"`
+        );
+        return res.status(403).json({
+          error: ROSTER_REJECTION_MESSAGE,
+          code: "NOT_IN_RECORDS",
         });
       }
 
@@ -3241,6 +3279,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
             ...userData,
           });
       }
+      await userDataRoster.markRegistered({ role: normalizedRole, id: normalizedId });
+
       // After the successful response is prepared:
       await notifyAdmins({
         type: "new-user",
