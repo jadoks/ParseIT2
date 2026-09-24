@@ -86,6 +86,32 @@ type GeneratedSection = {
   students: Student[];
 };
 
+// "Highest GWA" = the BEST (lowest-number) GWA across ALL year levels and
+// sections — e.g. 1st year 1.75, 2nd year 1.3, 2nd year 1.42 -> the 1.3 student
+// is the Highest. Students tied at that GWA are all included. They get their
+// own "Highest GWA — All Year Levels" table and also stay in their own year
+// level / section table. GWAs are compared at the 3-decimal precision shown.
+//
+// The server sends this as `highestGwa`; this is the fallback if it's missing.
+const deriveHighestGwaStudents = (sections: GeneratedSection[]): Student[] => {
+  const all = sections.flatMap((section) =>
+    section.students.map((student) => ({
+      ...student,
+      yearLevel: student.yearLevel || section.yearLevel,
+      section: student.section || section.sectionName,
+    }))
+  );
+  const gwas = all.map((student) => Number(student.gpa)).filter(Number.isFinite);
+  if (gwas.length === 0) return [];
+  const best = Math.min(...gwas).toFixed(3);
+  return all.filter((student) => Number(student.gpa).toFixed(3) === best);
+};
+
+// "3rd Year Java" — how a student's year level + section is shown in the
+// Highest GWA table (which mixes every year level).
+const formatYearSection = (student: Student) =>
+  [student.yearLevel, student.section].filter(Boolean).join(' - ');
+
 type DropdownName = 'semester';
 
 type DropdownProps = {
@@ -509,6 +535,12 @@ const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
     subtitle: 'Grouped by year level & section, best (lowest) GWA ranked first',
   },
   {
+    icon: 'medal-outline',
+    badge: 'server',
+    title: 'Highest GWA table',
+    subtitle: 'The student with the best (lowest) GWA across all year levels also gets a separate table',
+  },
+  {
     icon: 'trophy-outline',
     badge: 'server',
     title: 'Official Deans List',
@@ -667,6 +699,11 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const schoolYear = buildSchoolYear(startYear);
   const [semester, setSemester] = useState('1st Semester');
   const [generatedSections, setGeneratedSections] = useState<GeneratedSection[]>([]);
+  // Students with the highest GWA (1.0), all year levels together — shown in
+  // their own table and included in every export.
+  const [highestGwaStudents, setHighestGwaStudents] = useState<Student[]>([]);
+  // The winning GWA itself, e.g. "1.300" (all highest students share it).
+  const highestGwaLabel = highestGwaStudents[0]?.gpa ?? '';
   const [openDropdown, setOpenDropdown] = useState<DropdownName | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   // NEW: Loading state for Download Excel button
@@ -774,6 +811,11 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       }));
 
       setGeneratedSections(rankedSections);
+      setHighestGwaStudents(
+        Array.isArray(data?.highestGwa)
+          ? data.highestGwa
+          : deriveHighestGwaStudents(rankedSections)
+      );
       setOpenDropdown(null);
 
       if (rankedSections.length === 0) {
@@ -796,6 +838,49 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   };
 
   const buildHonorReportHtml = () => {
+    const highestRows = highestGwaStudents
+      .map(
+        (student, index) => `
+              <tr>
+                <td class="rank">${index + 1}</td>
+                <td>${escapeHtml(student.name)}</td>
+                <td class="center-text">${escapeHtml(formatYearSection(student))}</td>
+                <td class="center">${escapeHtml(student.gpa)}</td>
+              </tr>
+            `
+      )
+      .join('');
+
+    const highestBlock = highestGwaStudents.length
+      ? `
+          <section class="honor-section highest-section">
+            <div class="section-heading">
+              <div>
+                <h2>HIGHEST GWA</h2>
+                <p>All Year Levels - GWA ${escapeHtml(highestGwaLabel)}</p>
+                <p>Academic Year: ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | Semester: ${escapeHtml(semester)}</p>
+              </div>
+              <div class="count-box">
+                <strong>${highestGwaStudents.length}</strong>
+                <span>Students</span>
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th class="rank">Rank</th>
+                  <th>Student Name</th>
+                  <th class="center-text">Year Level / Section</th>
+                  <th class="center">GWA</th>
+                </tr>
+              </thead>
+              <tbody>${highestRows}</tbody>
+            </table>
+          </section>
+        `
+      : '';
+
     const sectionBlocks = generatedSections
       .map((section) => {
         const rows = section.students
@@ -1012,6 +1097,15 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               text-align: center;
               font-weight: 900;
             }
+
+            .center-text {
+              width: 170px;
+              text-align: center;
+            }
+
+            .highest-section .section-heading {
+              background: #B8860B;
+            }
           </style>
         </head>
         <body>
@@ -1026,6 +1120,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           <div class="main-title">OFFICIAL DEANS LIST</div>
           <div class="main-subtitle">Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | ${escapeHtml(semester)}</div>
 
+          ${highestBlock}
           ${sectionBlocks}
         </body>
       </html>
@@ -1063,6 +1158,13 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               name: student.name,
               gpa: student.gpa,
             })),
+          })),
+          // Separate "Highest GWA — all year levels" table on the form.
+          highestGwa: highestGwaStudents.map((student) => ({
+            name: student.name,
+            gpa: student.gpa,
+            yearLevel: student.yearLevel,
+            sectionName: student.section,
           })),
         }),
       });
@@ -1201,6 +1303,93 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     };
 
     addHeader();
+
+    // ── Highest GWA (all year levels) — its own table, before the sections ──
+    if (highestGwaStudents.length > 0) {
+      ensureSpace(150);
+
+      doc.setFillColor(184, 134, 11);
+      doc.roundedRect(margin, y, tableWidth, 58, 8, 8, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('HIGHEST GWA', margin + 14, y + 21);
+
+      doc.setFontSize(9);
+      doc.text(`All Year Levels - GWA ${highestGwaLabel}`, margin + 14, y + 37);
+      doc.text(`Academic Year: ${schoolYear || 'S.Y ---- - ----'} | Semester: ${semester}`, margin + 14, y + 50);
+
+      doc.setDrawColor(255, 255, 255);
+      doc.roundedRect(pageWidth - margin - 78, y + 10, 62, 38, 6, 6);
+      doc.setFontSize(16);
+      doc.text(String(highestGwaStudents.length), pageWidth - margin - 47, y + 27, { align: 'center' });
+      doc.setFontSize(7);
+      doc.text('STUDENTS', pageWidth - margin - 47, y + 39, { align: 'center' });
+
+      y += 72;
+      doc.setTextColor(0, 0, 0);
+
+      const hColWidths = [60, tableWidth - 60 - 150 - 80, 150, 80];
+      const hColX = [
+        margin,
+        margin + hColWidths[0],
+        margin + hColWidths[0] + hColWidths[1],
+        margin + hColWidths[0] + hColWidths[1] + hColWidths[2],
+      ];
+
+      const drawHighestTableHeader = () => {
+        doc.setFillColor(31, 31, 31);
+        doc.rect(margin, y, tableWidth, 32, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('RANK', hColX[0] + hColWidths[0] / 2, y + 20, { align: 'center' });
+        doc.text('STUDENT NAME', hColX[1] + hColWidths[1] / 2, y + 20, { align: 'center' });
+        doc.text('YEAR LEVEL / SECTION', hColX[2] + hColWidths[2] / 2, y + 20, { align: 'center' });
+        doc.text('GWA', hColX[3] + hColWidths[3] / 2, y + 20, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+        y += 32;
+      };
+
+      drawHighestTableHeader();
+
+      highestGwaStudents.forEach((student, index) => {
+        const nameLines = doc.splitTextToSize(student.name, hColWidths[1] - 16);
+        const yearSectionLines = doc.splitTextToSize(formatYearSection(student), hColWidths[2] - 12);
+        const rowHeight = Math.max(30, Math.max(nameLines.length, yearSectionLines.length) * 11 + 14);
+
+        if (y + rowHeight > pageHeight - 40) {
+          doc.addPage();
+          y = 46;
+          addHeader();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.text('Highest GWA - All Year Levels (continued)', margin, y);
+          y += 16;
+          drawHighestTableHeader();
+        }
+
+        doc.setDrawColor(217, 217, 217);
+        doc.rect(margin, y, tableWidth, rowHeight);
+        doc.line(hColX[1], y, hColX[1], y + rowHeight);
+        doc.line(hColX[2], y, hColX[2], y + rowHeight);
+        doc.line(hColX[3], y, hColX[3], y + rowHeight);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(String(index + 1), hColX[0] + hColWidths[0] / 2, y + 19, { align: 'center' });
+        doc.text(nameLines, hColX[1] + 8, y + 19);
+        doc.text(yearSectionLines, hColX[2] + hColWidths[2] / 2, y + 19, { align: 'center' });
+
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(student.gpa), hColX[3] + hColWidths[3] / 2, y + 19, { align: 'center' });
+
+        y += rowHeight;
+      });
+
+      y += 26;
+    }
 
     generatedSections.forEach((section) => {
       ensureSpace(120);
@@ -1385,6 +1574,8 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         ['Semester', semester],
         ['Total Sections', generatedSections.length],
         ['Total Deans List Students', totalHonorStudents],
+        ['Highest GWA', highestGwaLabel],
+        ['Highest GWA Students (all year levels)', highestGwaStudents.length],
         ['Exported At', new Date().toLocaleString()],
         [],
         ['Section', 'Deans List Students'],
@@ -1397,6 +1588,33 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
       infoSheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
       XLSX.utils.book_append_sheet(workbook, infoSheet, 'Deans List Info');
+
+      // Separate sheet for the highest-GWA students (all year levels together).
+      if (highestGwaStudents.length > 0) {
+        const highestRows = highestGwaStudents.map((student, index) => ({
+          Rank: index + 1,
+          'Student ID': student.id,
+          'Student Name': student.name,
+          GWA: student.gpa,
+          'Year Level': student.yearLevel,
+          Section: student.section,
+          'Academic Year': schoolYear || 'S.Y ---- - ----',
+          Semester: semester,
+        }));
+
+        const highestSheet = XLSX.utils.json_to_sheet(highestRows);
+        highestSheet['!cols'] = [
+          { wch: 8 },
+          { wch: 18 },
+          { wch: 32 },
+          { wch: 10 },
+          { wch: 18 },
+          { wch: 18 },
+          { wch: 22 },
+          { wch: 18 },
+        ];
+        XLSX.utils.book_append_sheet(workbook, highestSheet, 'Highest GWA');
+      }
 
       const honorRows = generatedSections.flatMap((section) =>
         section.students.map((student, index) => ({
@@ -1745,6 +1963,94 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             </View>
           ) : (
             <View style={styles.honorTablesWrap}>
+              {/* Highest GWA — best GWA across every year level, own table */}
+              <View
+                style={[
+                  styles.honorSectionCard,
+                  styles.highestGwaCard,
+                  isMobile && styles.honorSectionCardMobile,
+                ]}
+              >
+                <View style={[styles.honorAcademicHeader, isMobile && styles.honorAcademicHeaderMobile]}>
+                  <View style={styles.honorAcademicTitleWrap}>
+                    <View style={styles.highestGwaTitleRow}>
+                      <Ionicons name="trophy" size={isMobile ? 18 : 20} color="#B8860B" />
+                      <Text style={[styles.honorAcademicTitle, isMobile && styles.honorAcademicTitleMobile]}>
+                        Highest GWA
+                      </Text>
+                    </View>
+                    <Text style={[styles.honorAcademicSubtitle, isMobile && styles.honorAcademicSubtitleMobile]}>
+                      All Year Levels — GWA {highestGwaLabel}
+                    </Text>
+                    <Text style={[styles.honorAcademicMeta, isMobile && styles.honorAcademicMetaMobile]}>
+                      Academic Year: {schoolYear || 'S.Y ---- - ----'} | Semester: {semester}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.honorCountBadge,
+                      styles.highestGwaBadge,
+                      isMobile && styles.honorCountBadgeMobile,
+                    ]}
+                  >
+                    <Text style={[styles.honorCountNumber, styles.highestGwaBadgeText]}>
+                      {highestGwaStudents.length}
+                    </Text>
+                    <Text style={[styles.honorCountLabel, styles.highestGwaBadgeText]}>Students</Text>
+                  </View>
+                </View>
+
+                {highestGwaStudents.length === 0 ? (
+                  <Text style={styles.highestGwaEmptyText}>
+                    No qualified students for this term.
+                  </Text>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={isMobile}
+                    contentContainerStyle={styles.honorTableHorizontal}
+                    style={styles.honorTableScroll}
+                  >
+                    <View style={[styles.honorTable, styles.highestGwaTable, isMobile && styles.honorTableMobile]}>
+                      <View style={styles.honorTableHeader}>
+                        <Text style={[styles.honorHeaderCell, { width: isMobile ? 64 : 80 }]}>Rank</Text>
+                        <Text style={[styles.honorHeaderCell, styles.honorStudentNameColumn]}>
+                          Student Name
+                        </Text>
+                        <Text style={[styles.honorHeaderCell, { width: isMobile ? 150 : 200 }]}>
+                          Year Level / Section
+                        </Text>
+                        <Text style={[styles.honorHeaderCell, { width: isMobile ? 90 : 110 }]}>GWA</Text>
+                      </View>
+
+                      {highestGwaStudents.map((student, index) => (
+                        <View key={`highest-${student.id}-${index}`} style={styles.honorTableRow}>
+                          <Text style={[styles.honorRankCell, { width: isMobile ? 64 : 80 }]}>
+                            {index + 1}
+                          </Text>
+                          <Text
+                            style={[styles.honorNameCell, styles.honorStudentNameColumn]}
+                            numberOfLines={isMobile ? 2 : 1}
+                          >
+                            {student.name}
+                          </Text>
+                          <Text
+                            style={[styles.highestGwaSectionCell, { width: isMobile ? 150 : 200 }]}
+                            numberOfLines={2}
+                          >
+                            {formatYearSection(student)}
+                          </Text>
+                          <Text style={[styles.honorGwaCell, { width: isMobile ? 90 : 110 }]}>
+                            {student.gpa}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                )}
+              </View>
+
               {generatedSections.map((section, sectionIndex) => (
                 <View
                   key={`${section.yearLevel}-${section.sectionName}-${sectionIndex}`}
@@ -2712,6 +3018,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     marginTop: 2,
+  },
+  // Highest GWA (1.0) card — same layout as a section card, gold accent
+  highestGwaCard: {
+    borderColor: '#E6C35C',
+    backgroundColor: '#FFFCF3',
+  },
+  highestGwaTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  highestGwaBadge: {
+    backgroundColor: '#F8EDCB',
+  },
+  highestGwaBadgeText: {
+    color: '#8A6508',
+  },
+  highestGwaTable: {
+    minWidth: 640,
+  },
+  highestGwaSectionCell: { fontFamily: FONT_BODY,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    color: '#333',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  highestGwaEmptyText: { fontFamily: FONT_BODY,
+    color: '#8A6508',
+    fontSize: 13,
+    fontWeight: '600',
+    paddingVertical: 6,
   },
   honorTableScroll: {
     width: '100%',

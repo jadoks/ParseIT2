@@ -14722,6 +14722,23 @@ app.get(
 
 
 
+  // "Highest GWA" = the BEST (lowest-number) GWA among ALL qualified students,
+  // across every year level & section — e.g. 1st year 1.75, 2nd year 1.3,
+  // 2nd year 1.42 -> the 1.3 student is the Highest. Students tied at that
+  // GWA are all kept. They are listed again in a separate "Highest GWA — all
+  // year levels" table (and still stay in their own year level / section
+  // table too). GWAs are compared at the 3-decimal precision shown on screen.
+  const pickHighestGwaStudents = (students = []) => {
+    const gwas = students
+      .map((student) => Number(student?.gpa ?? student?.gwa))
+      .filter(Number.isFinite);
+    if (gwas.length === 0) return [];
+    const best = Math.min(...gwas).toFixed(3);
+    return students.filter(
+      (student) => Number(student?.gpa ?? student?.gwa).toFixed(3) === best
+    );
+  };
+
   /**
    * HONOR ROLL ROUTE
    * Rule:
@@ -14731,6 +14748,8 @@ app.get(
    * - Student must have a submitted final grade for every enrolled class in that term.
    * - Student must NOT have any final grade above 2.5 (all grades must be 2.5 or lower).
    * - Student's GWA must be at least 1.0 and up to 1.75 (i.e. 1.0 <= GWA <= 1.75).
+   * - Extra: `highestGwa` in the response lists the qualified student(s) with the
+   *   best (lowest-number) GWA across ALL year levels and sections — ties included.
    * 
    */
   app.get("/honor-roll", async (req, res) => {
@@ -14902,11 +14921,20 @@ app.get(
         return String(a.sectionName).localeCompare(String(b.sectionName));
       });
 
+      // The student(s) with the best GWA across every year level & section.
+      // `data` is already ordered by year level, section, then name, so this
+      // keeps that order.
+      const highestGwa = pickHighestGwaStudents(
+        data.flatMap((section) => section.students)
+      );
+
       return res.json({
         success: true,
         schoolYear: formattedSchoolYear,
         semester,
         data,
+        highestGwaValue: highestGwa.length ? highestGwa[0].gpa : null,
+        highestGwa,
       });
     } catch (error) {
       console.error("Honor roll error:", error);
@@ -14932,7 +14960,10 @@ app.get(
    *     sections: [
    *       { yearLevel: "3rd Year", sectionName: "Java", students: [{ name, gpa }, ...] },
    *       ...
-   *     ]
+   *     ],
+   *     // optional — the student(s) with the highest (best) GWA across all year
+   *     // levels. If omitted, the server works it out from `sections`.
+   *     highestGwa: [{ name, gpa, yearLevel, sectionName }, ...]
    *   }
    */
   app.post("/deans-list/export-docx", async (req, res) => {
@@ -14971,10 +15002,45 @@ app.get(
         day: "numeric",
       });
 
+      // Highest-GWA table (all year levels). Prefer the list the client sent so
+      // the form matches the screen; otherwise derive it from the sections.
+      const highestSource = Array.isArray(req.body?.highestGwa)
+        ? req.body.highestGwa
+        : pickHighestGwaStudents(
+            sections.flatMap((section) =>
+              (Array.isArray(section.students) ? section.students : []).map((student) => ({
+                ...student,
+                yearLevel: section.yearLevel,
+                sectionName: section.sectionName,
+              }))
+            )
+          );
+
+      const highestStudents = highestSource
+        .map((student, index) => ({
+          no: String(index + 1),
+          name: student.name || "",
+          yearSection: [student.yearLevel, student.sectionName || student.section]
+            .filter(Boolean)
+            .join(" "),
+          gwa: student.gpa != null ? String(student.gpa) : student.gwa || "",
+        }));
+
       const templateData = {
         date: todayLabel,
         schoolYear: schoolYear || "",
         semester: semester || "",
+        // One-item array (or empty) so the template block only prints when
+        // there is a Highest GWA student.
+        highestGwaGroups: highestStudents.length
+          ? [
+              {
+                gwaLabel: highestStudents[0].gwa,
+                totalStudents: String(highestStudents.length),
+                highestStudents,
+              },
+            ]
+          : [],
         sections: sections.map((section) => {
           const students = Array.isArray(section.students) ? section.students : [];
           return {
