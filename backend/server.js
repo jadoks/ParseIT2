@@ -6,6 +6,7 @@ import express from "express";
 import admin from "firebase-admin";
 
   import { GoogleAIFileManager } from "@google/generative-ai/server";
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -388,7 +389,7 @@ import { createAvatarThumbs } from "./avatarThumbs.js";
   const app = express();
   const allowedOrigins = [
     "https://parse-it-hub.vercel.app",
-    "https://parseithub.vercel.app",
+    "https://parseithub.vercel.app/",
     "http://localhost:8081", // for local dev
   ];
 
@@ -18742,121 +18743,397 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
-  /**
-   * SAS (Student Activity Sheet) — REAL TEMPLATE PDF PREVIEW
-   * Fills the real CTU SAS Word template (templates/sas-template.docx)
-   * with this lesson's data and returns a rendered PDF. This is what the
-   * "display" / preview screen shows — the actual letterhead template with
-   * its own auto-growing orange section boxes — NOT the hand-built RN/HTML
-   * lesson view. Generating and editing a lesson are untouched; they still
-   * read/write the plain JSON fields on the courseLessons doc as before.
-   * This route only turns that JSON into the real document for viewing.
-   *
-   * Template placeholders (see templates/sas-template.docx):
-   *   courseName, weekLabel, lessonTitle, objectives[], materialsText,
-   *   referencesText, lessonPrepInstructions, lessonPrepActivityTitle,
-   *   lessonPrepGuideQuestions[], lessonPrepResources[{label,url}],
-   *   lessonPrepTransition, conceptNotesText, guidedPracticeText,
-   *   performanceTaskText
-   */
-  app.get("/course-lessons/:lessonId/sas-preview-pdf", requireAuth, async (req, res) => {
-    try {
-      const { lessonId } = req.params;
+  // ════════════════════════════════════════════════════════════════════════
+  // SAS (Student Activity Sheet) — TEACHER-SELECTABLE FIELDS
+  // ════════════════════════════════════════════════════════════════════════
+  // The letterhead block of the SAS template is the same for every course:
+  //   courseName, weekLabel, lessonTitle, Intended Learning Outcomes,
+  //   Materials, References
+  // Those are ALWAYS generated / required and are never asked about.
+  //
+  // Everything else is optional and chosen by the teacher per lesson, because
+  // not every subject uses the same sections. A lesson stores the teacher's
+  // choice in `sasFields` (array of the keys below). Legacy lessons saved
+  // before this existed have no `sasFields`; inferSasFieldsFromLesson()
+  // derives it from which fields actually contain content.
+  //
+  //   key             → where the data lives on the lesson doc
+  //   sdgIntegration  → sdgIntegration [{sdg, description}]
+  //   lessonPrep      → lessonPrep { resources, activityTitle, instructions, guideQuestions, transition }
+  //   conceptNotes    → discussion   (string)
+  //   keyTerms        → keyTerms [{term, meaning}]
+  //   takeaways       → takeaways string[]
+  //   guidedPractice  → guidedPractice (string)
+  //   performanceTask → activity     (string)
+  const SAS_OPTIONAL_FIELD_KEYS = [
+    "sdgIntegration",
+    "lessonPrep",
+    "conceptNotes",
+    "keyTerms",
+    "takeaways",
+    "guidedPractice",
+    "performanceTask",
+  ];
+  // What is pre-selected when the client doesn't say (the 4 sections that are
+  // part of the standard CTU template).
+  const SAS_DEFAULT_FIELD_KEYS = ["lessonPrep", "conceptNotes", "guidedPractice", "performanceTask"];
 
-      const lessonDoc = await db.collection("courseLessons").doc(lessonId).get();
-      if (!lessonDoc.exists) {
-        return res.status(404).json({ error: "Lesson not found." });
-      }
-      const lesson = lessonDoc.data();
+  function normalizeSasFields(input, fallback = SAS_DEFAULT_FIELD_KEYS) {
+    if (!Array.isArray(input)) return [...fallback];
+    const wanted = new Set(input.map((k) => String(k)));
+    // Keep canonical order, drop unknown keys and duplicates.
+    return SAS_OPTIONAL_FIELD_KEYS.filter((k) => wanted.has(k));
+  }
 
-      // Course name + week label come from the parent class/module, same
-      // as the on-screen banner (courseNameOnBanner) and week chip do.
-      const [classSnap, moduleSnap] = await Promise.all([
-        lesson.classId ? db.collection("classes").doc(lesson.classId).get() : Promise.resolve(null),
-        lesson.moduleId ? db.collection("courseModules").doc(lesson.moduleId).get() : Promise.resolve(null),
-      ]);
-      const courseName = classSnap && classSnap.exists ? (classSnap.data().name || "Untitled Course") : "Untitled Course";
-      const weekLabel = moduleSnap && moduleSnap.exists ? (moduleSnap.data().weeklySchedule || "") : "";
+  function inferSasFieldsFromLesson(lesson) {
+    const l = lesson || {};
+    const lp = l.lessonPrep && typeof l.lessonPrep === "object" ? l.lessonPrep : null;
+    const lpHasContent =
+      !!lp &&
+      !!(
+        (lp.activityTitle || "").trim() ||
+        (lp.instructions || "").trim() ||
+        (lp.transition || "").trim() ||
+        (Array.isArray(lp.guideQuestions) && lp.guideQuestions.some(Boolean)) ||
+        (Array.isArray(lp.resources) && lp.resources.some((r) => r && (r.label || r.url)))
+      );
+    const found = [];
+    if (Array.isArray(l.sdgIntegration) && l.sdgIntegration.some((s) => s && (s.sdg || s.description))) found.push("sdgIntegration");
+    if (lpHasContent) found.push("lessonPrep");
+    if (typeof l.discussion === "string" && l.discussion.trim()) found.push("conceptNotes");
+    if (Array.isArray(l.keyTerms) && l.keyTerms.some((k) => k && (k.term || k.meaning))) found.push("keyTerms");
+    if (Array.isArray(l.takeaways) && l.takeaways.some(Boolean)) found.push("takeaways");
+    if (typeof l.guidedPractice === "string" && l.guidedPractice.trim()) found.push("guidedPractice");
+    if (typeof l.activity === "string" && l.activity.trim()) found.push("performanceTask");
+    return normalizeSasFields(found, []);
+  }
 
-      const templatePath = path.join(process.cwd(), "templates", "sas-template.docx");
-      if (!fs.existsSync(templatePath)) {
-        return res.status(500).json({
-          error: "SAS Word template is missing on the server (templates/sas-template.docx).",
-        });
-      }
+  // Saved choice wins; otherwise infer from content (legacy lessons).
+  function resolveSasFields(lesson) {
+    if (lesson && Array.isArray(lesson.sasFields)) return normalizeSasFields(lesson.sasFields, []);
+    return inferSasFieldsFromLesson(lesson);
+  }
 
-      const templateContent = fs.readFileSync(templatePath, "binary");
-      const zip = new PizZip(templateContent);
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-      });
+  // Per-field pieces used to build the AI prompt for ONLY the chosen sections.
+  const SAS_FIELD_PROMPTS = {
+    sdgIntegration: {
+      describe: () =>
+        `sdgIntegration — 1 to 2 relevant UN Sustainable Development Goals, each with the SDG name/number and a one-sentence description of how this lesson connects to it.`,
+      rules: [`"sdgIntegration" must be an array of objects: { "sdg": "SDG # — Name", "description": "..." }.`],
+      json: `"sdgIntegration": [{ "sdg": "SDG # 4 – Quality Education", "description": "..." }]`,
+    },
+    lessonPrep: {
+      describe: () =>
+        `lessonPrep — a warm-up "Lesson Preparation/Review/Preview" block with:
+     - resources: 0 to 2 real, genuinely relevant links (label + url) such as a tool download or short reference video (omit if none fit naturally — do not invent fake links).
+     - activityTitle: a short, catchy title for a simple warm-up activity that primes students for the topic (e.g. relating an everyday task to the concept).
+     - instructions: plain text instructions for that warm-up activity, including a short numbered example.
+     - guideQuestions: 3 to 4 short guide questions students discuss after the warm-up.
+     - transition: a short 2-3 sentence paragraph in a teacher's voice bridging the warm-up / prior lesson into today's topic.`,
+      plainText: ["lessonPrep.instructions", "lessonPrep.transition"],
+      rules: [
+        `"lessonPrep.guideQuestions" must be an array of short plain strings (no bullet characters, no numbering — just the text).`,
+        `"lessonPrep.resources" must be an array of objects: { "label": "...", "url": "..." } (can be an empty array).`,
+      ],
+      json: `"lessonPrep": {
+    "resources": [{ "label": "...", "url": "https://..." }],
+    "activityTitle": "...",
+    "instructions": "1. ...\\n2. ...",
+    "guideQuestions": ["...", "..."],
+    "transition": "..."
+  }`,
+    },
+    conceptNotes: {
+      describe: (t) =>
+        `discussion — the Concept Notes (main lecture content) for "${t}": numbered sections with headings, real-world examples, and code/technical examples where relevant.`,
+      plainText: ["discussion"],
+      json: `"discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2"`,
+    },
+    keyTerms: {
+      describe: (t) => `keyTerms — 4 to 8 key terms with a short one-line meaning each, specific to "${t}".`,
+      rules: [`"keyTerms" must be an array of objects: { "term": "...", "meaning": "..." }.`],
+      json: `"keyTerms": [{ "term": "...", "meaning": "..." }]`,
+    },
+    takeaways: {
+      describe: () => `takeaways — 4 to 6 short bullet takeaways summarizing the lesson.`,
+      rules: [`"takeaways" must be an array of short plain strings (no bullet characters, no numbering — just the text).`],
+      json: `"takeaways": ["...", "..."]`,
+    },
+    guidedPractice: {
+      describe: (t) =>
+        `guidedPractice — a "Guided Practice" step-by-step task the class does together, specific to "${t}" (numbered steps).`,
+      plainText: ["guidedPractice"],
+      json: `"guidedPractice": "1. Step one\\n2. Step two"`,
+    },
+    performanceTask: {
+      describe: (t) =>
+        `activity — a "Performance Task": an independent hands-on exercise or problem set specific to "${t}" (2-4 numbered steps/problems).`,
+      plainText: ["activity"],
+      json: `"activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here."`,
+    },
+  };
 
-      const lessonPrep = lesson.lessonPrep && typeof lesson.lessonPrep === "object" ? lesson.lessonPrep : {};
-      const joinIfArray = (v, sep) => (Array.isArray(v) ? v.filter(Boolean).join(sep) : (v || ""));
+  // Builds the section list / formatting rules / JSON shape for a prompt so the
+  // AI is only asked for the header fields + the sections the teacher picked.
+  function buildSasPromptSpec(fields, topic) {
+    const selected = normalizeSasFields(fields, []);
+    const items = [
+      `objectives — 3 to 5 Intended Learning Outcomes specific to "${topic}" (each a short "you should be able to..." statement).`,
+      `materials — list of materials/tools needed (e.g. Computer, Smartphone, Student Activity Sheet, and anything else relevant to the subject).`,
+      `references — 1 to 3 short reference citations (book, official docs, or reputable site) relevant to "${topic}".`,
+      ...selected.map((k) => SAS_FIELD_PROMPTS[k].describe(topic)),
+    ];
+    const sections = items.map((line, i) => `  ${i + 1}. ${line}`).join("\n");
 
-      const templateData = {
-        courseName,
-        weekLabel,
-        lessonTitle: lesson.title || "Untitled Lesson",
-        objectives: Array.isArray(lesson.objectives) ? lesson.objectives.filter(Boolean) : [],
-        materialsText: joinIfArray(lesson.materials, ", "),
-        referencesText: joinIfArray(lesson.references, "; "),
-        lessonPrepInstructions: lessonPrep.instructions || "",
-        lessonPrepActivityTitle: lessonPrep.activityTitle || "",
-        lessonPrepGuideQuestions: Array.isArray(lessonPrep.guideQuestions)
-          ? lessonPrep.guideQuestions.filter(Boolean)
-          : [],
-        lessonPrepResources: Array.isArray(lessonPrep.resources)
-          ? lessonPrep.resources.filter((r) => r && (r.label || r.url))
-          : [],
-        lessonPrepTransition: lessonPrep.transition || "",
-        conceptNotesText: lesson.discussion || "",
-        guidedPracticeText: lesson.guidedPractice || "",
-        performanceTaskText: lesson.activity || "",
-      };
+    const plainTextKeys = selected.flatMap((k) => SAS_FIELD_PROMPTS[k].plainText || []);
+    const rules = [];
+    if (plainTextKeys.length) {
+      rules.push(
+        `${plainTextKeys.map((k) => `"${k}"`).join(", ")} must be PLAIN TEXT strings (no HTML, no Markdown headers).`,
+        `Use **word** for bolding key terms within plain-text fields.`,
+        `Use * or - at the start of lines for bullet points within plain-text fields.`,
+        `Use numbered lists (1., 2.) for steps within plain-text fields.`,
+        `Separate paragraphs with blank lines within plain-text fields.`
+      );
+    }
+    rules.push(`"objectives", "materials", "references" must be arrays of short plain strings (no bullet characters, no numbering — just the text).`);
+    selected.forEach((k) => (SAS_FIELD_PROMPTS[k].rules || []).forEach((r) => rules.push(r)));
+    rules.push(`Return ONLY the sections listed above. Do NOT add any other fields.`);
 
+    const json = [
+      `"objectives": ["Define ${topic}.", "..."]`,
+      `"materials": ["Computer", "Smartphone", "Student Activity Sheet"]`,
+      `"references": ["..."]`,
+      ...selected.map((k) => SAS_FIELD_PROMPTS[k].json),
+    ].join(",\n  ");
+
+    return { selected, sections, rules: rules.map((r) => `  - ${r}`).join("\n"), json };
+  }
+
+  // Makes a generated / submitted lesson object match the teacher's field
+  // choice: unselected optional fields are removed and `sasFields` is stamped.
+  function applySasFieldSelection(lesson, fields) {
+    const selected = normalizeSasFields(fields, []);
+    const out = { ...lesson, sasFields: selected };
+    if (!selected.includes("sdgIntegration")) delete out.sdgIntegration;
+    if (!selected.includes("lessonPrep")) delete out.lessonPrep;
+    if (!selected.includes("conceptNotes")) delete out.discussion;
+    if (!selected.includes("keyTerms")) delete out.keyTerms;
+    if (!selected.includes("takeaways")) delete out.takeaways;
+    if (!selected.includes("guidedPractice")) delete out.guidedPractice;
+    if (!selected.includes("performanceTask")) delete out.activity;
+    return out;
+  }
+
+  // Turns a lesson (saved doc OR an unsaved draft) into the data object the
+  // Word template expects. Each optional section has a `showX` flag so the
+  // heading + box only appear when the teacher chose that field.
+  function buildSasTemplateData(lesson, courseName, weekLabel) {
+    const fields = resolveSasFields(lesson);
+    const has = (k) => fields.includes(k);
+    const joinIfArray = (v, sep) => (Array.isArray(v) ? v.filter(Boolean).join(sep) : v || "");
+    const lp = has("lessonPrep") && lesson.lessonPrep && typeof lesson.lessonPrep === "object" ? lesson.lessonPrep : {};
+
+    const showSdg = has("sdgIntegration");
+    const showLessonPrep = has("lessonPrep");
+    const showConceptNotes = has("conceptNotes");
+    const showKeyTerms = has("keyTerms");
+    const showTakeaways = has("takeaways");
+    const showGuidedPractice = has("guidedPractice");
+    const showPerformanceTask = has("performanceTask");
+
+    // The template starts its second page at "Concept Notes". Only force that
+    // break when page 1 has body content AND page 2 has something on it —
+    // otherwise short sheets would get a near-empty first or last page.
+    // (SDG Integration is part of the letterhead table, so it doesn't count as page-1 body.)
+    const page1HasBody = showLessonPrep;
+    const page2HasBody = showConceptNotes || showKeyTerms || showTakeaways || showGuidedPractice || showPerformanceTask;
+
+    return {
+      // ── Always present (same for every course) ──
+      courseName,
+      weekLabel,
+      lessonTitle: lesson.title || "Untitled Lesson",
+      objectives: Array.isArray(lesson.objectives) ? lesson.objectives.filter(Boolean) : [],
+      materialsText: joinIfArray(lesson.materials, ", "),
+      referencesText: joinIfArray(lesson.references, "; "),
+
+      // ── Teacher-selected sections ──
+      showSdg,
+      sdgIntegration: showSdg && Array.isArray(lesson.sdgIntegration)
+        ? lesson.sdgIntegration.filter((s) => s && (s.sdg || s.description)).map((s) => ({ sdg: s.sdg || "", description: s.description || "" }))
+        : [],
+
+      showLessonPrep,
+      lessonPrepInstructions: lp.instructions || "",
+      lessonPrepActivityTitle: lp.activityTitle || "",
+      lessonPrepGuideQuestions: Array.isArray(lp.guideQuestions) ? lp.guideQuestions.filter(Boolean) : [],
+      lessonPrepResources: Array.isArray(lp.resources) ? lp.resources.filter((r) => r && (r.label || r.url)) : [],
+      lessonPrepTransition: lp.transition || "",
+
+      showConceptNotes,
+      conceptNotesText: showConceptNotes ? lesson.discussion || "" : "",
+
+      showKeyTerms,
+      keyTerms: showKeyTerms && Array.isArray(lesson.keyTerms)
+        ? lesson.keyTerms.filter((k) => k && (k.term || k.meaning)).map((k) => ({ term: k.term || "", meaning: k.meaning || "" }))
+        : [],
+
+      showTakeaways,
+      takeaways: showTakeaways && Array.isArray(lesson.takeaways) ? lesson.takeaways.filter(Boolean) : [],
+
+      showGuidedPractice,
+      guidedPracticeText: showGuidedPractice ? lesson.guidedPractice || "" : "",
+
+      showPerformanceTask,
+      performanceTaskText: showPerformanceTask ? lesson.activity || "" : "",
+
+      pageBreakBeforeNotes: page1HasBody && page2HasBody,
+    };
+  }
+
+  // Fills templates/sas-template.docx and returns a short-lived signed URL to the
+  // filled .docx. NO PDF conversion (no PDF.co call): the app opens the .docx in
+  // Microsoft's free Office viewer, which needs a URL it can fetch — a signed URL
+  // works, a session-authenticated stream would not.
+  //
+  // The file name contains a fingerprint of (lesson data + template), so:
+  //   • an unchanged lesson re-uses the file already in storage (no re-render/upload),
+  //   • any edit produces a new path, so neither our signed-URL cache nor the viewer
+  //     can ever show a stale copy,
+  //   • older versions for the same lesson/draft are deleted after a fresh render.
+  async function renderSasPreviewUrl({ lesson, courseName, weekLabel, storageDir, filePrefix }) {
+    const templatePath = path.join(process.cwd(), "templates", "sas-template.docx");
+    if (!fs.existsSync(templatePath)) {
+      const err = new Error("SAS Word template is missing on the server (templates/sas-template.docx).");
+      err.status = 500;
+      throw err;
+    }
+    const templateData = buildSasTemplateData(lesson, courseName, weekLabel);
+    const tplStat = fs.statSync(templatePath);
+    const fingerprint = crypto
+      .createHash("sha1")
+      .update(JSON.stringify(templateData))
+      .update(`${tplStat.size}:${tplStat.mtimeMs}`)
+      .digest("hex")
+      .slice(0, 16);
+
+    const storagePath = `${storageDir}/${filePrefix}-${fingerprint}.docx`;
+    const file = bucket.file(storagePath);
+    const [alreadyStored] = await file.exists();
+
+    if (!alreadyStored) {
+      const zip = new PizZip(fs.readFileSync(templatePath, "binary"));
+      const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
       doc.render(templateData);
       const filledDocxBuffer = doc.getZip().generate({ type: "nodebuffer" });
 
-      // Reuse the existing PDF.co conversion helper (same one used for
-      // PPTX/DOC preview elsewhere) instead of adding a new conversion
-      // dependency.
-      const pdfBuffer = await convertPPTXtoPDFViaPDFco(filledDocxBuffer, `SAS-${lessonId}.docx`);
-
-      // Store it and hand back a signed URL rather than streaming the PDF
-      // bytes directly: the app's InlineMaterialViewer wraps whatever URL
-      // it's given in the Google Docs viewer, and that viewer fetches the
-      // URL from Google's own servers — it can't carry the teacher's
-      // session cookie, so this route can't be `res.send()`-behind-auth.
-      // The signed URL itself is the access control (short-lived, tied to
-      // this one generated file) and matches how every other lesson/module
-      // file preview already works in this app.
-      const storagePath = `sas-previews/${lesson.classId || "unknown-class"}/${lessonId}.pdf`;
-      await bucket.file(storagePath).save(pdfBuffer, {
+      await file.save(filledDocxBuffer, {
         metadata: {
-          contentType: "application/pdf",
+          contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           cacheControl: "private,max-age=0,no-transform",
         },
         resumable: false,
       });
-      const signedUrl = await createReadSignedUrl(storagePath);
 
-      return res.json({ success: true, url: signedUrl });
-    } catch (error) {
-      console.error("SAS preview PDF error:", error);
+      // Best-effort cleanup of superseded versions.
+      try {
+        const [siblings] = await bucket.getFiles({ prefix: `${storageDir}/${filePrefix}-` });
+        await Promise.all(
+          siblings
+            .filter((f) => f.name !== storagePath)
+            .map((f) => {
+              invalidateSignedUrlCache(f.name);
+              return f.delete().catch(() => {});
+            })
+        );
+      } catch (cleanupErr) {
+        console.warn("SAS preview cleanup skipped:", cleanupErr.message);
+      }
+    }
+    return createReadSignedUrl(storagePath);
+  }
 
-      // docxtemplater throws a structured error with .properties.errors
-      // when a template tag is missing/mismatched — surface that detail
-      // instead of a generic 500 so a bad template edit is easy to spot.
-      const templateErrors = error?.properties?.errors;
-      const detail = Array.isArray(templateErrors)
-        ? templateErrors.map((e) => e?.properties?.explanation).filter(Boolean).join("; ")
-        : null;
+  function sasPreviewErrorResponse(res, error, logLabel) {
+    console.error(logLabel, error);
+    // docxtemplater throws a structured error with .properties.errors when a
+    // template tag is missing/mismatched — surface that instead of a bare 500.
+    const templateErrors = error?.properties?.errors;
+    const detail = Array.isArray(templateErrors)
+      ? templateErrors.map((e) => e?.properties?.explanation).filter(Boolean).join("; ")
+      : null;
+    return res.status(error?.status || 500).json({
+      error: detail || error.message || "Failed to generate the SAS preview.",
+    });
+  }
 
-      return res.status(500).json({
-        error: detail || error.message || "Failed to generate the SAS preview.",
+  // Course name + week label come from the parent class/module (same as the
+  // on-screen banner and week chip).
+  async function loadSasCourseContext(classId, moduleId) {
+    const [classSnap, moduleSnap] = await Promise.all([
+      classId ? db.collection("classes").doc(classId).get() : Promise.resolve(null),
+      moduleId ? db.collection("courseModules").doc(moduleId).get() : Promise.resolve(null),
+    ]);
+    return {
+      courseName: classSnap && classSnap.exists ? classSnap.data().name || "Untitled Course" : "Untitled Course",
+      weekLabel: moduleSnap && moduleSnap.exists ? moduleSnap.data().weeklySchedule || "" : "",
+    };
+  }
+
+  /**
+   * SAS — DOCX PREVIEW (saved lesson)
+   * Fills the real CTU SAS Word template with this lesson's data and returns a
+   * signed URL to the filled .docx, which the app shows full-screen inline in
+   * the Microsoft Office viewer (no PDF conversion).
+   * Only the sections the teacher selected (lesson.sasFields) are rendered;
+   * the header block (course, week, title, ILO, materials, references) is
+   * always rendered.
+   */
+  app.get("/course-lessons/:lessonId/sas-preview", requireAuth, async (req, res) => {
+    try {
+      const { lessonId } = req.params;
+      const lessonDoc = await db.collection("courseLessons").doc(lessonId).get();
+      if (!lessonDoc.exists) return res.status(404).json({ error: "Lesson not found." });
+      const lesson = lessonDoc.data();
+
+      const { courseName, weekLabel } = await loadSasCourseContext(lesson.classId, lesson.moduleId);
+      const url = await renderSasPreviewUrl({
+        lesson,
+        courseName,
+        weekLabel,
+        storageDir: `sas-previews/${lesson.classId || "unknown-class"}`,
+        filePrefix: lessonId,
       });
+      return res.json({ success: true, url });
+    } catch (error) {
+      return sasPreviewErrorResponse(res, error, "SAS preview error:");
+    }
+  });
+
+  /**
+   * SAS — DOCX PREVIEW (unsaved draft)
+   * Same rendering, but for AI-generated lessons the teacher is still
+   * reviewing — nothing is written to Firestore. Body:
+   *   { classId, moduleId, lesson: { title, objectives, ..., sasFields } }
+   * One file per teacher+class at a time (older drafts are deleted), so drafts don't pile up in storage.
+   */
+  app.post("/course-lessons/sas-preview", requireAuth, async (req, res) => {
+    try {
+      const { classId, moduleId, lesson } = req.body || {};
+      if (!classId || !lesson || typeof lesson !== "object") {
+        return res.status(400).json({ error: "classId and lesson are required." });
+      }
+      const { courseName, weekLabel } = await loadSasCourseContext(classId, moduleId);
+      const url = await renderSasPreviewUrl({
+        lesson,
+        courseName,
+        weekLabel,
+        storageDir: `sas-previews/${classId}/drafts`,
+        filePrefix: req.user.uid,
+      });
+      return res.json({ success: true, url });
+    } catch (error) {
+      return sasPreviewErrorResponse(res, error, "SAS draft preview error:");
     }
   });
 
@@ -19842,10 +20119,13 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
   app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res) => {
     try {
-      const { classId, moduleNumber, topicTitles } = req.body;
+      const { classId, moduleNumber, topicTitles, fields } = req.body;
       if (!classId || !moduleNumber || !topicTitles?.length) {
         return res.status(400).json({ error: "Missing required fields." });
       }
+      // Optional SAS sections the teacher chose to generate. The letterhead
+      // fields (ILO / Materials / References) are always generated.
+      const sasFields = normalizeSasFields(fields, SAS_DEFAULT_FIELD_KEYS);
 
       // 1. Find the target module in DB to get its ID
       const moduleSnap = await db.collection("courseModules")
@@ -19934,7 +20214,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
               targetSyllabusModule,
               moduleNumber,
               topicTitle,
-              lessonNum
+              lessonNum,
+              sasFields
             );
             const generatedLesson = content?.modules?.[0]?.lessons?.[0];
             if (!generatedLesson) {
@@ -19994,9 +20275,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         moduleId,
         topicTitle,
         subtopicTitle, // Optional
-        // NOTE: generateDiscussion / generateActivity / generateSummary flags are
-        // accepted for backward compatibility but ignored — every SAS section is
-        // now REQUIRED and always generated together.
+        fields, // Optional — SAS sections the teacher chose (defaults to all)
       } = req.body;
 
       if (!classId || !moduleId || !topicTitle) {
@@ -20008,9 +20287,12 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const classData = classSnap.exists ? classSnap.data() : {};
       const courseName = classData.name || "Programming Course";
 
+      const sasFields = normalizeSasFields(fields, SAS_OPTIONAL_FIELD_KEYS);
+      const spec = buildSasPromptSpec(sasFields, subtopicTitle || topicTitle);
+
       const prompt = `
   You are an expert University Instructor for "${courseName}".
-  Generate a COMPLETE Student Activity Sheet (SAS) for the following specific topic. Every section listed below is REQUIRED — do not omit or leave any blank.
+  Generate a Student Activity Sheet (SAS) for the following specific topic. Include ONLY the sections listed below — the teacher chose them for this course. Every listed section is REQUIRED — do not omit or leave any blank.
 
   CONTEXT:
   - Module: ${moduleId}
@@ -20018,48 +20300,15 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   ${subtopicTitle ? `- Subtopic: ${subtopicTitle}` : ''}
 
   REQUIRED SAS SECTIONS:
-  1. objectives — 3 to 5 Intended Learning Outcomes specific to the topic.
-  2. materials — list of materials/tools needed.
-  3. references — 1 to 3 short reference citations relevant to the topic.
-  4. sdgIntegration — 1 to 2 relevant UN Sustainable Development Goals, each with a name/number and a one-sentence description of the connection.
-  5. lessonPrep — a warm-up block with: resources (0-2 real relevant links as {label,url}, omit if none fit), activityTitle, instructions (plain text with a short numbered example), guideQuestions (3-4 short questions), transition (2-3 sentence bridge into today's topic).
-  6. discussion — the Concept Notes (main lecture content): numbered sections with headings and real-world/technical examples.
-  7. keyTerms — 4 to 8 {term, meaning} pairs specific to the topic.
-  8. takeaways — 4 to 6 short bullet takeaways.
-  9. guidedPractice — a step-by-step task the class does together (numbered steps).
-  10. activity — a Compu-Skill/Performance Task: an independent hands-on exercise (2-4 numbered steps/problems).
+${spec.sections}
 
   CRITICAL OUTPUT FORMAT RULES:
   - Return VALID JSON only.
-  - "discussion", "lessonPrep.instructions", "lessonPrep.transition", "guidedPractice", and "activity" must be PLAIN TEXT strings.
-  - Do NOT use HTML tags (<p>, <b>, <ul>).
-  - Do NOT use Markdown headers (#, ##).
-  - Use **word** for bolding key terms within plain-text fields.
-  - Use * or - for bullet points and numbered lists (1., 2.) for steps within plain-text fields.
-  - Use blank lines to separate paragraphs within plain-text fields.
-  - "objectives", "materials", "references", "takeaways", "lessonPrep.guideQuestions" are arrays of short plain strings.
-  - "sdgIntegration" is an array of { "sdg": "...", "description": "..." }.
-  - "keyTerms" is an array of { "term": "...", "meaning": "..." }.
-  - "lessonPrep.resources" is an array of { "label": "...", "url": "..." } (can be empty).
+${spec.rules}
 
   RETURN VALID JSON ONLY:
   {
-    "objectives": ["...", "..."],
-    "materials": ["...", "..."],
-    "references": ["..."],
-    "sdgIntegration": [{ "sdg": "SDG # 4 – Quality Education", "description": "..." }],
-    "lessonPrep": {
-      "resources": [],
-      "activityTitle": "...",
-      "instructions": "1. ...\\n2. ...",
-      "guideQuestions": ["...", "..."],
-      "transition": "..."
-    },
-    "discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2",
-    "keyTerms": [{ "term": "...", "meaning": "..." }],
-    "takeaways": ["...", "..."],
-    "guidedPractice": "1. Step one\\n2. Step two",
-    "activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here."
+  ${spec.json}
   }
   `;
 
@@ -20076,7 +20325,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       
       // Clean up the response text to ensure it's valid JSON
       const rawText = result.response.text().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-      const generatedContent = JSON.parse(rawText);
+      const generatedContent = applySasFieldSelection(JSON.parse(rawText), sasFields);
 
       // Save to 'generatedLessons' collection
       const lessonRef = await db.collection("generatedLessons").add({
@@ -20102,7 +20351,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   });
 
   /// ─── HELPER: Generate Deep Content for ONE SPECIFIC TOPIC ─────────────────────
-  async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic, startLessonNumber = 1) {
+  // `fields` = the optional SAS sections the teacher picked. Callers that don't
+  // pass it (first-module generation from the syllabus) keep the old behavior:
+  // every section is generated.
+  async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic, startLessonNumber = 1, fields = SAS_OPTIONAL_FIELD_KEYS) {
     if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
     
     let modelName = GEMINI_GAME_MODEL || "gemini-3.5-flash";
@@ -20121,47 +20373,26 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       ? syllabusModule.topics.map(t => t.title || t).join(", ")
       : moduleName;
 
-    // Prompt focuses strictly on the specificTopic within the context of the module
-    // Follows the CTU "Student Activity Sheet" (SAS) template: ILOs, Materials,
-    // References, SDG Integration, Lesson Preparation, Concept Notes (discussion),
-    // Key Terms, Take Aways, Guided Practice, and a Compu-Skill/Performance Task
-    // (activity). Every section is REQUIRED — none are optional/toggleable.
+    // Prompt focuses strictly on the specificTopic within the context of the module.
+    // Follows the CTU "Student Activity Sheet" (SAS) template. The letterhead
+    // fields (ILOs, Materials, References) are always generated; every other
+    // section is generated ONLY if the teacher selected it (see SAS_FIELD_PROMPTS).
+    const sasFields = normalizeSasFields(fields, []);
+    const spec = buildSasPromptSpec(sasFields, specificTopic);
     const prompt = `You are an expert curriculum designer and university instructor from Cebu Technological University (CTU).
-  Generate a COMPLETE Student Activity Sheet (SAS) for ONE SPECIFIC LESSON/TOPIC ONLY.
+  Generate a Student Activity Sheet (SAS) for ONE SPECIFIC LESSON/TOPIC ONLY.
   MODULE CONTEXT:
   - Week/Module: ${syllabusModule.weeklySchedule || ""} (${moduleName})
   - All Topics in this Week: ${topicList}
   CURRENT LESSON TO GENERATE:
   - Topic: "${specificTopic}"
   INSTRUCTIONS:
-  Create a comprehensive Student Activity Sheet specifically for "${specificTopic}", following the exact section structure below. Do NOT cover other topics in this week unless necessary for context. EVERY section below is REQUIRED — do not omit or leave any blank.
+  Create a comprehensive Student Activity Sheet specifically for "${specificTopic}", following the exact section structure below. Do NOT cover other topics in this week unless necessary for context. Include ONLY the sections listed below — the teacher chose them for this course. EVERY listed section is REQUIRED — do not omit or leave any blank.
   REQUIRED SAS SECTIONS:
-  1. objectives — 3 to 5 Intended Learning Outcomes specific to "${specificTopic}" (each a short "you should be able to..." statement).
-  2. materials — list of materials/tools needed (e.g. Computer, Smartphone, Student Activity Sheet, GSuite, IDE/compiler if relevant).
-  3. references — 1 to 3 short reference citations (book, official docs, or reputable site) relevant to "${specificTopic}".
-  4. sdgIntegration — 1 to 2 relevant UN Sustainable Development Goals, each with the SDG name/number and a one-sentence description of how this lesson connects to it.
-  5. lessonPrep — a warm-up "Lesson Preparation/Review/Preview" block with:
-     - resources: 0 to 2 real, genuinely relevant links (label + url) such as a tool download or short reference video (omit if none fit naturally — do not invent fake links).
-     - activityTitle: a short, catchy title for a simple warm-up activity that primes students for the topic (e.g. relating an everyday task to the concept).
-     - instructions: plain text instructions for that warm-up activity, including a short numbered example.
-     - guideQuestions: 3 to 4 short guide questions students discuss after the warm-up.
-     - transition: a short 2-3 sentence paragraph in a teacher's voice bridging the warm-up / prior lesson into today's topic.
-  6. discussion — the Concept Notes (main lecture content) for "${specificTopic}": numbered sections with headings, real-world examples, and code/technical examples where relevant.
-  7. keyTerms — 4 to 8 key terms with a short one-line meaning each, specific to "${specificTopic}".
-  8. takeaways — 4 to 6 short bullet takeaways summarizing the lesson.
-  9. guidedPractice — a "Guided Practice" step-by-step task the class does together, specific to "${specificTopic}" (numbered steps).
-  10. activity — a "Compu-Skill / Performance Task": an independent hands-on exercise or problem set specific to "${specificTopic}" (2-4 numbered steps/problems).
+${spec.sections}
   CRITICAL FORMATTING RULES:
   - Return VALID JSON only.
-  - "discussion", "lessonPrep.instructions", "lessonPrep.transition", and "guidedPractice" and "activity" must be PLAIN TEXT strings (no HTML, no Markdown headers).
-  - Use **word** for bolding key terms within plain-text fields.
-  - Use * or - at the start of lines for bullet points within plain-text fields.
-  - Use numbered lists (1., 2.) for steps within plain-text fields.
-  - Separate paragraphs with blank lines within plain-text fields.
-  - "objectives", "materials", "references", "takeaways", "lessonPrep.guideQuestions" must be arrays of short plain strings (no bullet characters, no numbering — just the text).
-  - "sdgIntegration" must be an array of objects: { "sdg": "SDG # — Name", "description": "..." }.
-  - "keyTerms" must be an array of objects: { "term": "...", "meaning": "..." }.
-  - "lessonPrep.resources" must be an array of objects: { "label": "...", "url": "..." } (can be an empty array).
+${spec.rules}
   RETURN VALID JSON ONLY (no markdown, no code blocks):
   {
   "modules": [
@@ -20176,22 +20407,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   "id": "lesson-${targetModuleNum}-${sanitizeId(specificTopic)}",
   "title": "${specificTopic}",
   "description": "Detailed coverage of ${specificTopic}.",
-  "objectives": ["Define ${specificTopic}.", "..."],
-  "materials": ["Computer", "Smartphone", "Student Activity Sheet"],
-  "references": ["..."],
-  "sdgIntegration": [{ "sdg": "SDG # 4 – Quality Education", "description": "..." }],
-  "lessonPrep": {
-    "resources": [{ "label": "...", "url": "https://..." }],
-    "activityTitle": "...",
-    "instructions": "1. ...\\n2. ...",
-    "guideQuestions": ["...", "..."],
-    "transition": "..."
-  },
-  "discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2",
-  "keyTerms": [{ "term": "...", "meaning": "..." }],
-  "takeaways": ["...", "..."],
-  "guidedPractice": "1. Step one\\n2. Step two",
-  "activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here."
+  ${spec.json}
   }
   ]
   }
@@ -20273,10 +20489,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       if (parsed.modules && Array.isArray(parsed.modules) && parsed.modules.length > 0) {
         const firstModule = parsed.modules[0];
         if (firstModule.lessons && Array.isArray(firstModule.lessons)) {
-          firstModule.lessons.forEach((lesson, idx) => {
+          firstModule.lessons = firstModule.lessons.map((lesson, idx) => {
             // Ensure startLessonNumber is treated as a number
             const num = Number(startLessonNumber) || 1;
-            lesson.lessonNumber = num + idx;
+            return applySasFieldSelection({ ...lesson, lessonNumber: num + idx }, sasFields);
           });
         }
       }
@@ -20305,9 +20521,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         if (parsed.modules && Array.isArray(parsed.modules) && parsed.modules.length > 0) {
           const firstModule = parsed.modules[0];
           if (firstModule.lessons && Array.isArray(firstModule.lessons)) {
-            firstModule.lessons.forEach((lesson, idx) => {
+            firstModule.lessons = firstModule.lessons.map((lesson, idx) => {
               const num = Number(startLessonNumber) || 1;
-              lesson.lessonNumber = num + idx;
+              return applySasFieldSelection({ ...lesson, lessonNumber: num + idx }, sasFields);
             });
           }
         }
@@ -20575,6 +20791,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         keyTerms,          // [{ term, meaning }]
         takeaways,         // string[]
         guidedPractice,    // string
+        sasFields,         // string[] — optional SAS sections the teacher chose (see SAS_OPTIONAL_FIELD_KEYS)
         // "text" or "file" — sent by the Manual Lesson form (matches
         // lessonMode). Not sent by the AI "Generate Next Lesson" save flow,
         // so its absence is what tells a real manually-typed lesson apart
@@ -20672,30 +20889,42 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         }
       }
 
+      // Which optional SAS sections the teacher chose. Older clients don't send
+      // `sasFields`, so fall back to whatever actually has content.
+      const finalSasFields = fileBase64
+        ? null
+        : Array.isArray(sasFields)
+          ? normalizeSasFields(sasFields, [])
+          : inferSasFieldsFromLesson({ sdgIntegration, lessonPrep, discussion, keyTerms, takeaways, guidedPractice, activity });
+      const hasSasField = (k) => Array.isArray(finalSasFields) && finalSasFields.includes(k);
+
       const lessonRef = await db.collection("courseLessons").add({
         classId,
         moduleId,
         lessonNumber: finalLessonNumber, // ✅ ALWAYS SAVE A VALID NUMBER
         title,
         description: description || "",
-        discussion: fileBase64 ? null : (discussion || ""),
-        activity: fileBase64 ? null : (activity || ""),
         assessment: fileBase64 ? null : (assessment || { items: [] }),
         // ─── SAS template fields (null out when a file is uploaded instead) ───
+        // Header block — always stored.
         objectives: fileBase64 ? null : (Array.isArray(objectives) ? objectives.filter(Boolean) : []),
         materials: fileBase64 ? null : (Array.isArray(materials) ? materials.filter(Boolean) : []),
         references: fileBase64 ? null : (Array.isArray(references) ? references.filter(Boolean) : []),
-        sdgIntegration: fileBase64 ? null : (Array.isArray(sdgIntegration) ? sdgIntegration.filter(s => s && (s.sdg || s.description)) : []),
-        lessonPrep: fileBase64 ? null : (lessonPrep && typeof lessonPrep === "object" ? {
+        // Teacher-selected sections — only the chosen ones keep their content.
+        sasFields: finalSasFields,
+        discussion: fileBase64 ? null : (hasSasField("conceptNotes") ? (discussion || "") : ""),
+        activity: fileBase64 ? null : (hasSasField("performanceTask") ? (activity || "") : ""),
+        sdgIntegration: fileBase64 ? null : (hasSasField("sdgIntegration") && Array.isArray(sdgIntegration) ? sdgIntegration.filter(s => s && (s.sdg || s.description)) : []),
+        lessonPrep: fileBase64 ? null : (hasSasField("lessonPrep") && lessonPrep && typeof lessonPrep === "object" ? {
           resources: Array.isArray(lessonPrep.resources) ? lessonPrep.resources.filter(r => r && (r.label || r.url)) : [],
           activityTitle: lessonPrep.activityTitle || "",
           instructions: lessonPrep.instructions || "",
           guideQuestions: Array.isArray(lessonPrep.guideQuestions) ? lessonPrep.guideQuestions.filter(Boolean) : [],
           transition: lessonPrep.transition || ""
-        } : { resources: [], activityTitle: "", instructions: "", guideQuestions: [], transition: "" }),
-        keyTerms: fileBase64 ? null : (Array.isArray(keyTerms) ? keyTerms.filter(k => k && (k.term || k.meaning)) : []),
-        takeaways: fileBase64 ? null : (Array.isArray(takeaways) ? takeaways.filter(Boolean) : []),
-        guidedPractice: fileBase64 ? null : (guidedPractice || ""),
+        } : null),
+        keyTerms: fileBase64 ? null : (hasSasField("keyTerms") && Array.isArray(keyTerms) ? keyTerms.filter(k => k && (k.term || k.meaning)) : []),
+        takeaways: fileBase64 ? null : (hasSasField("takeaways") && Array.isArray(takeaways) ? takeaways.filter(Boolean) : []),
+        guidedPractice: fileBase64 ? null : (hasSasField("guidedPractice") ? (guidedPractice || "") : ""),
         // ─── Tag appropriately ───
         // A file upload is always "manual_file". Otherwise, trust the
         // Manual Lesson form's explicit type: "text" -> teacher-typed
@@ -20832,6 +21061,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
                 keyTerms: Array.isArray(lesson.keyTerms) ? lesson.keyTerms.filter(k => k && (k.term || k.meaning)) : [],
                 takeaways: Array.isArray(lesson.takeaways) ? lesson.takeaways.filter(Boolean) : [],
                 guidedPractice: lesson.guidedPractice || "",
+                sasFields: resolveSasFields(lesson),
                 estimatedHours: lesson.estimatedHours || 0,
                 type: "ai_generated",
                 createdAt: FieldValue.serverTimestamp(),
@@ -20998,7 +21228,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const {
         title, description, discussion, activity, fileBase64, fileName, fileType,
         // ─── SAS template fields ───
-        objectives, materials, references, sdgIntegration, lessonPrep, keyTerms, takeaways, guidedPractice
+        objectives, materials, references, sdgIntegration, lessonPrep, keyTerms, takeaways, guidedPractice,
+        sasFields // string[] — optional SAS sections the teacher chose
       } = req.body;
 
       if (!lessonId) return res.status(400).json({ error: "Lesson ID is required." });
@@ -21058,8 +21289,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           instructions: lessonPrep.instructions || "",
           guideQuestions: Array.isArray(lessonPrep.guideQuestions) ? lessonPrep.guideQuestions.filter(Boolean) : [],
           transition: lessonPrep.transition || ""
-        } : { resources: [], activityTitle: "", instructions: "", guideQuestions: [], transition: "" };
+        } : null; // null = the teacher un-selected the Lesson Preparation section
       }
+      if (sasFields !== undefined) updatePayload.sasFields = normalizeSasFields(sasFields, []);
       if (keyTerms !== undefined) updatePayload.keyTerms = Array.isArray(keyTerms) ? keyTerms.filter(k => k && (k.term || k.meaning)) : [];
       if (takeaways !== undefined) updatePayload.takeaways = Array.isArray(takeaways) ? takeaways.filter(Boolean) : [];
       if (guidedPractice !== undefined) updatePayload.guidedPractice = guidedPractice.trim() || null;

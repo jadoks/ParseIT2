@@ -972,25 +972,145 @@ const renderFormattedText = (text: string, baseStyle: any) => {
   });
 };
 
-// ─── SAS Real-Template Preview ────────────────────────────────────────────────
-// Fetches the server-rendered "real" CTU SAS Word template (the actual
-// letterhead .docx filled in and converted to PDF — not this file's hand-built
-// RN sections) and shows it via InlineMaterialViewer. Generating/editing a
-// lesson still goes through the normal JSON form fields; this only swaps what
-// the *display* screen renders. Calls onUnavailable() once (per lesson) if the
-// render fails, so the caller can fall back to the RN sections.
+// ─── SAS selectable fields ───────────────────────────────────────────────────
+// The letterhead block of the Student Activity Sheet (Course name, Week, Lesson
+// Title, Intended Learning Outcomes, Materials, References) is identical for
+// every course, so it is ALWAYS generated / required and never asked about.
+// Everything below is chosen by the teacher per lesson, since not every subject
+// uses the same sections. The choice is saved on the lesson as `sasFields`.
+export type SasFieldKey =
+  | 'sdgIntegration'
+  | 'lessonPrep'
+  | 'conceptNotes'
+  | 'keyTerms'
+  | 'takeaways'
+  | 'guidedPractice'
+  | 'performanceTask';
+
+const SAS_FIELD_OPTIONS: { key: SasFieldKey; label: string; hint: string }[] = [
+  { key: 'lessonPrep', label: 'Lesson Preparation / Review / Preview', hint: 'Warm-up activity, guide questions, resource links, transition' },
+  { key: 'conceptNotes', label: 'Concept Notes Presentation', hint: 'The main discussion / lecture notes' },
+  { key: 'guidedPractice', label: 'Guided Practice', hint: 'Step-by-step task done together in class' },
+  { key: 'performanceTask', label: 'Performance Task', hint: 'Independent hands-on task or problem set' },
+  { key: 'sdgIntegration', label: 'SDG Integration', hint: 'Related UN Sustainable Development Goals' },
+  { key: 'keyTerms', label: 'Key Terms', hint: 'Terms with short meanings' },
+  { key: 'takeaways', label: 'Take Aways', hint: 'Short summary bullets' },
+];
+const SAS_FIELD_KEYS: SasFieldKey[] = SAS_FIELD_OPTIONS.map((o) => o.key);
+// Pre-selected: the four sections that are part of the standard CTU template.
+const DEFAULT_SAS_FIELDS: SasFieldKey[] = ['lessonPrep', 'conceptNotes', 'guidedPractice', 'performanceTask'];
+
+// Same rule as the server: a saved choice wins; older lessons (no `sasFields`)
+// are treated as having whichever sections actually contain content.
+const getLessonSasFields = (lesson: any): SasFieldKey[] => {
+  if (!lesson) return [];
+  if (Array.isArray(lesson.sasFields)) {
+    return SAS_FIELD_KEYS.filter((k) => lesson.sasFields.includes(k));
+  }
+  const lp = lesson.lessonPrep && typeof lesson.lessonPrep === 'object' ? lesson.lessonPrep : null;
+  const lpHasContent =
+    !!lp &&
+    !!(
+      (lp.activityTitle || '').trim() ||
+      (lp.instructions || '').trim() ||
+      (lp.transition || '').trim() ||
+      (Array.isArray(lp.guideQuestions) && lp.guideQuestions.some(Boolean)) ||
+      (Array.isArray(lp.resources) && lp.resources.some((r: any) => r && (r.label || r.url)))
+    );
+  const found: SasFieldKey[] = [];
+  if (Array.isArray(lesson.sdgIntegration) && lesson.sdgIntegration.some((s: any) => s && (s.sdg || s.description))) found.push('sdgIntegration');
+  if (lpHasContent) found.push('lessonPrep');
+  if (typeof lesson.discussion === 'string' && lesson.discussion.trim()) found.push('conceptNotes');
+  if (Array.isArray(lesson.keyTerms) && lesson.keyTerms.some((k: any) => k && (k.term || k.meaning))) found.push('keyTerms');
+  if (Array.isArray(lesson.takeaways) && lesson.takeaways.some(Boolean)) found.push('takeaways');
+  if (typeof lesson.guidedPractice === 'string' && lesson.guidedPractice.trim()) found.push('guidedPractice');
+  if (typeof lesson.activity === 'string' && lesson.activity.trim()) found.push('performanceTask');
+  return found;
+};
+
+// Checklist that asks the teacher which sections to Generate / Add.
+function SasFieldPicker({
+  selected,
+  onChange,
+  verb,
+  disabled,
+}: {
+  selected: SasFieldKey[];
+  onChange: (next: SasFieldKey[]) => void;
+  verb: 'generate' | 'add';
+  disabled?: boolean;
+}) {
+  const toggle = (key: SasFieldKey) => {
+    if (disabled) return;
+    const next = selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key];
+    onChange(SAS_FIELD_KEYS.filter((k) => next.includes(k)));
+  };
+  return (
+    <View style={styles.sasPickerBox}>
+      <View style={styles.sasPickerHeaderRow}>
+        <Text style={styles.sasPickerTitle}>Which sections do you want to {verb}?</Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity onPress={() => !disabled && onChange([...SAS_FIELD_KEYS])} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+            <Text style={styles.sasPickerLink}>All</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => !disabled && onChange([])} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+            <Text style={styles.sasPickerLink}>None</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <Text style={styles.sasPickerNote}>
+        Course name, week, lesson title, Intended Learning Outcomes, Materials and References are always included.
+      </Text>
+      {SAS_FIELD_OPTIONS.map((opt) => {
+        const on = selected.includes(opt.key);
+        return (
+          <TouchableOpacity
+            key={opt.key}
+            activeOpacity={0.8}
+            onPress={() => toggle(opt.key)}
+            style={[styles.sasPickerRow, on && styles.sasPickerRowActive]}
+          >
+            <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color="#8B0000" />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.sasPickerLabel}>{opt.label}</Text>
+              <Text style={styles.sasPickerHint}>{opt.hint}</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── SAS Docx Preview ─────────────────────────────────────────────────────────
+// Shows the real CTU SAS Word template, filled in by the server (only the
+// sections the teacher chose), inline in the Microsoft Office viewer. The
+// server returns a signed URL to the filled .docx — no PDF conversion.
+//  • lessonId → a saved lesson (GET /course-lessons/:id/sas-preview)
+//  • draft    → an unsaved generated lesson (POST /course-lessons/sas-preview)
+//  • fullScreen → fills its parent like the full-screen material viewer (no
+//    letterhead/card around it); otherwise it renders as a fixed-height card.
+// Calls onUnavailable() once if the render fails so the caller can fall back.
 function SASTemplatePreview({
   lessonId,
+  draft,
+  refreshKey,
   isMobile,
+  fullScreen,
   onUnavailable,
 }: {
-  lessonId: string;
+  lessonId?: string;
+  draft?: { classId?: string; moduleId?: string; lesson: any };
+  refreshKey?: string;
   isMobile: boolean;
+  fullScreen?: boolean;
   onUnavailable: () => void;
 }) {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null); // signed URL of the filled .docx
   const [loading, setLoading] = useState(true);
+  const [containerHeight, setContainerHeight] = useState(0);
   const reportedFailureRef = useRef(false);
+  const identity = draft ? `draft-${refreshKey || ''}` : `lesson-${lessonId}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -998,25 +1118,32 @@ function SASTemplatePreview({
     setPdfUrl(null);
     setLoading(true);
 
+    const fail = () => {
+      if (!cancelled && !reportedFailureRef.current) {
+        reportedFailureRef.current = true;
+        onUnavailable();
+      }
+    };
+
     (async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/course-lessons/${lessonId}/sas-preview-pdf`, {
-          credentials: 'include',
-        });
+        const response = draft
+          ? await fetch(`${API_BASE_URL}/course-lessons/sas-preview`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify(draft),
+            })
+          : await fetch(`${API_BASE_URL}/course-lessons/${lessonId}/sas-preview`, {
+              credentials: 'include',
+            });
         const data = await response.json().catch(() => null);
         if (cancelled) return;
-        if (response.ok && data?.url) {
-          setPdfUrl(data.url);
-        } else if (!reportedFailureRef.current) {
-          reportedFailureRef.current = true;
-          onUnavailable();
-        }
+        if (response.ok && data?.url) setPdfUrl(data.url);
+        else fail();
       } catch (err) {
-        console.warn('SAS template preview failed to load:', err);
-        if (!cancelled && !reportedFailureRef.current) {
-          reportedFailureRef.current = true;
-          onUnavailable();
-        }
+        console.warn('SAS docx preview failed to load:', err);
+        fail();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1026,7 +1153,33 @@ function SASTemplatePreview({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonId]);
+  }, [identity]);
+
+  const fileName = draft ? 'SAS-draft.docx' : `SAS-${lessonId}.docx`;
+  const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  if (fullScreen) {
+    return (
+      <View
+        style={{ flex: 1, backgroundColor: '#ECECEC' }}
+        onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
+      >
+        {loading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator size="large" color="#8B0000" />
+            <Text style={[styles.lessonPreviewSectionText, { marginTop: 12 }]}>Preparing Student Activity Sheet…</Text>
+          </View>
+        ) : pdfUrl && containerHeight > 0 ? (
+          <InlineMaterialViewer
+            viewerUrl={getMicrosoftOfficeViewerUrl(pdfUrl)}
+            height={containerHeight}
+            fileName={fileName}
+            fileType={DOCX_MIME}
+          />
+        ) : null}
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -1037,15 +1190,15 @@ function SASTemplatePreview({
     );
   }
 
-  if (!pdfUrl) return null; // onUnavailable() already fired; parent falls back to RN sections
+  if (!pdfUrl) return null;
 
   return (
     <View style={[styles.sasCard, { padding: 0, overflow: 'hidden' }]}>
       <InlineMaterialViewer
-        viewerUrl={getViewerUrl(pdfUrl, `SAS-${lessonId}.pdf`, 'application/pdf')}
+        viewerUrl={getMicrosoftOfficeViewerUrl(pdfUrl)}
         height={isMobile ? 520 : 760}
-        fileName={`SAS-${lessonId}.pdf`}
-        fileType="application/pdf"
+        fileName={fileName}
+        fileType={DOCX_MIME}
       />
     </View>
   );
@@ -1410,6 +1563,12 @@ const TeacherCourseDetail2 = ({
   const [showLessonPreviewModal, setShowLessonPreviewModal] = useState(false);
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [isSavingGeneratedLessons, setIsSavingGeneratedLessons] = useState(false);
+  // Index of the pending (unsaved) generated lesson being shown as a full-screen
+  // Docx preview; null = the edit list is showing.
+  const [draftPreviewIndex, setDraftPreviewIndex] = useState<number | null>(null);
+  // Optional SAS sections the teacher chose to GENERATE (Generate Next Lessons /
+  // Generate Lesson Content). The letterhead block is always generated.
+  const [genSasFields, setGenSasFields] = useState<SasFieldKey[]>(DEFAULT_SAS_FIELDS);
 
   // Updates a (possibly nested, e.g. "lessonPrep.instructions") SAS field on
   // one lesson inside pendingGeneratedLessons, without disturbing the rest
@@ -1566,6 +1725,8 @@ const TeacherCourseDetail2 = ({
   const [newLessonKeyTermsText, setNewLessonKeyTermsText] = useState('');           // "Term | Meaning" per line
   const [newLessonTakeawaysText, setNewLessonTakeawaysText] = useState('');         // one per line
   const [newLessonGuidedPractice, setNewLessonGuidedPractice] = useState('');
+  // Optional SAS sections the teacher chose to ADD in the Manual Lesson form.
+  const [newLessonSasFields, setNewLessonSasFields] = useState<SasFieldKey[]>(DEFAULT_SAS_FIELDS);
 
   // Helpers: turn a "one item per line" textarea into a clean string[]
   const parseLinesToArray = (text: string): string[] =>
@@ -1943,7 +2104,8 @@ useEffect(() => {
           classId: course?.id,
           moduleId: selectedGenModule.moduleNumber || selectedGenModule.id,
           topicTitle: selectedGenTopic.title,
-          subtopicTitle: selectedGenSubtopic
+          subtopicTitle: selectedGenSubtopic,
+          fields: genSasFields
         })
       });
       const data = await response.json();
@@ -1983,6 +2145,7 @@ useEffect(() => {
   };
 
   const handleOpenLessonDetail = async (lesson: any) => {
+    setSasPreviewFailedFor(null);
     setSelectedLesson(lesson);
     setLessonDetailModalVisible(true);
     setIsLessonLoading(true);
@@ -2061,6 +2224,7 @@ useEffect(() => {
       topics: availableTopics
     });
     setSelectedTopicsForGen([]);
+    setGenSasFields(DEFAULT_SAS_FIELDS);
     setShowNextLessonModal(true);
   };
 
@@ -2086,7 +2250,8 @@ useEffect(() => {
         body: JSON.stringify({
           classId: course.id,
           moduleNumber: targetModuleForGen.moduleNumber,
-          topicTitles: selectedTopicsForGen
+          topicTitles: selectedTopicsForGen,
+          fields: genSasFields
         })
       });
       const data = await response.json();
@@ -2099,6 +2264,7 @@ useEffect(() => {
           description: stripAsterisks(l.description),
           discussion: stripAsterisks(l.discussion),
           activity: stripAsterisks(l.activity),
+          sasFields: Array.isArray(l.sasFields) ? l.sasFields : genSasFields,
         }));
         setPendingGeneratedLessons(plainTextLessons);
         setEditingPreviewIndex(0);
@@ -2163,6 +2329,7 @@ useEffect(() => {
           discussion: lesson.discussion,
           activity: lesson.activity,
           lessonNumber: currentMax + idx + 1,
+          sasFields: getLessonSasFields(lesson),
           // ─── SAS (Student Activity Sheet) template fields ───
           // The AI already returns these (see generateTopicContent on the
           // backend); previously this payload silently dropped them so every
@@ -2408,21 +2575,23 @@ useEffect(() => {
       toast.show('error', 'Duplicate Title', 'A lesson with this title already exists in this module (generated or manual). Please use a different title.');
       return;
     }
-    // ─── SAS sections are REQUIRED for text-mode lessons (not applicable when uploading a file) ───
+    // ─── Text-mode lessons: the letterhead fields are always required; each optional
+    // section is required only if the teacher chose to add it. ───
+    const hasSas = (k: SasFieldKey) => newLessonSasFields.includes(k);
     if (lessonMode === 'text') {
       const sasRequiredChecks: [boolean, string][] = [
-        [!newLessonDiscussion.trim(), 'Concept Notes / Discussion'],
-        [!newLessonActivity.trim(), 'Compu-Skill / Performance Task'],
         [parseLinesToArray(newLessonObjectivesText).length === 0, 'Intended Learning Outcomes'],
         [parseLinesToArray(newLessonMaterialsText).length === 0, 'Materials'],
         [parseLinesToArray(newLessonReferencesText).length === 0, 'References'],
-        [parsePipePairs(newLessonSdgText).length === 0, 'SDG Integration'],
-        [!newLessonPrepActivityTitle.trim() || !newLessonPrepInstructions.trim(), 'Lesson Preparation activity'],
-        [parseLinesToArray(newLessonPrepGuideQuestionsText).length === 0, 'Lesson Preparation guide questions'],
-        [!newLessonPrepTransition.trim(), 'Lesson Preparation transition'],
-        [parsePipePairs(newLessonKeyTermsText).length === 0, 'Key Terms'],
-        [parseLinesToArray(newLessonTakeawaysText).length === 0, 'Take Aways'],
-        [!newLessonGuidedPractice.trim(), 'Guided Practice'],
+        [hasSas('sdgIntegration') && parsePipePairs(newLessonSdgText).length === 0, 'SDG Integration'],
+        [hasSas('lessonPrep') && (!newLessonPrepActivityTitle.trim() || !newLessonPrepInstructions.trim()), 'Lesson Preparation activity'],
+        [hasSas('lessonPrep') && parseLinesToArray(newLessonPrepGuideQuestionsText).length === 0, 'Lesson Preparation guide questions'],
+        [hasSas('lessonPrep') && !newLessonPrepTransition.trim(), 'Lesson Preparation transition'],
+        [hasSas('conceptNotes') && !newLessonDiscussion.trim(), 'Concept Notes'],
+        [hasSas('keyTerms') && parsePipePairs(newLessonKeyTermsText).length === 0, 'Key Terms'],
+        [hasSas('takeaways') && parseLinesToArray(newLessonTakeawaysText).length === 0, 'Take Aways'],
+        [hasSas('guidedPractice') && !newLessonGuidedPractice.trim(), 'Guided Practice'],
+        [hasSas('performanceTask') && !newLessonActivity.trim(), 'Performance Task'],
       ];
       const missing = sasRequiredChecks.filter(([isMissing]) => isMissing).map(([, label]) => label);
       if (missing.length > 0) {
@@ -2440,23 +2609,33 @@ useEffect(() => {
         type: lessonMode,
       };
       if (lessonMode === 'text') {
-        payload.discussion = newLessonDiscussion.trim();
-        payload.activity = newLessonActivity.trim();
-        // ─── SAS template fields ───
+        // Only the sections the teacher chose keep their content; the rest are
+        // sent empty so editing a lesson also clears a section that was removed.
+        payload.sasFields = newLessonSasFields;
+        payload.discussion = hasSas('conceptNotes') ? newLessonDiscussion.trim() : '';
+        payload.activity = hasSas('performanceTask') ? newLessonActivity.trim() : '';
+        // ─── Letterhead fields (always) ───
         payload.objectives = parseLinesToArray(newLessonObjectivesText);
         payload.materials = parseLinesToArray(newLessonMaterialsText);
         payload.references = parseLinesToArray(newLessonReferencesText);
-        payload.sdgIntegration = parsePipePairs(newLessonSdgText).map(p => ({ sdg: p.a, description: p.b }));
-        payload.lessonPrep = {
-          resources: parsePipePairs(newLessonPrepResourcesText).map(p => ({ label: p.a, url: p.b })),
-          activityTitle: newLessonPrepActivityTitle.trim(),
-          instructions: newLessonPrepInstructions.trim(),
-          guideQuestions: parseLinesToArray(newLessonPrepGuideQuestionsText),
-          transition: newLessonPrepTransition.trim(),
-        };
-        payload.keyTerms = parsePipePairs(newLessonKeyTermsText).map(p => ({ term: p.a, meaning: p.b }));
-        payload.takeaways = parseLinesToArray(newLessonTakeawaysText);
-        payload.guidedPractice = newLessonGuidedPractice.trim();
+        // ─── Optional sections ───
+        payload.sdgIntegration = hasSas('sdgIntegration')
+          ? parsePipePairs(newLessonSdgText).map(p => ({ sdg: p.a, description: p.b }))
+          : [];
+        payload.lessonPrep = hasSas('lessonPrep')
+          ? {
+              resources: parsePipePairs(newLessonPrepResourcesText).map(p => ({ label: p.a, url: p.b })),
+              activityTitle: newLessonPrepActivityTitle.trim(),
+              instructions: newLessonPrepInstructions.trim(),
+              guideQuestions: parseLinesToArray(newLessonPrepGuideQuestionsText),
+              transition: newLessonPrepTransition.trim(),
+            }
+          : null;
+        payload.keyTerms = hasSas('keyTerms')
+          ? parsePipePairs(newLessonKeyTermsText).map(p => ({ term: p.a, meaning: p.b }))
+          : [];
+        payload.takeaways = hasSas('takeaways') ? parseLinesToArray(newLessonTakeawaysText) : [];
+        payload.guidedPractice = hasSas('guidedPractice') ? newLessonGuidedPractice.trim() : '';
       } else if (lessonMode === 'file' && newLessonFile) {
         payload.fileBase64 = newLessonFile.base64;
         payload.fileName = newLessonFile.name;
@@ -2521,6 +2700,7 @@ useEffect(() => {
     setNewLessonKeyTermsText('');
     setNewLessonTakeawaysText('');
     setNewLessonGuidedPractice('');
+    setNewLessonSasFields(DEFAULT_SAS_FIELDS);
   };
 
   const handleAiTool = async (tool: string, module: any, extraParams?: any) => {
@@ -4608,7 +4788,9 @@ useEffect(() => {
       <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
       {lessonMode === 'text' ? (
         <>
-          <Text style={styles.sasFormSectionDivider}>Student Activity Sheet — every section below is required</Text>
+          <Text style={styles.sasFormSectionDivider}>Student Activity Sheet</Text>
+
+          <SasFieldPicker selected={newLessonSasFields} onChange={setNewLessonSasFields} verb="add" />
 
           <Text style={styles.sectionLabel}>Intended Learning Outcomes (one per line)</Text>
           <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonObjectivesText} onChangeText={setNewLessonObjectivesText} multiline placeholder={"Define C Programming.\nExplain the importance of learning C Programming."} />
@@ -4619,44 +4801,72 @@ useEffect(() => {
           <Text style={styles.sectionLabel}>References (one per line)</Text>
           <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonReferencesText} onChangeText={setNewLessonReferencesText} multiline placeholder={"Author, Title, Year"} />
 
-          <Text style={styles.sectionLabel}>SDG Integration — one per line: "SDG name | description"</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonSdgText} onChangeText={setNewLessonSdgText} multiline placeholder={"SDG # 4 – Quality Education | Ensures inclusive and equitable quality education"} />
+          {newLessonSasFields.includes('sdgIntegration') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>SDG Integration</Text>
+              <Text style={styles.sectionLabel}>One per line: "SDG name | description"</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonSdgText} onChangeText={setNewLessonSdgText} multiline placeholder={"SDG # 4 – Quality Education | Ensures inclusive and equitable quality education"} />
+            </>
+          )}
 
-          <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
+          {newLessonSasFields.includes('lessonPrep') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
 
-          <Text style={styles.sectionLabel}>Resource Links — optional, one per line: "Label | URL"</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 60 }]} value={newLessonPrepResourcesText} onChangeText={setNewLessonPrepResourcesText} multiline placeholder={"Download Dev C++ | https://sourceforge.net/projects/orwelldevcpp/"} />
+              <Text style={styles.sectionLabel}>Resource Links — optional, one per line: "Label | URL"</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 60 }]} value={newLessonPrepResourcesText} onChangeText={setNewLessonPrepResourcesText} multiline placeholder={"Download Dev C++ | https://sourceforge.net/projects/orwelldevcpp/"} />
 
-          <Text style={styles.sectionLabel}>Warm-up Activity Title</Text>
-          <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonPrepActivityTitle} onChangeText={setNewLessonPrepActivityTitle} placeholder='e.g. "Making a Cup of Coffee: Human vs Computer"' />
+              <Text style={styles.sectionLabel}>Warm-up Activity Title</Text>
+              <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonPrepActivityTitle} onChangeText={setNewLessonPrepActivityTitle} placeholder='e.g. "Making a Cup of Coffee: Human vs Computer"' />
 
-          <Text style={styles.sectionLabel}>Warm-up Activity Instructions</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonPrepInstructions} onChangeText={setNewLessonPrepInstructions} multiline placeholder={"Ask students: \"How do you make a cup of coffee?\"\n1. Get a cup.\n2. Put coffee in the cup."} />
+              <Text style={styles.sectionLabel}>Warm-up Activity Instructions</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonPrepInstructions} onChangeText={setNewLessonPrepInstructions} multiline placeholder={"Ask students: \"How do you make a cup of coffee?\"\n1. Get a cup.\n2. Put coffee in the cup."} />
 
-          <Text style={styles.sectionLabel}>Guide Questions (one per line)</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonPrepGuideQuestionsText} onChangeText={setNewLessonPrepGuideQuestionsText} multiline placeholder={"Did you follow a sequence of steps?\nIs this similar to an algorithm?"} />
+              <Text style={styles.sectionLabel}>Guide Questions (one per line)</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 70 }]} value={newLessonPrepGuideQuestionsText} onChangeText={setNewLessonPrepGuideQuestionsText} multiline placeholder={"Did you follow a sequence of steps?\nIs this similar to an algorithm?"} />
 
-          <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonPrepTransition} onChangeText={setNewLessonPrepTransition} multiline placeholder="Last meeting, we learned... Today, we will learn..." />
+              <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonPrepTransition} onChangeText={setNewLessonPrepTransition} multiline placeholder="Last meeting, we learned... Today, we will learn..." />
+            </>
+          )}
 
-          <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
+          {newLessonSasFields.includes('conceptNotes') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
+              <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
+            </>
+          )}
 
-          <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
+          {newLessonSasFields.includes('keyTerms') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>Key Terms</Text>
+              <Text style={styles.sectionLabel}>One per line: "Term | Meaning"</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonKeyTermsText} onChangeText={setNewLessonKeyTermsText} multiline placeholder={"Program | A set of instructions given to a computer\nCompiler | A tool that translates source code into machine code"} />
+            </>
+          )}
 
-          <Text style={styles.sectionLabel}>Key Terms — one per line: "Term | Meaning"</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonKeyTermsText} onChangeText={setNewLessonKeyTermsText} multiline placeholder={"Program | A set of instructions given to a computer\nCompiler | A tool that translates source code into machine code"} />
+          {newLessonSasFields.includes('takeaways') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>Take Aways</Text>
+              <Text style={styles.sectionLabel}>One per line</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonTakeawaysText} onChangeText={setNewLessonTakeawaysText} multiline placeholder={"C Programming was developed by Dennis Ritchie in 1972.\nEvery C program starts with the main() function."} />
+            </>
+          )}
 
-          <Text style={styles.sectionLabel}>Take Aways (one per line)</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonTakeawaysText} onChangeText={setNewLessonTakeawaysText} multiline placeholder={"C Programming was developed by Dennis Ritchie in 1972.\nEvery C program starts with the main() function."} />
+          {newLessonSasFields.includes('guidedPractice') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>Guided Practice</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonGuidedPractice} onChangeText={setNewLessonGuidedPractice} multiline placeholder={"1. Write a main() function\n2. Use printf to print Hello, C!"} />
+            </>
+          )}
 
-          <Text style={styles.sasFormSectionDivider}>Practice &amp; Performance</Text>
-
-          <Text style={styles.sectionLabel}>Guided Practice</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonGuidedPractice} onChangeText={setNewLessonGuidedPractice} multiline placeholder="1. Write a main() function\n2. Use printf to print Hello, C!" />
-
-          <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
-          <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for the independent performance task..." />
+          {newLessonSasFields.includes('performanceTask') && (
+            <>
+              <Text style={styles.sasFormSectionDivider}>Performance Task</Text>
+              <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for the independent performance task..." />
+            </>
+          )}
         </>
       ) : (
         <>
@@ -7954,6 +8164,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       setNewLessonKeyTermsText(pairsToLines(selectedLesson.keyTerms, 'term', 'meaning'));
                       setNewLessonTakeawaysText(arrayToLines(selectedLesson.takeaways));
                       setNewLessonGuidedPractice(selectedLesson.guidedPractice || '');
+                      setNewLessonSasFields(getLessonSasFields(selectedLesson));
                     }
                     setLessonDetailModalVisible(false);
                     setShowManualLessonModal(true);
@@ -7981,7 +8192,21 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
             ) : null}
           </View>
 
-          {/* Scrollable document */}
+          {/* Docx preview — full screen, inline, under the same top bar. Shown for
+              every text lesson; the page/letterhead view below is only used for
+              uploaded-file lessons, while loading, or if the docx render fails. */}
+          {selectedLesson && !isLessonLoading && selectedLesson.type !== 'manual_file' && sasPreviewFailedFor !== selectedLesson.id ? (
+            <SASTemplatePreview
+              key={selectedLesson.id}
+              fullScreen
+              lessonId={selectedLesson.id}
+              isMobile={isMobile}
+              onUnavailable={() => {
+                setSasPreviewFailedFor(selectedLesson.id);
+                toast.show('info', 'Preview unavailable', 'Showing the plain lesson view instead.');
+              }}
+            />
+          ) : (
           <ScrollView
             style={styles.flexOne}
             showsVerticalScrollIndicator={true}
@@ -8065,7 +8290,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                   {/* ── Real-template SAS view ──────────────────────────────
                       When a "Student Activity Sheet" lesson (has lessonPrep)
                       is open, show the actual CTU Word template — filled in
-                      via /course-lessons/:id/sas-preview-pdf and rendered
+                      via /course-lessons/:id/sas-preview and shown
                       inline — instead of the hand-built RN sections below.
                       Falls back to those RN sections automatically if the
                       PDF hasn't loaded yet or the render fails, so nothing
@@ -8216,6 +8441,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
               </Text>
             )}
           </ScrollView>
+          )}
 
         </SafeAreaView>
       </Modal>
@@ -8583,14 +8809,7 @@ GENERATE LESSON CONTENT MODAL
                   </ScrollView>
                 </>
               )}
-              <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Content to Generate</Text>
-              <View style={{ backgroundColor: '#F9F9F9', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#EEE' }}>
-                <Text style={{ fontSize: 13, color: '#444', lineHeight: 19 }}>
-                  A full Student Activity Sheet will be generated — Intended Learning Outcomes, Materials, References,
-                  SDG Integration, Lesson Preparation, Concept Notes / Discussion, Key Terms, Take Aways, Guided Practice,
-                  and a Compu-Skill / Performance Task. Every section is included automatically.
-                </Text>
-              </View>
+              <SasFieldPicker selected={genSasFields} onChange={setGenSasFields} verb="generate" disabled={isGeneratingContent} />
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowGenerateModal(false)}>
@@ -8687,6 +8906,9 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                     </View>
                   );
                 })
+              )}
+              {targetModuleForGen?.topics && targetModuleForGen.topics.length > 0 && (
+                <SasFieldPicker selected={genSasFields} onChange={setGenSasFields} verb="generate" disabled={isGeneratingNextLessons} />
               )}
             </ScrollView>
             <View style={styles.buttonRow}>
@@ -8858,7 +9080,7 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
 LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
 ══════════════════════════════════════════════════════════════════════ */}
       <Modal
-        visible={showLessonPreviewModal}
+        visible={showLessonPreviewModal && draftPreviewIndex === null}
         transparent
         animationType="slide"
         onRequestClose={() => setShowLessonPreviewModal(false)}
@@ -8888,6 +9110,13 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                       <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', flex: 1, marginRight: 8 }}>
                         Lesson {index + 1}: {lesson.title}
                       </Text>
+                      <TouchableOpacity
+                        onPress={() => setDraftPreviewIndex(index)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: '#E3F2FD', marginRight: 8 }}
+                      >
+                        <Ionicons name="document-text-outline" size={14} color="#1976D2" />
+                        <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Preview</Text>
+                      </TouchableOpacity>
                       {pendingGeneratedLessons.length > 1 && (
                         <TouchableOpacity
                           onPress={() => {
@@ -8924,7 +9153,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                         multiline
                       />
 
-                      <Text style={styles.sasFormSectionDivider}>Student Activity Sheet — every section below is required</Text>
+                      <Text style={styles.sasFormSectionDivider}>Student Activity Sheet</Text>
 
                       <Text style={styles.sectionLabel}>Intended Learning Outcomes (one per line)</Text>
                       <TextInput
@@ -8950,110 +9179,129 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                         multiline
                       />
 
-                      <Text style={styles.sectionLabel}>SDG Integration — "SDG name | description" per line</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 60 }]}
-                        value={pairsToLines(lesson.sdgIntegration, 'sdg', 'description')}
-                        onChangeText={(v) => updatePendingLessonField(index, 'sdgIntegration', parsePipePairs(v).map(p => ({ sdg: p.a, description: p.b })))}
-                        multiline
-                      />
+                      {getLessonSasFields(lesson).includes('sdgIntegration') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>SDG Integration</Text>
+                          <Text style={styles.sectionLabel}>"SDG name | description" per line</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 60 }]}
+                            value={pairsToLines(lesson.sdgIntegration, 'sdg', 'description')}
+                            onChangeText={(v) => updatePendingLessonField(index, 'sdgIntegration', parsePipePairs(v).map(p => ({ sdg: p.a, description: p.b })))}
+                            multiline
+                          />
+                        </>
+                      )}
 
-                      <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
+                      {getLessonSasFields(lesson).includes('lessonPrep') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
 
-                      <Text style={styles.sectionLabel}>Resource Links — optional, one per line: "Label | URL"</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 50 }]}
-                        value={pairsToLines(lesson.lessonPrep?.resources, 'label', 'url')}
-                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.resources', parsePipePairs(v).map(p => ({ label: p.a, url: p.b })))}
-                        multiline
-                      />
+                          <Text style={styles.sectionLabel}>Resource Links — optional, one per line: "Label | URL"</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 50 }]}
+                            value={pairsToLines(lesson.lessonPrep?.resources, 'label', 'url')}
+                            onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.resources', parsePipePairs(v).map(p => ({ label: p.a, url: p.b })))}
+                            multiline
+                          />
 
-                      <Text style={styles.sectionLabel}>Warm-up Activity Title</Text>
-                      <TextInput
-                        style={styles.inputBox}
-                        value={lesson.lessonPrep?.activityTitle || ''}
-                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.activityTitle', v)}
-                      />
+                          <Text style={styles.sectionLabel}>Warm-up Activity Title</Text>
+                          <TextInput
+                            style={styles.inputBox}
+                            value={lesson.lessonPrep?.activityTitle || ''}
+                            onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.activityTitle', v)}
+                          />
 
-                      <Text style={styles.sectionLabel}>Warm-up Activity Instructions</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={lesson.lessonPrep?.instructions || ''}
-                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.instructions', v)}
-                        multiline
-                        textAlignVertical="top"
-                      />
+                          <Text style={styles.sectionLabel}>Warm-up Activity Instructions</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={lesson.lessonPrep?.instructions || ''}
+                            onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.instructions', v)}
+                            multiline
+                            textAlignVertical="top"
+                          />
 
-                      <Text style={styles.sectionLabel}>Guide Questions (one per line)</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={arrayToLines(lesson.lessonPrep?.guideQuestions)}
-                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.guideQuestions', parseLinesToArray(v))}
-                        multiline
-                      />
+                          <Text style={styles.sectionLabel}>Guide Questions (one per line)</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={arrayToLines(lesson.lessonPrep?.guideQuestions)}
+                            onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.guideQuestions', parseLinesToArray(v))}
+                            multiline
+                          />
 
-                      <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={lesson.lessonPrep?.transition || ''}
-                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.transition', v)}
-                        multiline
-                      />
+                          <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={lesson.lessonPrep?.transition || ''}
+                            onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.transition', v)}
+                            multiline
+                          />
+                        </>
+                      )}
 
-                      <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
+                      {getLessonSasFields(lesson).includes('conceptNotes') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={lesson.discussion || ''}
+                            onChangeText={(v) => updatePendingLessonField(index, 'discussion', v)}
+                            multiline
+                            textAlignVertical="top"
+                          />
+                        </>
+                      )}
 
-                      <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={lesson.discussion || ''}
-                        onChangeText={(text) => {
-                          const updated = [...pendingGeneratedLessons];
-                          updated[index] = { ...updated[index], discussion: text };
-                          setPendingGeneratedLessons(updated);
-                        }}
-                        multiline
-                        textAlignVertical="top"
-                      />
+                      {getLessonSasFields(lesson).includes('keyTerms') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>Key Terms</Text>
+                          <Text style={styles.sectionLabel}>"Term | Meaning" per line</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 200 }]}
+                            value={pairsToLines(lesson.keyTerms, 'term', 'meaning')}
+                            onChangeText={(v) => updatePendingLessonField(index, 'keyTerms', parsePipePairs(v).map(p => ({ term: p.a, meaning: p.b })))}
+                            multiline
+                          />
+                        </>
+                      )}
 
-                      <Text style={styles.sectionLabel}>Key Terms — "Term | Meaning" per line</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={pairsToLines(lesson.keyTerms, 'term', 'meaning')}
-                        onChangeText={(v) => updatePendingLessonField(index, 'keyTerms', parsePipePairs(v).map(p => ({ term: p.a, meaning: p.b })))}
-                        multiline
-                      />
+                      {getLessonSasFields(lesson).includes('takeaways') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>Take Aways</Text>
+                          <Text style={styles.sectionLabel}>One per line</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 150 }]}
+                            value={arrayToLines(lesson.takeaways)}
+                            onChangeText={(v) => updatePendingLessonField(index, 'takeaways', parseLinesToArray(v))}
+                            multiline
+                          />
+                        </>
+                      )}
 
-                      <Text style={styles.sectionLabel}>Take Aways (one per line)</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={arrayToLines(lesson.takeaways)}
-                        onChangeText={(v) => updatePendingLessonField(index, 'takeaways', parseLinesToArray(v))}
-                        multiline
-                      />
+                      {getLessonSasFields(lesson).includes('guidedPractice') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>Guided Practice</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={lesson.guidedPractice || ''}
+                            onChangeText={(v) => updatePendingLessonField(index, 'guidedPractice', v)}
+                            multiline
+                            textAlignVertical="top"
+                          />
+                        </>
+                      )}
 
-                      <Text style={styles.sasFormSectionDivider}>Practice &amp; Performance</Text>
-
-                      <Text style={styles.sectionLabel}>Guided Practice</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={lesson.guidedPractice || ''}
-                        onChangeText={(v) => updatePendingLessonField(index, 'guidedPractice', v)}
-                        multiline
-                        textAlignVertical="top"
-                      />
-
-                      <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
-                      <TextInput
-                        style={[styles.textAreaBox, { minHeight: 300 }]}
-                        value={lesson.activity || ''}
-                        onChangeText={(text) => {
-                          const updated = [...pendingGeneratedLessons];
-                          updated[index] = { ...updated[index], activity: text };
-                          setPendingGeneratedLessons(updated);
-                        }}
-                        multiline
-                        textAlignVertical="top"
-                      />
+                      {getLessonSasFields(lesson).includes('performanceTask') && (
+                        <>
+                          <Text style={styles.sasFormSectionDivider}>Performance Task</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={lesson.activity || ''}
+                            onChangeText={(v) => updatePendingLessonField(index, 'activity', v)}
+                            multiline
+                            textAlignVertical="top"
+                          />
+                        </>
+                      )}
                     </View>
                   </View>,
                   'AI Generated',
@@ -9089,6 +9337,51 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
             </View>
           </View>
         </View>
+      </Modal>
+      {/* ══════════════════════════════════════════════════════════════════════
+DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
+════════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={showLessonPreviewModal && draftPreviewIndex !== null}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
+        onRequestClose={() => setDraftPreviewIndex(null)}
+      >
+        <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+          <View style={styles.lessonPreviewTopBar}>
+            <TouchableOpacity
+              onPress={() => setDraftPreviewIndex(null)}
+              style={styles.lessonPreviewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+            </TouchableOpacity>
+            <View style={styles.lessonPreviewTopBarTextWrap}>
+              <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>
+                {draftPreviewIndex !== null ? pendingGeneratedLessons[draftPreviewIndex]?.title || 'Lesson Preview' : 'Lesson Preview'}
+              </Text>
+              <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
+                Draft preview — not saved yet
+              </Text>
+            </View>
+          </View>
+          {draftPreviewIndex !== null && pendingGeneratedLessons[draftPreviewIndex] ? (
+            <SASTemplatePreview
+              fullScreen
+              isMobile={isMobile}
+              draft={{
+                classId: course?.id,
+                moduleId: targetModuleForGen?.id,
+                lesson: pendingGeneratedLessons[draftPreviewIndex],
+              }}
+              refreshKey={JSON.stringify(pendingGeneratedLessons[draftPreviewIndex])}
+              onUnavailable={() => {
+                setDraftPreviewIndex(null);
+                toast.show('error', 'Preview unavailable', 'Could not build the document preview. You can still edit and save the lesson.');
+              }}
+            />
+          ) : null}
+        </SafeAreaView>
       </Modal>
       {/* ── Saving overlay ── */}
       {isSaving && (
@@ -9724,6 +10017,34 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#EEE',
   },
+  // ─── SAS field picker (which sections to Generate / Add) ───
+  sasPickerBox: {
+    marginTop: 14,
+    marginBottom: 6,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FFFBFB',
+  },
+  sasPickerHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  sasPickerTitle: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '700', color: '#222', flex: 1 },
+  sasPickerLink: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#8B0000' },
+  sasPickerNote: { fontFamily: FONT_BODY, fontSize: 12, color: '#777', lineHeight: 17, marginTop: 4, marginBottom: 10 },
+  sasPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginBottom: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    backgroundColor: '#FFF',
+  },
+  sasPickerRowActive: { borderColor: '#8B0000', backgroundColor: '#FAF5F5' },
+  sasPickerLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#222' },
+  sasPickerHint: { fontFamily: FONT_BODY, fontSize: 11, color: '#777', marginTop: 1 },
   helperText: { fontFamily: FONT_BODY, fontSize: 12, color: '#777', marginBottom: 8, lineHeight: 18 },
   emptyMiniText: { fontFamily: FONT_BODY, fontSize: 12, color: '#999', marginBottom: 6 },
   errorText: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: -2, marginBottom: 6 },
