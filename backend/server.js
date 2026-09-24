@@ -6770,6 +6770,9 @@ app.post("/create-admin", async (req, res) => {
     invalidateUserProfileCache(data?.authUid);
     invalidateUserLookupCaches({ id, email: data?.email });
 
+    // Back to "Not registered" on the User Data page (they can register again).
+    await userDataRoster.markUnregistered({ role: "teacher", id });
+
     res.json({ success: true, message: "Teacher deleted successfully." });
   } catch (error) {
     console.error("Delete teacher error:", error);
@@ -6864,6 +6867,9 @@ app.post("/create-admin", async (req, res) => {
     // ✅ OPTIMIZATION: evict any cached lookups for the deleted account.
     invalidateUserProfileCache(data?.authUid);
     invalidateUserLookupCaches({ id, email: data?.email });
+
+    // Back to "Not registered" on the User Data page (they can register again).
+    await userDataRoster.markUnregistered({ role: "student", id });
 
     res.json({ success: true, message: "Student deleted successfully." });
   } catch (error) {

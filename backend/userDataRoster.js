@@ -673,6 +673,41 @@ export function createUserDataRoster({
       });
     });
 
+    // Cheap "did anything change?" probe for the admin page's live polling.
+    // Firestore count aggregations bill roughly 1 read per 1,000 index entries,
+    // so this is far cheaper than re-downloading both lists every few seconds.
+    // MUST be registered before "/admin/user-data/:type" or ":type" swallows it.
+    app.get("/admin/user-data/summary", ...adminOnly, async (req, res) => {
+      try {
+        const entries = await Promise.all(
+          Object.entries(ROSTERS).map(async ([type, roster]) => {
+            const col = db.collection(roster.collection);
+            let total;
+            let registered;
+            if (typeof col.count === "function") {
+              const [all, done] = await Promise.all([
+                col.count().get(),
+                col.where("registered", "==", true).count().get(),
+              ]);
+              total = all.data().count;
+              registered = done.data().count;
+            } else {
+              // Older firebase-admin without count(): fall back to reading the list.
+              const snap = await col.limit(LIST_LIMIT).get();
+              total = snap.size;
+              registered = snap.docs.filter((d) => d.data()?.registered === true).length;
+            }
+            return [type, { total, registered }];
+          })
+        );
+        res.set("Cache-Control", "no-store");
+        return res.json({ success: true, ...Object.fromEntries(entries) });
+      } catch (error) {
+        console.error("User data summary error:", error);
+        return res.status(500).json({ error: error.message || "Failed to load summary." });
+      }
+    });
+
     app.get("/admin/user-data/:type", ...adminOnly, resolveRoster, async (req, res) => {
       try {
         const snapshot = await db.collection(req.roster.collection).limit(LIST_LIMIT).get();
@@ -692,6 +727,7 @@ export function createUserDataRoster({
               a.lastName.localeCompare(b.lastName, undefined, { sensitivity: "base" }) ||
               a.firstName.localeCompare(b.firstName, undefined, { sensitivity: "base" })
           );
+        res.set("Cache-Control", "no-store"); // polled often; never serve a cached copy
         return res.json({ success: true, count: records.length, records });
       } catch (error) {
         console.error("List user data error:", error);
@@ -822,5 +858,38 @@ export function createUserDataRoster({
     }
   }
 
-  return { registerRoutes, verifyRegistration, markRegistered, isEnforced };
+  /**
+   * Reverse of markRegistered(): when a student/teacher ACCOUNT is deleted, the
+   * person goes back to "Not registered" on the User Data page so they can
+   * register again. Safe to call repeatedly, and it refuses to flip the flag if
+   * an account with that ID still exists. Never throws.
+   */
+  async function markUnregistered({ role, id }) {
+    try {
+      const roster = ROSTER_BY_ROLE[String(role || "").toLowerCase()];
+      const userId = String(id ?? "").trim();
+      if (!roster || !isSafeDocId(userId)) return;
+
+      const ref = db.collection(roster.collection).doc(userId);
+      const [snap, accountSnap] = await Promise.all([
+        ref.get(),
+        db.collection(roster.accounts).doc(userId).get(),
+      ]);
+      if (!snap.exists) return; // not on the list (e.g. admin-created account)
+      if (accountSnap.exists) return; // account is still there: leave it registered
+
+      await ref.set(
+        {
+          registered: false,
+          registeredAt: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.warn("Could not mark roster entry as unregistered:", error?.message || error);
+    }
+  }
+
+  return { registerRoutes, verifyRegistration, markRegistered, markUnregistered, isEnforced };
 }

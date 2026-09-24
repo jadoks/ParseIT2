@@ -1,8 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as DocumentPicker from "expo-document-picker";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    AppState,
     Modal,
     Platform,
     Pressable,
@@ -70,6 +71,16 @@ const PICKER_MIME_TYPES = [
 const PAGE_SIZE = 20;
 const ISSUES_PREVIEW = 10;
 
+// ─── Live polling ────────────────────────────────────────────────────────────
+// Every POLL_INTERVAL_MS we ask the server for a tiny count summary. The full
+// list is only downloaded when those counts changed (or every FULL_REFRESH_MS
+// as a safety net for edits that don't change a count, e.g. a re-upload that
+// fixes a name). Polling pauses while the app/tab is in the background.
+const POLL_INTERVAL_MS = 5000;
+const FULL_REFRESH_MS = 60000;
+const OFFLINE_AFTER_FAILURES = 3;
+const HIGHLIGHT_MS = 8000; // how long a "just registered" row stays highlighted
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getExtension(fileName: string): string {
@@ -95,6 +106,13 @@ function formatExtensionList(extensions: string[]): string {
   return extensions.map((e) => e.replace(".", "").toUpperCase()).join(", ");
 }
 
+/** Cheap change detector so identical poll results never trigger a re-render. */
+function listSignature(list: RosterRecord[]): string {
+  return list
+    .map((r) => `${r.userId}|${r.registered ? 1 : 0}|${r.firstName}|${r.lastName}|${r.birthday}`)
+    .join("\n");
+}
+
 async function readJson(response: Response): Promise<any> {
   try {
     return await response.json();
@@ -117,6 +135,7 @@ type RosterCardProps = {
   uploadLocked: boolean;
   result: UploadResult | null;
   isWide: boolean;
+  highlightIds: Record<string, boolean>;
   onAdd: () => void;
   onDelete: (record: RosterRecord) => void;
 };
@@ -132,6 +151,7 @@ function RosterCard({
   uploadLocked,
   result,
   isWide,
+  highlightIds,
   onAdd,
   onDelete,
 }: RosterCardProps) {
@@ -299,7 +319,11 @@ function RosterCard({
                   <Text style={styles.recordMeta}>ID {record.userId}</Text>
                   <Text style={styles.recordMeta}>Born {formatBirthday(record.birthday)}</Text>
                   <View
-                    style={[styles.statusChip, record.registered && styles.statusChipDone]}
+                    style={[
+                      styles.statusChip,
+                      record.registered && styles.statusChipDone,
+                      record.registered && highlightIds[record.userId] && styles.statusChipFresh,
+                    ]}
                   >
                     <Text
                       style={[
@@ -307,7 +331,11 @@ function RosterCard({
                         record.registered && styles.statusChipTextDone,
                       ]}
                     >
-                      {record.registered ? "Registered" : "Not registered"}
+                      {record.registered
+                        ? highlightIds[record.userId]
+                          ? "Registered · just now"
+                          : "Registered"
+                        : "Not registered"}
                     </Text>
                   </View>
                 </View>
@@ -370,8 +398,26 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
     type: "success",
   });
 
-  const showToast = (message: string, type: ToastType = "success") =>
-    setToast({ visible: true, message, type });
+  const showToast = useCallback(
+    (message: string, type: ToastType = "success") =>
+      setToast({ visible: true, message, type }),
+    []
+  );
+
+  // Live-polling bookkeeping (refs so the interval never sees stale values).
+  const recordsRef = useRef<Record<RosterType, RosterRecord[]>>({ students: [], teachers: [] });
+  const busyRef = useRef(false); // an upload/delete is running: don't poll over it
+  const mutationVersion = useRef(0); // bumped after every upload/delete
+  const inFlightRef = useRef(false);
+  const failuresRef = useRef(0);
+  const lastFullAtRef = useRef(0);
+  const lastSummaryRef = useRef<Record<RosterType, string | null>>({
+    students: null,
+    teachers: null,
+  });
+  const highlightTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [liveState, setLiveState] = useState<"live" | "offline">("live");
+  const [justRegistered, setJustRegistered] = useState<Record<string, boolean>>({});
 
   const request = useCallback(
     (path: string, init: RequestInit = {}) =>
@@ -380,14 +426,66 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
     [apiBaseUrl]
   );
 
-  const loadList = useCallback(
-    async (type: RosterType) => {
+  const fetchList = useCallback(
+    async (type: RosterType): Promise<RosterRecord[]> => {
       const response = await request(`/admin/user-data/${type}`);
       const body = await readJson(response);
       if (!response.ok) throw new Error(body?.error || "Could not load the list.");
-      setRecords((prev) => ({ ...prev, [type]: body.records || [] }));
+      return body.records || [];
     },
     [request]
+  );
+
+  /**
+   * Commits a list to state only if it actually changed. With `announce`, rows
+   * that flipped Not registered -> Registered get highlighted and toasted.
+   */
+  const applyRecords = useCallback(
+    (type: RosterType, next: RosterRecord[], announce: boolean) => {
+      const prev = recordsRef.current[type];
+      if (listSignature(prev) === listSignature(next)) return;
+
+      if (announce) {
+        const wasRegistered = new Map(prev.map((r) => [r.userId, r.registered]));
+        const newly = next.filter((r) => r.registered && wasRegistered.get(r.userId) === false);
+        if (newly.length) {
+          const ids = newly.map((r) => r.userId);
+          setJustRegistered((cur) => {
+            const copy = { ...cur };
+            ids.forEach((id) => (copy[id] = true));
+            return copy;
+          });
+          highlightTimers.current.push(
+            setTimeout(() => {
+              setJustRegistered((cur) => {
+                const copy = { ...cur };
+                ids.forEach((id) => delete copy[id]);
+                return copy;
+              });
+            }, HIGHLIGHT_MS)
+          );
+
+          const first = `${newly[0].firstName} ${newly[0].lastName}`.trim();
+          showToast(
+            newly.length === 1
+              ? `${first} just registered.`
+              : `${first} and ${newly.length - 1} other${newly.length > 2 ? "s" : ""} just registered.`,
+            "success"
+          );
+        }
+      }
+
+      recordsRef.current = { ...recordsRef.current, [type]: next };
+      setRecords(recordsRef.current);
+    },
+    [showToast]
+  );
+
+  const loadList = useCallback(
+    async (type: RosterType) => {
+      applyRecords(type, await fetchList(type), false);
+    },
+    [fetchList, applyRecords]
   );
 
   useEffect(() => {
@@ -420,6 +518,74 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
       cancelled = true;
     };
   }, [request, loadList]);
+
+  const pollOnce = useCallback(
+    async (force = false) => {
+      if (inFlightRef.current || busyRef.current) return;
+      inFlightRef.current = true;
+      const versionAtStart = mutationVersion.current;
+
+      try {
+        const response = await request("/admin/user-data/summary");
+        const body = await readJson(response);
+        if (!response.ok) throw new Error(body?.error || "Live update failed.");
+
+        const now = Date.now();
+        const stale = now - lastFullAtRef.current >= FULL_REFRESH_MS;
+        const types: RosterType[] = ["students", "teachers"];
+        const changed = types.filter(
+          (t) => force || stale || JSON.stringify(body[t]) !== lastSummaryRef.current[t]
+        );
+
+        if (changed.length) {
+          const lists = await Promise.all(changed.map((t) => fetchList(t)));
+          // An upload/delete finished while we were fetching: this data may be
+          // older than what's on screen. Drop it; the next tick re-syncs.
+          if (busyRef.current || versionAtStart !== mutationVersion.current) return;
+          changed.forEach((t, i) => {
+            applyRecords(t, lists[i], true);
+            lastSummaryRef.current[t] = JSON.stringify(body[t]);
+          });
+          if (stale || force) lastFullAtRef.current = now;
+        }
+
+        failuresRef.current = 0;
+        setLiveState("live"); // no-op re-render when already "live"
+      } catch {
+        failuresRef.current += 1;
+        if (failuresRef.current >= OFFLINE_AFTER_FAILURES) setLiveState("offline");
+      } finally {
+        inFlightRef.current = false;
+      }
+    },
+    [request, fetchList, applyRecords]
+  );
+
+  useEffect(() => {
+    if (loading) return; // wait for the first full load
+
+    lastFullAtRef.current = Date.now();
+    const tick = () => {
+      if (AppState.currentState === "active") pollOnce();
+    };
+    const timer = setInterval(tick, POLL_INTERVAL_MS);
+    // Catch up immediately when the tab/app comes back to the foreground.
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") pollOnce();
+    });
+
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [loading, pollOnce]);
+
+  useEffect(
+    () => () => {
+      highlightTimers.current.forEach(clearTimeout);
+    },
+    []
+  );
 
   const handleAdd = async (type: RosterType) => {
     if (uploading) return;
@@ -462,6 +628,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
     }
 
     setUploading(type);
+    busyRef.current = true;
     try {
       const form = new FormData();
       if (Platform.OS === "web") {
@@ -518,6 +685,8 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
     } catch (error: any) {
       showToast(error?.message || "Upload failed. Please try again.", "error");
     } finally {
+      busyRef.current = false;
+      mutationVersion.current += 1;
       setUploading(null);
     }
   };
@@ -527,6 +696,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
     const { type, record } = deleteTarget;
 
     setDeleting(true);
+    busyRef.current = true;
     try {
       const response = await request(
         `/admin/user-data/${type}/${encodeURIComponent(record.userId)}`,
@@ -535,15 +705,18 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
       const body = await readJson(response);
       if (!response.ok) throw new Error(body?.error || "Could not remove that record.");
 
-      setRecords((prev) => ({
-        ...prev,
-        [type]: prev[type].filter((r) => r.userId !== record.userId),
-      }));
+      applyRecords(
+        type,
+        recordsRef.current[type].filter((r) => r.userId !== record.userId),
+        false
+      );
       showToast(`Removed ${record.firstName} ${record.lastName} from the list.`);
       setDeleteTarget(null);
     } catch (error: any) {
       showToast(error?.message || "Could not remove that record.", "error");
     } finally {
+      busyRef.current = false;
+      mutationVersion.current += 1;
       setDeleting(false);
     }
   };
@@ -553,7 +726,17 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
 
   return (
     <View>
-      <Text style={styles.pageTitle}>User Data Management</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.pageTitle}>User Data Management</Text>
+        {!loading && (
+          <View style={[styles.livePill, liveState === "offline" && styles.livePillOffline]}>
+            <View style={[styles.liveDot, liveState === "offline" && styles.liveDotOffline]} />
+            <Text style={[styles.liveText, liveState === "offline" && styles.liveTextOffline]}>
+              {liveState === "live" ? "Live" : "Reconnecting..."}
+            </Text>
+          </View>
+        )}
+      </View>
       <Text style={styles.pageSubtitle}>
         Upload the official student and teacher lists. Only people on these lists can create an
         account.
@@ -603,6 +786,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
           uploadLocked={uploading !== null}
           result={results.students}
           isWide={isWide}
+          highlightIds={justRegistered}
           onAdd={() => handleAdd("students")}
           onDelete={(record) => setDeleteTarget({ type: "students", record })}
         />
@@ -618,6 +802,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
           uploadLocked={uploading !== null}
           result={results.teachers}
           isWide={isWide}
+          highlightIds={justRegistered}
           onAdd={() => handleAdd("teachers")}
           onDelete={(record) => setDeleteTarget({ type: "teachers", record })}
         />
@@ -696,11 +881,46 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
 // ─── Styles (same palette as the other admin screens) ────────────────────────
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginBottom: 6,
+  },
   pageTitle: {
     fontSize: 24,
     fontWeight: "700",
     color: "#2B1111",
-    marginBottom: 6,
+    marginRight: 12,
+  },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#E4F3E8",
+  },
+  livePillOffline: {
+    backgroundColor: "#FBE9D0",
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#1E9B4F",
+    marginRight: 6,
+  },
+  liveDotOffline: {
+    backgroundColor: "#D98A1F",
+  },
+  liveText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#1E6B3A",
+  },
+  liveTextOffline: {
+    color: "#8A5200",
   },
   pageSubtitle: {
     fontSize: 14,
@@ -950,6 +1170,10 @@ const styles = StyleSheet.create({
   },
   statusChipDone: {
     backgroundColor: "#E4F3E8",
+  },
+  statusChipFresh: {
+    borderWidth: 1,
+    borderColor: "#1E9B4F",
   },
   statusChipText: {
     fontSize: 11,
