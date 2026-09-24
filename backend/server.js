@@ -20498,19 +20498,19 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       // built to receive and process an arbitrary NUMBER of topicTitles at
       // once (one lesson per title) — we fetch all existing lesson titles for
       // this module up front (one query instead of one-per-topic), then run
-      // the AI generations for the still-needed topics with a small STAGGER
-      // between each one (see STAGGER_MS below) so a batch of several lessons
-      // doesn't take several times as long or risk timing out.
+      // the AI generations for the still-needed topics ONE AT A TIME (see the
+      // sequential for-loop below, not Promise.all).
       //
-      // ⚠️ Previously these were fired with a single unstaggered Promise.all,
-      // which sent every request to Gemini in the same instant. Gemini's
-      // per-minute rate limit (429 / "quota exceeded") would then reject
-      // every request except the first, and generateTopicContent's retry
-      // loop treated "quota"/"rate limit" errors as NON-retryable (it threw
-      // immediately instead of backing off and trying again). Net effect:
-      // selecting N topics silently generated only 1 lesson, with the rest
-      // swallowed into failedTopics. Staggering the requests plus retrying
-      // 429s (see generateTopicContent) fixes this.
+      // ⚠️ This used to be a single unstaggered Promise.all, which sent every
+      // request to Gemini in the same instant. Gemini's per-minute rate limit
+      // (429 / "quota exceeded") would then reject every request except the
+      // first, and generateTopicContent's retry loop treated "quota"/"rate
+      // limit" errors as NON-retryable (it threw immediately instead of
+      // backing off and trying again). Net effect: selecting N topics
+      // silently generated only 1 lesson, with the rest swallowed into
+      // failedTopics. Running requests sequentially removes the collision
+      // entirely; generateTopicContent also now retries 429s with backoff as
+      // a second line of defense.
       //
       // Lesson numbers are assigned deterministically by each topic's
       // position in the (de-duplicated) request, not by mutating a shared
@@ -20526,42 +20526,46 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const skippedTopics = requestedTitles.filter(t => existingLessonTitles.has(t.toLowerCase()));
       const topicsToGenerate = requestedTitles.filter(t => !existingLessonTitles.has(t.toLowerCase()));
 
-      // Stagger request *starts* by this many ms per index, so a batch of
-      // e.g. 5 lessons doesn't all hit Gemini in the same second. They still
-      // run concurrently (this isn't a sequential await), just spread out.
-      const STAGGER_MS = 1500;
-      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
+      // Generate ONE AT A TIME (sequential, not Promise.all). This is
+      // intentionally slower than firing everything in parallel — a batch of
+      // 5 lessons now takes ~5x as long as 1 — but it guarantees no two
+      // requests ever hit Gemini in the same moment, so there's no per-minute
+      // rate-limit collision to silently drop lessons. The teacher is already
+      // looking at a spinner during this whole call, so the extra wall-clock
+      // time costs nothing in UX; a batch that reliably returns everything
+      // selected is worth more than a fast batch that sometimes doesn't.
+      // Each individual call still has its own retry/backoff for transient
+      // 503/429s (see generateTopicContent).
       const failedTopics = [];
-      const generationResults = await Promise.all(
-        topicsToGenerate.map(async (topicTitle, idx) => {
-          const lessonNum = nextLessonNumber + idx;
-          if (idx > 0) await sleep(idx * STAGGER_MS);
-          try {
-            console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${lessonNum}...`);
-            const content = await generateTopicContent(
-              targetSyllabusModule,
-              moduleNumber,
-              topicTitle,
-              lessonNum,
-              sasFields,
-              customSectionTitles
-            );
-            const generatedLesson = content?.modules?.[0]?.lessons?.[0];
-            if (!generatedLesson) {
-              failedTopics.push(topicTitle);
-              return null;
-            }
-            generatedLesson.lessonNumber = lessonNum;
-            generatedLesson.id = `preview-${moduleId}-${lessonNum}`;
-            return generatedLesson;
-          } catch (genError) {
-            console.error(`Failed to generate content for ${topicTitle}:`, genError);
+      const generationResults = [];
+      for (let idx = 0; idx < topicsToGenerate.length; idx++) {
+        const topicTitle = topicsToGenerate[idx];
+        const lessonNum = nextLessonNumber + idx;
+        try {
+          console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${lessonNum}...`);
+          const content = await generateTopicContent(
+            targetSyllabusModule,
+            moduleNumber,
+            topicTitle,
+            lessonNum,
+            sasFields,
+            customSectionTitles
+          );
+          const generatedLesson = content?.modules?.[0]?.lessons?.[0];
+          if (!generatedLesson) {
             failedTopics.push(topicTitle);
-            return null;
+            generationResults.push(null);
+            continue;
           }
-        })
-      );
+          generatedLesson.lessonNumber = lessonNum;
+          generatedLesson.id = `preview-${moduleId}-${lessonNum}`;
+          generationResults.push(generatedLesson);
+        } catch (genError) {
+          console.error(`Failed to generate content for ${topicTitle}:`, genError);
+          failedTopics.push(topicTitle);
+          generationResults.push(null);
+        }
+      }
 
       const newLessonObjectsForPreview = generationResults.filter(Boolean);
 
