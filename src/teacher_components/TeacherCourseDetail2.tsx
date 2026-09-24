@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
+  PanResponder,
   Platform,
   ScrollView,
   StyleProp,
@@ -1000,6 +1001,68 @@ const SAS_FIELD_KEYS: SasFieldKey[] = SAS_FIELD_OPTIONS.map((o) => o.key);
 // Pre-selected: the four sections that are part of the standard CTU template.
 const DEFAULT_SAS_FIELDS: SasFieldKey[] = ['lessonPrep', 'conceptNotes', 'guidedPractice', 'performanceTask'];
 
+// ─── Image-generation guard ──────────────────────────────────────────────────
+// Lessons are text-only: this app cannot generate images. If the teacher types
+// a request such as "generate an image of a coffee cup" into a lesson field (or
+// a Generate input), the Generate / Save step is blocked with an error instead
+// of quietly saving the instruction as lesson content.
+const CUSTOM_SECTION_MAX = 5;
+const CUSTOM_SECTION_TITLE_MAX = 60;
+const IMAGE_GEN_BLOCK_TITLE = 'Image generation not supported';
+const IMAGE_GEN_BLOCK_MESSAGE =
+  'Lessons are text-only, so image generation requests are not accepted. Please remove the image request and try again.';
+// Explicit AI-image wording — always blocked.
+const IMAGE_GEN_STRONG =
+  /\b(?:image[\s-]*generat(?:ion|or|ing)|text[\s-]*to[\s-]*image|ai[\s-]*(?:generated[\s-]*)?(?:images?|art|pictures?|photos?)|image[\s-]*prompt|midjourney|dall[\s-]*e|stable[\s-]*diffusion)\b/i;
+// "generate/create/make ... an image/picture/photo/illustration" — blocked unless
+// the sentence is clearly a task FOR students ("Students create a picture of…").
+const IMAGE_GEN_SOFT =
+  /\b(?:generate|create|make|produce|render)\b(?:\s+(?:me|us))?(?:\s+[\w-]+){0,3}?\s+(?:images?|pictures?|photos?|photographs?|illustrations?|artworks?)\b/i;
+const IMAGE_GEN_STUDENT_TASK = /\b(?:students?|learners?|pupils?|groups?|teams?)\b/i;
+
+// ─── Section display order (drag to re-arrange) ──────────────────────────────
+// `sectionOrder` = ordered keys: the built-in keys below + "custom:<title>".
+// SDG Integration sits in the letterhead of the Word sheet, so it is pinned and
+// not part of the order. Older lessons (no sectionOrder) keep the original layout.
+const SECTION_CUSTOM_PREFIX = 'custom:';
+const SAS_DEFAULT_ORDER: string[] = ['lessonPrep', 'conceptNotes', 'keyTerms', 'takeaways', 'guidedPractice', 'performanceTask'];
+const buildSectionOrder = (order: string[] | null | undefined, customTitles: string[]): string[] => {
+  const all = [...SAS_DEFAULT_ORDER, ...customTitles.map((t) => SECTION_CUSTOM_PREFIX + t)];
+  const valid = new Set(all);
+  const out: string[] = [];
+  (Array.isArray(order) ? order : []).forEach((k) => {
+    if (typeof k === 'string' && valid.has(k) && !out.includes(k)) out.push(k);
+  });
+  all.forEach((k) => { if (!out.includes(k)) out.push(k); });
+  return out;
+};
+const getLessonSectionOrder = (lesson: any): string[] =>
+  buildSectionOrder(
+    lesson?.sectionOrder,
+    (Array.isArray(lesson?.customSections) ? lesson.customSections : [])
+      .map((cs: any) => String(cs?.title || ''))
+      .filter(Boolean)
+  );
+
+const collectStrings = (value: any, out: string[] = [], depth = 0): string[] => {
+  if (value == null || depth > 6) return out;
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value)) value.forEach((v) => collectStrings(v, out, depth + 1));
+  else if (typeof value === 'object') Object.values(value).forEach((v) => collectStrings(v, out, depth + 1));
+  return out;
+};
+
+// True if ANY string inside the given values (strings, arrays, objects) asks
+// for image generation.
+const hasImageGenerationRequest = (...inputs: any[]): boolean => {
+  const text = collectStrings(inputs).join('\n');
+  if (!text.trim()) return false;
+  if (IMAGE_GEN_STRONG.test(text)) return true;
+  return text
+    .split(/[\n.!?]+/)
+    .some((sentence) => IMAGE_GEN_SOFT.test(sentence) && !IMAGE_GEN_STUDENT_TASK.test(sentence));
+};
+
 // Same rule as the server: a saved choice wins; older lessons (no `sasFields`)
 // are treated as having whichever sections actually contain content.
 const getLessonSasFields = (lesson: any): SasFieldKey[] => {
@@ -1028,23 +1091,145 @@ const getLessonSasFields = (lesson: any): SasFieldKey[] => {
   return found;
 };
 
-// Checklist that asks the teacher which sections to Generate / Add.
+// Drag handle (≡). Dependency-free: a PanResponder on the icon reports the vertical
+// drag distance; the picker works out where the row should land.
+function SasDragHandle({
+  onStart,
+  onMove,
+  onEnd,
+}: {
+  onStart: () => void;
+  onMove: (dy: number) => void;
+  onEnd: (dy: number) => void;
+}) {
+  const cb = useRef({ onStart, onMove, onEnd });
+  cb.current = { onStart, onMove, onEnd };
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => cb.current.onStart(),
+      onPanResponderMove: (_e, g) => cb.current.onMove(g.dy),
+      onPanResponderRelease: (_e, g) => cb.current.onEnd(g.dy),
+      onPanResponderTerminate: (_e, g) => cb.current.onEnd(g.dy),
+    })
+  ).current;
+  return (
+    <View
+      {...responder.panHandlers}
+      accessibilityLabel="Drag to re-arrange"
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
+      style={[
+        styles.sasDragHandle,
+        Platform.OS === 'web' ? ({ cursor: 'grab', touchAction: 'none', userSelect: 'none' } as any) : null,
+      ]}
+    >
+      <Ionicons name="reorder-three" size={24} color="#8B0000" />
+    </View>
+  );
+}
+
+// Checklist that asks the teacher which sections to Generate / Add — and in what
+// order they should appear in the lesson (drag the ≡ handle to re-arrange).
 function SasFieldPicker({
   selected,
   onChange,
   verb,
   disabled,
+  customSections,
+  onCustomSectionsChange,
+  order,
+  onOrderChange,
 }: {
   selected: SasFieldKey[];
   onChange: (next: SasFieldKey[]) => void;
   verb: 'generate' | 'add';
   disabled?: boolean;
+  // Teacher-added sections ("Add new section"). Titles only — for "generate" the
+  // AI writes the content, for "add" the teacher writes it in the form below.
+  customSections?: string[];
+  onCustomSectionsChange?: (next: string[]) => void;
+  // Display order of the sections (see buildSectionOrder) + setter.
+  order?: string[];
+  onOrderChange?: (next: string[]) => void;
 }) {
+  const [customInput, setCustomInput] = useState('');
+  const [customError, setCustomError] = useState('');
+  const customList = customSections || [];
+  const orderKeys = buildSectionOrder(order, customList);
+  const canDrag = !!onOrderChange && !disabled;
+
+  // ── drag state ──
+  const layouts = useRef<Record<string, { y: number; height: number }>>({});
+  const dragRef = useRef<{ key: string; from: number; dy: number } | null>(null);
+  const [drag, setDrag] = useState<{ key: string; from: number; dy: number } | null>(null);
+
+  const targetIndexFor = (st: { key: string; from: number; dy: number }): number => {
+    const me = layouts.current[st.key];
+    if (!me) return st.from;
+    const center = me.y + me.height / 2 + st.dy;
+    // Insertion index = number of OTHER rows whose midpoint is above the dragged row's centre.
+    let target = 0;
+    orderKeys.forEach((k) => {
+      if (k === st.key) return;
+      const r = layouts.current[k];
+      if (r && r.y + r.height / 2 < center) target += 1;
+    });
+    return target;
+  };
+  const startDrag = (key: string) => {
+    if (!canDrag) return;
+    const st = { key, from: orderKeys.indexOf(key), dy: 0 };
+    dragRef.current = st;
+    setDrag(st);
+  };
+  const moveDrag = (dy: number) => {
+    if (!dragRef.current) return;
+    dragRef.current = { ...dragRef.current, dy };
+    setDrag(dragRef.current);
+  };
+  const endDrag = (dy: number) => {
+    const st = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!st || !onOrderChange) return;
+    const target = targetIndexFor({ ...st, dy });
+    if (target === st.from) return;
+    const next = orderKeys.filter((k) => k !== st.key);
+    next.splice(target, 0, st.key);
+    onOrderChange(next);
+  };
+  const dragTarget = drag ? targetIndexFor(drag) : -1;
+  const shiftFor = (index: number): number => {
+    if (!drag) return 0;
+    const h = layouts.current[drag.key]?.height || 0;
+    if (drag.from < dragTarget && index > drag.from && index <= dragTarget) return -h;
+    if (drag.from > dragTarget && index >= dragTarget && index < drag.from) return h;
+    return 0;
+  };
+
+  const addCustomSection = () => {
+    if (disabled || !onCustomSectionsChange) return;
+    const title = customInput.replace(/\s+/g, ' ').trim();
+    if (!title) { setCustomError('Enter a section name.'); return; }
+    if (title.length > CUSTOM_SECTION_TITLE_MAX) { setCustomError(`Keep the section name under ${CUSTOM_SECTION_TITLE_MAX} characters.`); return; }
+    if (hasImageGenerationRequest(title)) { setCustomError(IMAGE_GEN_BLOCK_MESSAGE); return; }
+    const lower = title.toLowerCase();
+    if (SAS_FIELD_OPTIONS.some((o) => o.label.toLowerCase() === lower)) { setCustomError('That section already exists in the list above.'); return; }
+    if (customList.some((t) => t.toLowerCase() === lower)) { setCustomError('You already added that section.'); return; }
+    if (customList.length >= CUSTOM_SECTION_MAX) { setCustomError(`You can add up to ${CUSTOM_SECTION_MAX} new sections.`); return; }
+    onCustomSectionsChange([...customList, title]);
+    setCustomInput('');
+    setCustomError('');
+  };
   const toggle = (key: SasFieldKey) => {
     if (disabled) return;
     const next = selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key];
     onChange(SAS_FIELD_KEYS.filter((k) => next.includes(k)));
   };
+  const sdgOpt = SAS_FIELD_OPTIONS.find((o) => o.key === 'sdgIntegration');
+
   return (
     <View style={styles.sasPickerBox}>
       <View style={styles.sasPickerHeaderRow}>
@@ -1060,24 +1245,107 @@ function SasFieldPicker({
       </View>
       <Text style={styles.sasPickerNote}>
         Course name, week, lesson title, Intended Learning Outcomes, Materials and References are always included.
+        {!!onOrderChange ? ' Drag the ≡ handle to change the order the sections appear in the lesson.' : ''}
       </Text>
-      {SAS_FIELD_OPTIONS.map((opt) => {
-        const on = selected.includes(opt.key);
+
+      {/* SDG Integration is part of the letterhead, so it stays first and can't be moved. */}
+      {!!sdgOpt && (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => toggle(sdgOpt.key)}
+          style={[styles.sasPickerRow, selected.includes(sdgOpt.key) && styles.sasPickerRowActive]}
+        >
+          <Ionicons name={selected.includes(sdgOpt.key) ? 'checkbox' : 'square-outline'} size={22} color="#8B0000" />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.sasPickerLabel}>{sdgOpt.label}</Text>
+            <Text style={styles.sasPickerHint}>{sdgOpt.hint} · always shown in the header</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {orderKeys.map((key, index) => {
+        const isCustom = key.startsWith(SECTION_CUSTOM_PREFIX);
+        const opt = isCustom ? null : SAS_FIELD_OPTIONS.find((o) => o.key === key);
+        if (!isCustom && !opt) return null;
+        const title = isCustom ? key.slice(SECTION_CUSTOM_PREFIX.length) : opt!.label;
+        const hint = isCustom
+          ? verb === 'generate'
+            ? 'New section — the AI writes it from this name'
+            : 'New section — you write the content in the form below'
+          : opt!.hint;
+        const on = isCustom ? true : selected.includes(key as SasFieldKey);
+        const isDragging = drag?.key === key;
         return (
-          <TouchableOpacity
-            key={opt.key}
-            activeOpacity={0.8}
-            onPress={() => toggle(opt.key)}
-            style={[styles.sasPickerRow, on && styles.sasPickerRowActive]}
+          <View
+            key={key}
+            onLayout={(e) => { layouts.current[key] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height }; }}
+            style={[
+              { zIndex: isDragging ? 20 : 1 },
+              isDragging
+                ? { transform: [{ translateY: drag!.dy }], opacity: 0.95, elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }
+                : drag
+                  ? { transform: [{ translateY: shiftFor(index) }] }
+                  : null,
+            ]}
           >
-            <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color="#8B0000" />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.sasPickerLabel}>{opt.label}</Text>
-              <Text style={styles.sasPickerHint}>{opt.hint}</Text>
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={isCustom ? 1 : 0.8}
+              onPress={() => { if (!isCustom) toggle(key as SasFieldKey); }}
+              style={[styles.sasPickerRow, on && styles.sasPickerRowActive]}
+            >
+              <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color="#8B0000" />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.sasPickerLabel}>{title}</Text>
+                <Text style={styles.sasPickerHint}>{hint}</Text>
+              </View>
+              {isCustom && !!onCustomSectionsChange && (
+                <TouchableOpacity
+                  onPress={() => !disabled && onCustomSectionsChange(customList.filter((t) => t !== title))}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ marginRight: 4 }}
+                >
+                  <Ionicons name="close-circle" size={20} color="#8B0000" />
+                </TouchableOpacity>
+              )}
+              {canDrag && (
+                <SasDragHandle
+                  onStart={() => startDrag(key)}
+                  onMove={moveDrag}
+                  onEnd={endDrag}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
         );
       })}
+
+      {!!onCustomSectionsChange && (
+        <View style={{ marginTop: 4 }}>
+          <Text style={styles.sasPickerCustomLabel}>Add new section</Text>
+          <View style={styles.sasPickerCustomRow}>
+            <TextInput
+              style={[styles.sasPickerCustomInput, !!customError && styles.errorBorder]}
+              value={customInput}
+              onChangeText={(v) => { setCustomInput(v); if (customError) setCustomError(''); }}
+              placeholder={'e.g. "Exit Ticket" or "Assessment"'}
+              placeholderTextColor="#999"
+              maxLength={CUSTOM_SECTION_TITLE_MAX}
+              editable={!disabled}
+              onSubmitEditing={addCustomSection}
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              onPress={addCustomSection}
+              disabled={disabled}
+              style={[styles.sasPickerCustomBtn, disabled && { opacity: 0.5 }]}
+            >
+              <Ionicons name="add" size={16} color="#FFF" />
+              <Text style={styles.sasPickerCustomBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+          {!!customError && <Text style={styles.errorText}>{customError}</Text>}
+        </View>
+      )}
     </View>
   );
 }
@@ -1569,6 +1837,10 @@ const TeacherCourseDetail2 = ({
   // Optional SAS sections the teacher chose to GENERATE (Generate Next Lessons /
   // Generate Lesson Content). The letterhead block is always generated.
   const [genSasFields, setGenSasFields] = useState<SasFieldKey[]>(DEFAULT_SAS_FIELDS);
+  // Teacher-added sections ("Add new section") for Generate — titles only, the AI writes the content.
+  const [genCustomSections, setGenCustomSections] = useState<string[]>([]);
+  // Display order of the sections (drag to re-arrange) for Generate.
+  const [genSectionOrder, setGenSectionOrder] = useState<string[]>([]);
 
   // Updates a (possibly nested, e.g. "lessonPrep.instructions") SAS field on
   // one lesson inside pendingGeneratedLessons, without disturbing the rest
@@ -1727,6 +1999,10 @@ const TeacherCourseDetail2 = ({
   const [newLessonGuidedPractice, setNewLessonGuidedPractice] = useState('');
   // Optional SAS sections the teacher chose to ADD in the Manual Lesson form.
   const [newLessonSasFields, setNewLessonSasFields] = useState<SasFieldKey[]>(DEFAULT_SAS_FIELDS);
+  // Teacher-added sections ("Add new section") for the Manual Lesson form — title + content.
+  const [newLessonCustomSections, setNewLessonCustomSections] = useState<{ title: string; content: string }[]>([]);
+  // Display order of the sections (drag to re-arrange) for the Manual Lesson form.
+  const [newLessonSectionOrder, setNewLessonSectionOrder] = useState<string[]>([]);
 
   // Helpers: turn a "one item per line" textarea into a clean string[]
   const parseLinesToArray = (text: string): string[] =>
@@ -2094,6 +2370,10 @@ useEffect(() => {
       toast.show('error', 'Error', 'Please select a Module and Topic.');
       return;
     }
+    if (hasImageGenerationRequest(selectedGenTopic?.title, selectedGenSubtopic, genCustomSections)) {
+      toast.show('error', IMAGE_GEN_BLOCK_TITLE, IMAGE_GEN_BLOCK_MESSAGE);
+      return;
+    }
     setIsGeneratingContent(true);
     try {
       const response = await fetch(`${API_BASE_URL}/ai/generate-lesson-content`, {
@@ -2105,7 +2385,8 @@ useEffect(() => {
           moduleId: selectedGenModule.moduleNumber || selectedGenModule.id,
           topicTitle: selectedGenTopic.title,
           subtopicTitle: selectedGenSubtopic,
-          fields: genSasFields
+          fields: genSasFields,
+          customSections: genCustomSections
         })
       });
       const data = await response.json();
@@ -2225,6 +2506,8 @@ useEffect(() => {
     });
     setSelectedTopicsForGen([]);
     setGenSasFields(DEFAULT_SAS_FIELDS);
+    setGenCustomSections([]);
+    setGenSectionOrder([]);
     setShowNextLessonModal(true);
   };
 
@@ -2241,6 +2524,10 @@ useEffect(() => {
       toast.show('error', 'Error', 'Please select at least one topic.');
       return;
     }
+    if (hasImageGenerationRequest(selectedTopicsForGen, genCustomSections)) {
+      toast.show('error', IMAGE_GEN_BLOCK_TITLE, IMAGE_GEN_BLOCK_MESSAGE);
+      return;
+    }
     setIsGeneratingNextLessons(true);
     try {
       const response = await fetch(`${API_BASE_URL}/course-syllabus/generate-next-lessons`, {
@@ -2251,7 +2538,8 @@ useEffect(() => {
           classId: course.id,
           moduleNumber: targetModuleForGen.moduleNumber,
           topicTitles: selectedTopicsForGen,
-          fields: genSasFields
+          fields: genSasFields,
+          customSections: genCustomSections
         })
       });
       const data = await response.json();
@@ -2265,6 +2553,10 @@ useEffect(() => {
           discussion: stripAsterisks(l.discussion),
           activity: stripAsterisks(l.activity),
           sasFields: Array.isArray(l.sasFields) ? l.sasFields : genSasFields,
+          customSections: Array.isArray(l.customSections)
+            ? l.customSections.map((cs: any) => ({ title: cs?.title || '', content: stripAsterisks(cs?.content) }))
+            : [],
+          sectionOrder: buildSectionOrder(genSectionOrder, genCustomSections),
         }));
         setPendingGeneratedLessons(plainTextLessons);
         setEditingPreviewIndex(0);
@@ -2297,6 +2589,10 @@ useEffect(() => {
 
   const handleSavePreviewedLessons = async () => {
     if (!targetModuleForGen || pendingGeneratedLessons.length === 0) return;
+    if (hasImageGenerationRequest(pendingGeneratedLessons)) {
+      toast.show('error', IMAGE_GEN_BLOCK_TITLE, IMAGE_GEN_BLOCK_MESSAGE);
+      return;
+    }
     setIsSavingGeneratedLessons(true);
     try {
       let currentMax = 0;
@@ -2359,6 +2655,10 @@ useEffect(() => {
             : [],
           takeaways: Array.isArray(lesson.takeaways) ? lesson.takeaways.filter(Boolean) : [],
           guidedPractice: lesson.guidedPractice || '',
+          customSections: Array.isArray(lesson.customSections)
+            ? lesson.customSections.filter((cs: any) => cs && cs.title).map((cs: any) => ({ title: cs.title, content: cs.content || '' }))
+            : [],
+          sectionOrder: getLessonSectionOrder(lesson),
         };
         const res = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
           method: 'POST',
@@ -2578,6 +2878,36 @@ useEffect(() => {
     // ─── Text-mode lessons: the letterhead fields are always required; each optional
     // section is required only if the teacher chose to add it. ───
     const hasSas = (k: SasFieldKey) => newLessonSasFields.includes(k);
+    // Block image-generation requests in ANY field that would be saved (title and
+    // description always; sections only if the teacher added them).
+    if (
+      hasImageGenerationRequest(
+        newLessonTitle,
+        newLessonDesc,
+        lessonMode === 'text' && [
+          newLessonObjectivesText,
+          newLessonMaterialsText,
+          newLessonReferencesText,
+          hasSas('sdgIntegration') && newLessonSdgText,
+          hasSas('lessonPrep') && [
+            newLessonPrepResourcesText,
+            newLessonPrepActivityTitle,
+            newLessonPrepInstructions,
+            newLessonPrepGuideQuestionsText,
+            newLessonPrepTransition,
+          ],
+          hasSas('conceptNotes') && newLessonDiscussion,
+          hasSas('keyTerms') && newLessonKeyTermsText,
+          hasSas('takeaways') && newLessonTakeawaysText,
+          hasSas('guidedPractice') && newLessonGuidedPractice,
+          hasSas('performanceTask') && newLessonActivity,
+          newLessonCustomSections,
+        ]
+      )
+    ) {
+      toast.show('error', IMAGE_GEN_BLOCK_TITLE, IMAGE_GEN_BLOCK_MESSAGE);
+      return;
+    }
     if (lessonMode === 'text') {
       const sasRequiredChecks: [boolean, string][] = [
         [parseLinesToArray(newLessonObjectivesText).length === 0, 'Intended Learning Outcomes'],
@@ -2592,6 +2922,7 @@ useEffect(() => {
         [hasSas('takeaways') && parseLinesToArray(newLessonTakeawaysText).length === 0, 'Take Aways'],
         [hasSas('guidedPractice') && !newLessonGuidedPractice.trim(), 'Guided Practice'],
         [hasSas('performanceTask') && !newLessonActivity.trim(), 'Performance Task'],
+        ...newLessonCustomSections.map((sec): [boolean, string] => [!sec.content.trim(), sec.title]),
       ];
       const missing = sasRequiredChecks.filter(([isMissing]) => isMissing).map(([, label]) => label);
       if (missing.length > 0) {
@@ -2636,6 +2967,8 @@ useEffect(() => {
           : [];
         payload.takeaways = hasSas('takeaways') ? parseLinesToArray(newLessonTakeawaysText) : [];
         payload.guidedPractice = hasSas('guidedPractice') ? newLessonGuidedPractice.trim() : '';
+        payload.customSections = newLessonCustomSections.map((sec) => ({ title: sec.title, content: sec.content.trim() }));
+        payload.sectionOrder = buildSectionOrder(newLessonSectionOrder, newLessonCustomSections.map((sec) => sec.title));
       } else if (lessonMode === 'file' && newLessonFile) {
         payload.fileBase64 = newLessonFile.base64;
         payload.fileName = newLessonFile.name;
@@ -2701,6 +3034,8 @@ useEffect(() => {
     setNewLessonTakeawaysText('');
     setNewLessonGuidedPractice('');
     setNewLessonSasFields(DEFAULT_SAS_FIELDS);
+    setNewLessonCustomSections([]);
+    setNewLessonSectionOrder([]);
   };
 
   const handleAiTool = async (tool: string, module: any, extraParams?: any) => {
@@ -4790,7 +5125,19 @@ useEffect(() => {
         <>
           <Text style={styles.sasFormSectionDivider}>Student Activity Sheet</Text>
 
-          <SasFieldPicker selected={newLessonSasFields} onChange={setNewLessonSasFields} verb="add" />
+          <SasFieldPicker
+            selected={newLessonSasFields}
+            onChange={setNewLessonSasFields}
+            verb="add"
+            order={newLessonSectionOrder}
+            onOrderChange={setNewLessonSectionOrder}
+            customSections={newLessonCustomSections.map((sec) => sec.title)}
+            onCustomSectionsChange={(titles) =>
+              setNewLessonCustomSections((prev) =>
+                titles.map((t) => prev.find((p) => p.title === t) || { title: t, content: '' })
+              )
+            }
+          />
 
           <Text style={styles.sectionLabel}>Intended Learning Outcomes (one per line)</Text>
           <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonObjectivesText} onChangeText={setNewLessonObjectivesText} multiline placeholder={"Define C Programming.\nExplain the importance of learning C Programming."} />
@@ -4809,7 +5156,30 @@ useEffect(() => {
             </>
           )}
 
-          {newLessonSasFields.includes('lessonPrep') && (
+          {buildSectionOrder(newLessonSectionOrder, newLessonCustomSections.map((s) => s.title)).map((key) => {
+            if (key.startsWith(SECTION_CUSTOM_PREFIX)) {
+              const i = newLessonCustomSections.findIndex((s) => SECTION_CUSTOM_PREFIX + s.title === key);
+              const sec = newLessonCustomSections[i];
+              if (!sec) return null;
+              return (
+                <React.Fragment key={key}>
+              <Text style={styles.sasFormSectionDivider}>{sec.title}</Text>
+              <TextInput
+                placeholderTextColor="#999"
+                style={[styles.textAreaBox, { minHeight: 100 }, hasImageGenerationRequest(sec.content) && styles.errorBorder]}
+                value={sec.content}
+                onChangeText={(v) =>
+                  setNewLessonCustomSections((prev) => prev.map((p, j) => (j === i ? { ...p, content: v } : p)))
+                }
+                multiline
+                placeholder={`Write the content for "${sec.title}"...`}
+              />
+              {hasImageGenerationRequest(sec.content) && renderInputError(IMAGE_GEN_BLOCK_MESSAGE)}
+                </React.Fragment>
+              );
+            }
+            const blocks: Record<string, React.ReactNode> = {
+              lessonPrep: newLessonSasFields.includes('lessonPrep') && (
             <>
               <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
 
@@ -4828,45 +5198,43 @@ useEffect(() => {
               <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
               <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonPrepTransition} onChangeText={setNewLessonPrepTransition} multiline placeholder="Last meeting, we learned... Today, we will learn..." />
             </>
-          )}
-
-          {newLessonSasFields.includes('conceptNotes') && (
+              ),
+              conceptNotes: newLessonSasFields.includes('conceptNotes') && (
             <>
               <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
               <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
               <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
             </>
-          )}
-
-          {newLessonSasFields.includes('keyTerms') && (
+              ),
+              keyTerms: newLessonSasFields.includes('keyTerms') && (
             <>
               <Text style={styles.sasFormSectionDivider}>Key Terms</Text>
               <Text style={styles.sectionLabel}>One per line: "Term | Meaning"</Text>
               <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 90 }]} value={newLessonKeyTermsText} onChangeText={setNewLessonKeyTermsText} multiline placeholder={"Program | A set of instructions given to a computer\nCompiler | A tool that translates source code into machine code"} />
             </>
-          )}
-
-          {newLessonSasFields.includes('takeaways') && (
+              ),
+              takeaways: newLessonSasFields.includes('takeaways') && (
             <>
               <Text style={styles.sasFormSectionDivider}>Take Aways</Text>
               <Text style={styles.sectionLabel}>One per line</Text>
               <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 80 }]} value={newLessonTakeawaysText} onChangeText={setNewLessonTakeawaysText} multiline placeholder={"C Programming was developed by Dennis Ritchie in 1972.\nEvery C program starts with the main() function."} />
             </>
-          )}
-
-          {newLessonSasFields.includes('guidedPractice') && (
+              ),
+              guidedPractice: newLessonSasFields.includes('guidedPractice') && (
             <>
               <Text style={styles.sasFormSectionDivider}>Guided Practice</Text>
               <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonGuidedPractice} onChangeText={setNewLessonGuidedPractice} multiline placeholder={"1. Write a main() function\n2. Use printf to print Hello, C!"} />
             </>
-          )}
-
-          {newLessonSasFields.includes('performanceTask') && (
+              ),
+              performanceTask: newLessonSasFields.includes('performanceTask') && (
             <>
               <Text style={styles.sasFormSectionDivider}>Performance Task</Text>
               <TextInput placeholderTextColor="#999" style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for the independent performance task..." />
             </>
-          )}
+              ),
+            };
+            return <React.Fragment key={key}>{blocks[key]}</React.Fragment>;
+          })}
         </>
       ) : (
         <>
@@ -8146,6 +8514,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       setNewLessonDiscussion('');
                       setNewLessonActivity('');
                       setNewLessonFile(null);
+                      setNewLessonCustomSections([]);
                     } else {
                       setLessonMode('text');
                       setNewLessonDiscussion(selectedLesson.discussion || '');
@@ -8165,6 +8534,14 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       setNewLessonTakeawaysText(arrayToLines(selectedLesson.takeaways));
                       setNewLessonGuidedPractice(selectedLesson.guidedPractice || '');
                       setNewLessonSasFields(getLessonSasFields(selectedLesson));
+                      setNewLessonSectionOrder(Array.isArray(selectedLesson.sectionOrder) ? selectedLesson.sectionOrder : []);
+                      setNewLessonCustomSections(
+                        Array.isArray(selectedLesson.customSections)
+                          ? selectedLesson.customSections
+                              .map((cs: any) => ({ title: String(cs?.title || ''), content: String(cs?.content || '') }))
+                              .filter((cs: { title: string }) => cs.title)
+                          : []
+                      );
                     }
                     setLessonDetailModalVisible(false);
                     setShowManualLessonModal(true);
@@ -8429,6 +8806,19 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                           </Text>
                         </View>
                       ) : null}
+
+                      {Array.isArray(selectedLesson.customSections)
+                        ? selectedLesson.customSections
+                            .filter((sec: any) => sec && sec.title)
+                            .map((sec: any, i: number) => (
+                              <View key={`cs-${i}`} style={styles.sasCard}>
+                                <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>{sec.title}</Text>
+                                <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                                  {renderFormattedText(sec.content || '', { color: '#000' })}
+                                </Text>
+                              </View>
+                            ))
+                        : null}
                     </>
                   ) : null}
 
@@ -8809,7 +9199,7 @@ GENERATE LESSON CONTENT MODAL
                   </ScrollView>
                 </>
               )}
-              <SasFieldPicker selected={genSasFields} onChange={setGenSasFields} verb="generate" disabled={isGeneratingContent} />
+              <SasFieldPicker selected={genSasFields} onChange={setGenSasFields} verb="generate" disabled={isGeneratingContent} customSections={genCustomSections} onCustomSectionsChange={setGenCustomSections} order={genSectionOrder} onOrderChange={setGenSectionOrder} />
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowGenerateModal(false)}>
@@ -8908,7 +9298,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                 })
               )}
               {targetModuleForGen?.topics && targetModuleForGen.topics.length > 0 && (
-                <SasFieldPicker selected={genSasFields} onChange={setGenSasFields} verb="generate" disabled={isGeneratingNextLessons} />
+                <SasFieldPicker selected={genSasFields} onChange={setGenSasFields} verb="generate" disabled={isGeneratingNextLessons} customSections={genCustomSections} onCustomSectionsChange={setGenCustomSections} order={genSectionOrder} onOrderChange={setGenSectionOrder} />
               )}
             </ScrollView>
             <View style={styles.buttonRow}>
@@ -9192,7 +9582,32 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                         </>
                       )}
 
-                      {getLessonSasFields(lesson).includes('lessonPrep') && (
+                      {getLessonSectionOrder(lesson).map((key) => {
+                        if (key.startsWith(SECTION_CUSTOM_PREFIX)) {
+                          const ci = (lesson.customSections || []).findIndex((s: any) => SECTION_CUSTOM_PREFIX + s?.title === key);
+                          const sec = ci >= 0 ? lesson.customSections[ci] : null;
+                          if (!sec) return null;
+                          return (
+                            <React.Fragment key={key}>
+                          <Text style={styles.sasFormSectionDivider}>{sec?.title}</Text>
+                          <TextInput
+                            style={[styles.textAreaBox, { minHeight: 300 }]}
+                            value={sec?.content || ''}
+                            onChangeText={(v) =>
+                              updatePendingLessonField(
+                                index,
+                                'customSections',
+                                lesson.customSections.map((s: any, k: number) => (k === ci ? { ...s, content: v } : s))
+                              )
+                            }
+                            multiline
+                            textAlignVertical="top"
+                          />
+                            </React.Fragment>
+                          );
+                        }
+                        const blocks: Record<string, React.ReactNode> = {
+                          lessonPrep: getLessonSasFields(lesson).includes('lessonPrep') && (
                         <>
                           <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
 
@@ -9236,9 +9651,8 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             multiline
                           />
                         </>
-                      )}
-
-                      {getLessonSasFields(lesson).includes('conceptNotes') && (
+                          ),
+                          conceptNotes: getLessonSasFields(lesson).includes('conceptNotes') && (
                         <>
                           <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
                           <TextInput
@@ -9249,9 +9663,8 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             textAlignVertical="top"
                           />
                         </>
-                      )}
-
-                      {getLessonSasFields(lesson).includes('keyTerms') && (
+                          ),
+                          keyTerms: getLessonSasFields(lesson).includes('keyTerms') && (
                         <>
                           <Text style={styles.sasFormSectionDivider}>Key Terms</Text>
                           <Text style={styles.sectionLabel}>"Term | Meaning" per line</Text>
@@ -9262,9 +9675,8 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             multiline
                           />
                         </>
-                      )}
-
-                      {getLessonSasFields(lesson).includes('takeaways') && (
+                          ),
+                          takeaways: getLessonSasFields(lesson).includes('takeaways') && (
                         <>
                           <Text style={styles.sasFormSectionDivider}>Take Aways</Text>
                           <Text style={styles.sectionLabel}>One per line</Text>
@@ -9275,9 +9687,8 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             multiline
                           />
                         </>
-                      )}
-
-                      {getLessonSasFields(lesson).includes('guidedPractice') && (
+                          ),
+                          guidedPractice: getLessonSasFields(lesson).includes('guidedPractice') && (
                         <>
                           <Text style={styles.sasFormSectionDivider}>Guided Practice</Text>
                           <TextInput
@@ -9288,9 +9699,8 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             textAlignVertical="top"
                           />
                         </>
-                      )}
-
-                      {getLessonSasFields(lesson).includes('performanceTask') && (
+                          ),
+                          performanceTask: getLessonSasFields(lesson).includes('performanceTask') && (
                         <>
                           <Text style={styles.sasFormSectionDivider}>Performance Task</Text>
                           <TextInput
@@ -9301,7 +9711,10 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             textAlignVertical="top"
                           />
                         </>
-                      )}
+                          ),
+                        };
+                        return <React.Fragment key={key}>{blocks[key]}</React.Fragment>;
+                      })}
                     </View>
                   </View>,
                   'AI Generated',
@@ -10045,6 +10458,31 @@ const styles = StyleSheet.create({
   sasPickerRowActive: { borderColor: '#8B0000', backgroundColor: '#FAF5F5' },
   sasPickerLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#222' },
   sasPickerHint: { fontFamily: FONT_BODY, fontSize: 11, color: '#777', marginTop: 1 },
+  sasDragHandle: { paddingLeft: 6, paddingVertical: 2, alignItems: 'center', justifyContent: 'center' },
+  sasPickerCustomLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#222', marginTop: 8, marginBottom: 6 },
+  sasPickerCustomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  sasPickerCustomInput: {
+    flex: 1,
+    fontFamily: FONT_BODY,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFF',
+    fontSize: 13,
+    color: '#111',
+  },
+  sasPickerCustomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#8B0000',
+  },
+  sasPickerCustomBtnText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#FFF' },
   helperText: { fontFamily: FONT_BODY, fontSize: 12, color: '#777', marginBottom: 8, lineHeight: 18 },
   emptyMiniText: { fontFamily: FONT_BODY, fontSize: 12, color: '#999', marginBottom: 6 },
   errorText: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: -2, marginBottom: 6 },
