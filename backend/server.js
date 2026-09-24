@@ -766,6 +766,28 @@ async function createReadSignedUrl(storagePath) {
 }
  
 /**
+ * Signed URL that makes the browser DOWNLOAD the file (Content-Disposition:
+ * attachment) under a friendly name, e.g. "Strategy Patterns.docx". Not cached —
+ * the name differs per lesson. Used by the "Download a Copy" button on the SAS preview.
+ */
+async function createDownloadSignedUrl(storagePath, downloadName) {
+  const base =
+    String(downloadName || "Student Activity Sheet")
+      .replace(/[\\/:*?"<>|\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120) || "Student Activity Sheet";
+  const ascii = base.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
+  const [url] = await bucket.file(storagePath).getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
+    responseDisposition: `attachment; filename="${ascii}.docx"; filename*=UTF-8''${encodeURIComponent(base)}.docx`,
+  });
+  return url;
+}
+
+/**
  * Cached replacement for createReadSignedUrlIfExists(storagePath).
  * Same signature and behavior as before (returns null instead of
  * throwing), but:
@@ -19053,9 +19075,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         return has(key) ? { [SECTION_FLAG[key]]: true } : null;
       })
       .filter(Boolean);
-    // Keep the original layout: when Lesson Preparation comes first it sits alone on
-    // page 1 and everything after it starts page 2.
-    if (orderedSections.length > 1 && orderedSections[0].isLessonPrep) orderedSections[1].breakBefore = true;
+    // Sections flow continuously (no forced page break); the template adds one blank
+    // line after each section.
 
     const page1HasBody = showLessonPrep;
     const page2HasBody = showConceptNotes || showKeyTerms || showTakeaways || showGuidedPractice || showPerformanceTask || showCustomSections;
@@ -19168,7 +19189,16 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         console.warn("SAS preview cleanup skipped:", cleanupErr.message);
       }
     }
-    return createReadSignedUrl(storagePath);
+    const url = await createReadSignedUrl(storagePath);
+    // Separate "attachment" link for the Download a Copy button. Best-effort:
+    // if signing fails the preview itself must still work.
+    let downloadUrl = null;
+    try {
+      downloadUrl = await createDownloadSignedUrl(storagePath, lesson.title || "Student Activity Sheet");
+    } catch (dlErr) {
+      console.warn("SAS download link skipped:", dlErr.message);
+    }
+    return { url, downloadUrl };
   }
 
   function sasPreviewErrorResponse(res, error, logLabel) {
@@ -19214,14 +19244,14 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const lesson = lessonDoc.data();
 
       const { courseName, weekLabel } = await loadSasCourseContext(lesson.classId, lesson.moduleId);
-      const url = await renderSasPreviewUrl({
+      const { url, downloadUrl } = await renderSasPreviewUrl({
         lesson,
         courseName,
         weekLabel,
         storageDir: `sas-previews/${lesson.classId || "unknown-class"}`,
         filePrefix: lessonId,
       });
-      return res.json({ success: true, url });
+      return res.json({ success: true, url, downloadUrl });
     } catch (error) {
       return sasPreviewErrorResponse(res, error, "SAS preview error:");
     }
@@ -19241,14 +19271,14 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         return res.status(400).json({ error: "classId and lesson are required." });
       }
       const { courseName, weekLabel } = await loadSasCourseContext(classId, moduleId);
-      const url = await renderSasPreviewUrl({
+      const { url, downloadUrl } = await renderSasPreviewUrl({
         lesson,
         courseName,
         weekLabel,
         storageDir: `sas-previews/${classId}/drafts`,
         filePrefix: req.user.uid,
       });
-      return res.json({ success: true, url });
+      return res.json({ success: true, url, downloadUrl });
     } catch (error) {
       return sasPreviewErrorResponse(res, error, "SAS draft preview error:");
     }

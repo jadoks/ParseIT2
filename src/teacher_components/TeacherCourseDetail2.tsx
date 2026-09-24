@@ -876,6 +876,12 @@ function getMicrosoftOfficeViewerUrl(fileUrl: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
 
+// Full-page Word viewer (not the embed) — used by "Print to PDF" so the teacher
+// lands on Microsoft's own print/PDF tools in a new tab.
+function getMicrosoftOfficeFullViewerUrl(fileUrl: string) {
+  return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
+}
+
 function getViewerUrl(
   fileUrl: string,
   fileName?: string | null,
@@ -1350,6 +1356,100 @@ function SasFieldPicker({
   );
 }
 
+// ─── Top-bar document menu (Download a Copy / Print to PDF) ──────────────────
+// Mirrors the menu in Microsoft's viewer footer, but lives in the app's own top
+// bar. Download uses an "attachment" link so the file saves as "<Lesson>.docx".
+// The embedded viewer is cross-origin, so we can't trigger its print dialog from
+// here — Print to PDF opens the full Word viewer in a new tab instead.
+function SasDocMenuButton({ docUrl, downloadUrl }: { docUrl: string | null; downloadUrl: string | null }) {
+  const { width: winW } = useWindowDimensions();
+  const btnRef = useRef<any>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 64, right: 12 });
+  const ready = !!(docUrl || downloadUrl);
+
+  const openMenu = () => {
+    if (!ready) return;
+    if (btnRef.current?.measureInWindow) {
+      btnRef.current.measureInWindow((x: number, y: number, w: number, h: number) => {
+        setPos({ top: y + h + 6, right: Math.max(8, winW - (x + w)) });
+        setOpen(true);
+      });
+    } else {
+      setOpen(true);
+    }
+  };
+
+  const download = async () => {
+    setOpen(false);
+    const url = downloadUrl || docUrl;
+    if (!url) return;
+    try {
+      if (Platform.OS === 'web') {
+        const a = document.createElement('a');
+        a.href = url;
+        a.rel = 'noopener';
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        await Linking.openURL(url);
+      }
+    } catch (err) {
+      console.warn('Could not download the document:', err);
+    }
+  };
+
+  const printToPdf = async () => {
+    setOpen(false);
+    if (!docUrl) return;
+    const url = getMicrosoftOfficeFullViewerUrl(docUrl);
+    try {
+      if (Platform.OS === 'web') (window as any).open(url, '_blank', 'noopener');
+      else await Linking.openURL(url);
+    } catch (err) {
+      console.warn('Could not open the Word viewer:', err);
+    }
+  };
+
+  return (
+    <>
+      <View ref={btnRef} collapsable={false}>
+        <TouchableOpacity
+          onPress={openMenu}
+          disabled={!ready}
+          activeOpacity={0.8}
+          accessibilityLabel="Document options"
+          style={[styles.sasDocMenuBtn, !ready && { opacity: 0.45 }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="document-text-outline" size={19} color="#444" />
+          <Ionicons name="chevron-down" size={13} color="#444" />
+        </TouchableOpacity>
+      </View>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={[styles.sasDocMenuCard, { top: pos.top, right: pos.right }]}>
+            <TouchableOpacity style={styles.sasDocMenuItem} onPress={download} activeOpacity={0.7}>
+              <Ionicons name="download-outline" size={18} color="#222" />
+              <Text style={styles.sasDocMenuText}>Download a Copy</Text>
+            </TouchableOpacity>
+            <View style={styles.sasDocMenuDivider} />
+            <TouchableOpacity style={styles.sasDocMenuItem} onPress={printToPdf} activeOpacity={0.7}>
+              <Ionicons name="print-outline" size={18} color="#222" />
+              <View>
+                <Text style={styles.sasDocMenuText}>Print to PDF</Text>
+                <Text style={styles.sasDocMenuHint}>Opens in the Word viewer</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+}
+
 // ─── SAS Docx Preview ─────────────────────────────────────────────────────────
 // Shows the real CTU SAS Word template, filled in by the server (only the
 // sections the teacher chose), inline in the Microsoft Office viewer. The
@@ -1366,6 +1466,7 @@ function SASTemplatePreview({
   isMobile,
   fullScreen,
   onUnavailable,
+  onLinksChange,
 }: {
   lessonId?: string;
   draft?: { classId?: string; moduleId?: string; lesson: any };
@@ -1373,8 +1474,17 @@ function SASTemplatePreview({
   isMobile: boolean;
   fullScreen?: boolean;
   onUnavailable: () => void;
+  // Reports the filled .docx links so the parent's top bar can offer Download / Print.
+  onLinksChange?: (links: { url: string | null; downloadUrl: string | null }) => void;
 }) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null); // signed URL of the filled .docx
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null); // same file, as an attachment
+  const linksCbRef = useRef(onLinksChange);
+  linksCbRef.current = onLinksChange;
+  useEffect(() => {
+    linksCbRef.current?.({ url: pdfUrl, downloadUrl });
+  }, [pdfUrl, downloadUrl]);
+  useEffect(() => () => linksCbRef.current?.({ url: null, downloadUrl: null }), []);
   const [loading, setLoading] = useState(true);
   const [containerHeight, setContainerHeight] = useState(0);
   const reportedFailureRef = useRef(false);
@@ -1384,6 +1494,7 @@ function SASTemplatePreview({
     let cancelled = false;
     reportedFailureRef.current = false;
     setPdfUrl(null);
+    setDownloadUrl(null);
     setLoading(true);
 
     const fail = () => {
@@ -1407,8 +1518,10 @@ function SASTemplatePreview({
             });
         const data = await response.json().catch(() => null);
         if (cancelled) return;
-        if (response.ok && data?.url) setPdfUrl(data.url);
-        else fail();
+        if (response.ok && data?.url) {
+          setPdfUrl(data.url);
+          setDownloadUrl(data.downloadUrl || null);
+        } else fail();
       } catch (err) {
         console.warn('SAS docx preview failed to load:', err);
         fail();
@@ -2003,6 +2116,8 @@ const TeacherCourseDetail2 = ({
   const [newLessonCustomSections, setNewLessonCustomSections] = useState<{ title: string; content: string }[]>([]);
   // Display order of the sections (drag to re-arrange) for the Manual Lesson form.
   const [newLessonSectionOrder, setNewLessonSectionOrder] = useState<string[]>([]);
+  // Links to the filled SAS .docx currently shown full-screen (feeds the top-bar Download / Print menu).
+  const [sasDocLinks, setSasDocLinks] = useState<{ url: string | null; downloadUrl: string | null }>({ url: null, downloadUrl: null });
 
   // Helpers: turn a "one item per line" textarea into a clean string[]
   const parseLinesToArray = (text: string): string[] =>
@@ -8501,6 +8616,9 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
             </View>
             {selectedLesson ? (
               <View style={{ flexDirection: 'row', gap: 8 }}>
+                {selectedLesson.type !== 'manual_file' && sasPreviewFailedFor !== selectedLesson.id ? (
+                  <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} />
+                ) : null}
                 <TouchableOpacity
                   onPress={() => {
                     if (!selectedLesson) return;
@@ -8578,6 +8696,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
               fullScreen
               lessonId={selectedLesson.id}
               isMobile={isMobile}
+              onLinksChange={setSasDocLinks}
               onUnavailable={() => {
                 setSasPreviewFailedFor(selectedLesson.id);
                 toast.show('info', 'Preview unavailable', 'Showing the plain lesson view instead.');
@@ -9777,6 +9896,7 @@ DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
                 Draft preview — not saved yet
               </Text>
             </View>
+            <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} />
           </View>
           {draftPreviewIndex !== null && pendingGeneratedLessons[draftPreviewIndex] ? (
             <SASTemplatePreview
@@ -9788,6 +9908,7 @@ DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
                 lesson: pendingGeneratedLessons[draftPreviewIndex],
               }}
               refreshKey={JSON.stringify(pendingGeneratedLessons[draftPreviewIndex])}
+              onLinksChange={setSasDocLinks}
               onUnavailable={() => {
                 setDraftPreviewIndex(null);
                 toast.show('error', 'Preview unavailable', 'Could not build the document preview. You can still edit and save the lesson.');
@@ -11241,6 +11362,34 @@ const styles = StyleSheet.create({
     color: '#111',
     marginTop: 6,
   },
+  sasDocMenuBtn: {
+    height: 36,
+    paddingHorizontal: 11,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    backgroundColor: '#F5F5F5',
+  },
+  sasDocMenuCard: {
+    position: 'absolute',
+    minWidth: 200,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  sasDocMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 11 },
+  sasDocMenuText: { fontFamily: FONT_BODY, fontSize: 14, color: '#222' },
+  sasDocMenuHint: { fontFamily: FONT_BODY, fontSize: 11, color: '#888', marginTop: 1 },
+  sasDocMenuDivider: { height: 1, backgroundColor: '#EEE', marginHorizontal: 12 },
   lessonPreviewIconBtn: {
     width: 36,
     height: 36,
