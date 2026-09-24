@@ -18675,6 +18675,124 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
+  /**
+   * SAS (Student Activity Sheet) — REAL TEMPLATE PDF PREVIEW
+   * Fills the real CTU SAS Word template (templates/sas-template.docx)
+   * with this lesson's data and returns a rendered PDF. This is what the
+   * "display" / preview screen shows — the actual letterhead template with
+   * its own auto-growing orange section boxes — NOT the hand-built RN/HTML
+   * lesson view. Generating and editing a lesson are untouched; they still
+   * read/write the plain JSON fields on the courseLessons doc as before.
+   * This route only turns that JSON into the real document for viewing.
+   *
+   * Template placeholders (see templates/sas-template.docx):
+   *   courseName, weekLabel, lessonTitle, objectives[], materialsText,
+   *   referencesText, lessonPrepInstructions, lessonPrepActivityTitle,
+   *   lessonPrepGuideQuestions[], lessonPrepResources[{label,url}],
+   *   lessonPrepTransition, conceptNotesText, guidedPracticeText,
+   *   performanceTaskText
+   */
+  app.get("/course-lessons/:lessonId/sas-preview-pdf", requireAuth, async (req, res) => {
+    try {
+      const { lessonId } = req.params;
+
+      const lessonDoc = await db.collection("courseLessons").doc(lessonId).get();
+      if (!lessonDoc.exists) {
+        return res.status(404).json({ error: "Lesson not found." });
+      }
+      const lesson = lessonDoc.data();
+
+      // Course name + week label come from the parent class/module, same
+      // as the on-screen banner (courseNameOnBanner) and week chip do.
+      const [classSnap, moduleSnap] = await Promise.all([
+        lesson.classId ? db.collection("classes").doc(lesson.classId).get() : Promise.resolve(null),
+        lesson.moduleId ? db.collection("courseModules").doc(lesson.moduleId).get() : Promise.resolve(null),
+      ]);
+      const courseName = classSnap && classSnap.exists ? (classSnap.data().name || "Untitled Course") : "Untitled Course";
+      const weekLabel = moduleSnap && moduleSnap.exists ? (moduleSnap.data().weeklySchedule || "") : "";
+
+      const templatePath = path.join(process.cwd(), "templates", "sas-template.docx");
+      if (!fs.existsSync(templatePath)) {
+        return res.status(500).json({
+          error: "SAS Word template is missing on the server (templates/sas-template.docx).",
+        });
+      }
+
+      const templateContent = fs.readFileSync(templatePath, "binary");
+      const zip = new PizZip(templateContent);
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+      });
+
+      const lessonPrep = lesson.lessonPrep && typeof lesson.lessonPrep === "object" ? lesson.lessonPrep : {};
+      const joinIfArray = (v, sep) => (Array.isArray(v) ? v.filter(Boolean).join(sep) : (v || ""));
+
+      const templateData = {
+        courseName,
+        weekLabel,
+        lessonTitle: lesson.title || "Untitled Lesson",
+        objectives: Array.isArray(lesson.objectives) ? lesson.objectives.filter(Boolean) : [],
+        materialsText: joinIfArray(lesson.materials, ", "),
+        referencesText: joinIfArray(lesson.references, "; "),
+        lessonPrepInstructions: lessonPrep.instructions || "",
+        lessonPrepActivityTitle: lessonPrep.activityTitle || "",
+        lessonPrepGuideQuestions: Array.isArray(lessonPrep.guideQuestions)
+          ? lessonPrep.guideQuestions.filter(Boolean)
+          : [],
+        lessonPrepResources: Array.isArray(lessonPrep.resources)
+          ? lessonPrep.resources.filter((r) => r && (r.label || r.url))
+          : [],
+        lessonPrepTransition: lessonPrep.transition || "",
+        conceptNotesText: lesson.discussion || "",
+        guidedPracticeText: lesson.guidedPractice || "",
+        performanceTaskText: lesson.activity || "",
+      };
+
+      doc.render(templateData);
+      const filledDocxBuffer = doc.getZip().generate({ type: "nodebuffer" });
+
+      // Reuse the existing PDF.co conversion helper (same one used for
+      // PPTX/DOC preview elsewhere) instead of adding a new conversion
+      // dependency.
+      const pdfBuffer = await convertPPTXtoPDFViaPDFco(filledDocxBuffer, `SAS-${lessonId}.docx`);
+
+      // Store it and hand back a signed URL rather than streaming the PDF
+      // bytes directly: the app's InlineMaterialViewer wraps whatever URL
+      // it's given in the Google Docs viewer, and that viewer fetches the
+      // URL from Google's own servers — it can't carry the teacher's
+      // session cookie, so this route can't be `res.send()`-behind-auth.
+      // The signed URL itself is the access control (short-lived, tied to
+      // this one generated file) and matches how every other lesson/module
+      // file preview already works in this app.
+      const storagePath = `sas-previews/${lesson.classId || "unknown-class"}/${lessonId}.pdf`;
+      await bucket.file(storagePath).save(pdfBuffer, {
+        metadata: {
+          contentType: "application/pdf",
+          cacheControl: "private,max-age=0,no-transform",
+        },
+        resumable: false,
+      });
+      const signedUrl = await createReadSignedUrl(storagePath);
+
+      return res.json({ success: true, url: signedUrl });
+    } catch (error) {
+      console.error("SAS preview PDF error:", error);
+
+      // docxtemplater throws a structured error with .properties.errors
+      // when a template tag is missing/mismatched — surface that detail
+      // instead of a generic 500 so a bad template edit is easy to spot.
+      const templateErrors = error?.properties?.errors;
+      const detail = Array.isArray(templateErrors)
+        ? templateErrors.map((e) => e?.properties?.explanation).filter(Boolean).join("; ")
+        : null;
+
+      return res.status(500).json({
+        error: detail || error.message || "Failed to generate the SAS preview.",
+      });
+    }
+  });
+
   app.post("/course-modules/save", requireAuth, async (req, res) => {
     try {
       const { moduleData } = req.body;

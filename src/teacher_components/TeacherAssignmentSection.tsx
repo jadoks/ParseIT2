@@ -77,6 +77,25 @@ const isAssignmentClosed = (item: Assignment) => {
   return item.assignmentType === 'game_based' ? true : !!item.repositoryDisabledAfterDue;
 };
 
+// "Due in 5 hr" / "Overdue by 8 days" — same helper as the student
+// Assignments tab. `soon` = under 48 hours left.
+const formatRelativeDue = (dueDate?: string) => {
+  const parsed = parseDueDateTime(dueDate);
+  if (!parsed) return null;
+  const diff = parsed.getTime() - Date.now();
+  const abs = Math.abs(diff);
+  const mins = Math.max(1, Math.round(abs / 60000));
+  const hrs = Math.round(abs / 3600000);
+  const days = Math.round(abs / 86400000);
+  const span =
+    mins < 60 ? `${mins} min` : hrs < 24 ? `${hrs} hr` : `${days} day${days === 1 ? '' : 's'}`;
+  return {
+    label: diff < 0 ? `Overdue by ${span}` : `Due in ${span}`,
+    overdue: diff < 0,
+    soon: diff >= 0 && diff < 48 * 3600000,
+  };
+};
+
 // Same grid rules as the student Assignments tab: cards are at least 320px
 // wide, up to 3 columns, 14px apart.
 const ASSIGNMENT_GAP = 14;
@@ -126,26 +145,55 @@ const TeacherAssignmentSection = ({
 
   const renderAssignmentItem = ({ item }: { item: Assignment }) => {
     const closed = isAssignmentClosed(item);
+    const isGame = item.assignmentType === 'game_based';
+    // Accent drives the card's left edge + icon tile (like the student cards):
+    // green = open, grey = closed.
+    const accent = closed ? '#9E9E9E' : '#2E7D32';
+    const iconName = closed
+      ? 'lock-closed-outline'
+      : isGame
+        ? 'game-controller-outline'
+        : 'document-text-outline';
+    const relDue = item.dueDate ? formatRelativeDue(item.dueDate) : null;
+    const relColor = relDue
+      ? closed
+        ? '#666'
+        : relDue.overdue
+          ? '#C62828'
+          : relDue.soon
+            ? '#E65100'
+            : '#666'
+      : '#666';
+    const gameLabel =
+      item.gameType === 'quiz_master' ? 'Quiz Master' :
+      item.gameType === 'memory_match' ? 'Memory Match' :
+      item.gameType === 'fill_in_blanks' ? 'Fill-in-Blanks' :
+      item.gameType === 'flashcard' ? 'Flashcard' : 'Boss Battle';
+    const files = item.files?.length
+      ? item.files
+      : item.fileName || item.fileUri
+        ? [{ id: item.id, fileName: item.fileName }]
+        : [];
 
     return (
     <TouchableOpacity
       style={[
         styles.assignmentCard,
-        {
-          paddingHorizontal: cardPaddingHorizontal,
-          // Left accent like the student cards: maroon = open, grey = closed.
-          borderLeftColor: closed ? '#BDBDBD' : '#8B0000',
-        },
+        { paddingHorizontal: cardPaddingHorizontal, borderLeftColor: accent },
       ]}
       activeOpacity={0.85}
       onPress={() => onOpenMembers(item.id)}
     >
       <View style={styles.assignmentHeader}>
+        <View style={[styles.assignmentIconTile, { backgroundColor: `${accent}1F` }]}>
+          <Ionicons name={iconName} size={20} color={accent} />
+        </View>
+
         <View style={styles.assignmentInfo}>
-          <Text style={styles.assignmentTitle}>{item.header}</Text>
+          <Text style={styles.assignmentTitle} numberOfLines={2}>{item.header}</Text>
           {!!item.instruction && (
             <Text style={styles.assignmentTopicText} numberOfLines={2}>
-              {item.instruction}
+              Instruction: {item.instruction}
             </Text>
           )}
         </View>
@@ -157,53 +205,70 @@ const TeacherAssignmentSection = ({
         </View>
       </View>
 
-      <View style={styles.assignmentFooter}>
-        <Text style={styles.dueDateText}>
-          Due: {item.dueDate ? formatDueDateForDisplay(item.dueDate) : 'No due date'}
-        </Text>
+      <View style={styles.assignmentPillRow}>
+        <View style={styles.assignmentPill}>
+          <Ionicons name="calendar-outline" size={12} color="#666" />
+          <Text style={styles.assignmentPillText}>
+            {item.dueDate ? formatDueDateForDisplay(item.dueDate) : 'No due date'}
+          </Text>
+        </View>
 
-        <Text style={styles.pointsText}>
-          Score: {item.totalScore || '0'}
-        </Text>
+        <View style={styles.assignmentPill}>
+          <Ionicons name="star-outline" size={12} color="#666" />
+          <Text style={styles.assignmentPillText}>{item.totalScore || '0'} pts</Text>
+        </View>
+
+        {isGame ? (
+          <View style={[styles.assignmentPill, styles.assignmentPillGame]}>
+            <Ionicons name="game-controller-outline" size={12} color="#2E7D32" />
+            <Text style={[styles.assignmentPillText, styles.assignmentPillGameText]}>
+              {gameLabel}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.assignmentPill}>
+            <Ionicons
+              name={item.repositoryDisabledAfterDue ? 'lock-closed-outline' : 'folder-open-outline'}
+              size={12}
+              color="#666"
+            />
+            <Text style={styles.assignmentPillText}>
+              {item.repositoryDisabledAfterDue
+                ? 'Repository disabled after due'
+                : 'Open submissions'}
+            </Text>
+          </View>
+        )}
+
+        {files.map((file, index) => (
+          <View
+            key={file.id || `${item.id}-file-${index}`}
+            style={[styles.assignmentPill, styles.assignmentPillFile]}
+          >
+            <Ionicons name="attach-outline" size={12} color="#666" />
+            <Text style={[styles.assignmentPillText, { flexShrink: 1 }]} numberOfLines={1}>
+              {file.fileName || 'Attachment'}
+            </Text>
+          </View>
+        ))}
       </View>
 
-      {(item.files?.length
-        ? item.files
-        : item.fileName || item.fileUri
-          ? [{ id: item.id, fileName: item.fileName }]
-          : []
-      ).map((file, index) => (
-        <Text
-          key={file.id || `${item.id}-file-${index}`}
-          style={styles.relatedPreviewText}
-          numberOfLines={1}
-        >
-          File: {file.fileName || 'Attachment'}
-        </Text>
-      ))}
-
-      {item.assignmentType !== 'game_based' && (
-        <View style={styles.recommendationBadge}>
-          <Text style={styles.recommendationText}>
-            {item.repositoryDisabledAfterDue
-              ? 'Repository disabled after due'
-              : 'Open submissions'}
-          </Text>
+      <View style={styles.assignmentFooter}>
+        {relDue ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+            <Ionicons name="time-outline" size={13} color={relColor} />
+            <Text style={[styles.assignmentRelDue, { color: relColor }]} numberOfLines={1}>
+              {relDue.label}
+            </Text>
+          </View>
+        ) : (
+          <View />
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+          <Text style={styles.assignmentViewText}>View details</Text>
+          <Ionicons name="chevron-forward" size={14} color="#8B0000" />
         </View>
-      )}
-
-      {/* NEW: Game-Based Badge */}
-      {!!item.assignmentType && item.assignmentType === 'game_based' && (
-        <View style={styles.gameBadge}>
-          <Ionicons name="game-controller" size={12} color="#2E7D32" style={{ marginRight: 4 }} />
-          <Text style={styles.gameBadgeText}>
-            {item.gameType === 'quiz_master' ? 'Quiz Master' : 
-             item.gameType === 'memory_match' ? 'Memory Match' :
-             item.gameType === 'fill_in_blanks' ? 'Fill-in-Blanks' :
-             item.gameType === 'flashcard' ? 'Flashcard' : 'Boss Battle'}
-          </Text>
-        </View>
-      )}
+      </View>
     </TouchableOpacity>
     );
   };
@@ -256,35 +321,23 @@ const styles = StyleSheet.create({
   // flexGrow: 1 makes every card stretch to the height of the tallest card in
   // its row, so the grid rows line up. Chrome mirrors the student cards.
   assignmentCard: { flexGrow: 1, borderWidth: 1, borderColor: '#EEE', borderLeftWidth: 4, backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
-  assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  assignmentInfo: { flex: 1, marginRight: 8 },
-  assignmentTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 4 },
-  assignmentTopicText: { fontFamily: FONT_BODY, color: '#444', fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 18 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: '#F7EDED' },
-  statusText: { fontFamily: FONT_BODY, fontWeight: '700', fontSize: 12, color: '#8B0000' },
+  assignmentHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
+  assignmentIconTile: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  assignmentInfo: { flex: 1 },
+  assignmentTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 2 },
+  assignmentTopicText: { fontFamily: FONT_BODY, color: '#555', fontSize: 12, fontWeight: '600', marginTop: 2, lineHeight: 17 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: '#E8F5E9' },
+  statusText: { fontFamily: FONT_BODY, fontWeight: '700', fontSize: 12, color: '#2E7D32' },
   statusBadgeClosed: { backgroundColor: '#EEEEEE' },
   statusTextClosed: { color: '#666666' },
-  assignmentFooter: { borderTopWidth: 1, borderTopColor: '#E6E6E6', paddingTop: 8 },
-  dueDateText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: '600', fontSize: 13, marginBottom: 4 },
-  pointsText: { fontFamily: FONT_BODY, fontSize: 12, color: '#666', fontWeight: '600' },
-  relatedPreviewText: { fontFamily: FONT_BODY, fontSize: 12, color: '#666', marginTop: 8, lineHeight: 18 },
-  recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start', backgroundColor: '#F7EDED' },
-  recommendationText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#8B0000' },
+  assignmentPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  assignmentPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F3F3', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  assignmentPillText: { fontFamily: FONT_BODY, fontSize: 11, color: '#444', fontWeight: '600' },
+  assignmentPillGame: { backgroundColor: '#E8F5E9' },
+  assignmentPillGameText: { color: '#2E7D32' },
+  assignmentPillFile: { maxWidth: '100%' },
+  assignmentFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 10, marginTop: 'auto' },
+  assignmentRelDue: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '600' },
+  assignmentViewText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '600', color: '#8B0000' },
   emptyText: { fontFamily: FONT_BODY, textAlign: 'center', color: '#777', marginTop: 20, fontSize: 14 },
-  // NEW STYLES FOR GAME BADGE
-  gameBadge: {
-    marginTop: 10,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    alignSelf: 'flex-start',
-    backgroundColor: '#E8F5E9',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  gameBadgeText: { fontFamily: FONT_BODY,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#2E7D32',
-  },
 });

@@ -972,6 +972,85 @@ const renderFormattedText = (text: string, baseStyle: any) => {
   });
 };
 
+// ─── SAS Real-Template Preview ────────────────────────────────────────────────
+// Fetches the server-rendered "real" CTU SAS Word template (the actual
+// letterhead .docx filled in and converted to PDF — not this file's hand-built
+// RN sections) and shows it via InlineMaterialViewer. Generating/editing a
+// lesson still goes through the normal JSON form fields; this only swaps what
+// the *display* screen renders. Calls onUnavailable() once (per lesson) if the
+// render fails, so the caller can fall back to the RN sections.
+function SASTemplatePreview({
+  lessonId,
+  isMobile,
+  onUnavailable,
+}: {
+  lessonId: string;
+  isMobile: boolean;
+  onUnavailable: () => void;
+}) {
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const reportedFailureRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    reportedFailureRef.current = false;
+    setPdfUrl(null);
+    setLoading(true);
+
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/course-lessons/${lessonId}/sas-preview-pdf`, {
+          credentials: 'include',
+        });
+        const data = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (response.ok && data?.url) {
+          setPdfUrl(data.url);
+        } else if (!reportedFailureRef.current) {
+          reportedFailureRef.current = true;
+          onUnavailable();
+        }
+      } catch (err) {
+        console.warn('SAS template preview failed to load:', err);
+        if (!cancelled && !reportedFailureRef.current) {
+          reportedFailureRef.current = true;
+          onUnavailable();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId]);
+
+  if (loading) {
+    return (
+      <View style={[styles.sasCard, { alignItems: 'center', paddingVertical: 32 }]}>
+        <ActivityIndicator size="small" color="#8B0000" />
+        <Text style={[styles.lessonPreviewSectionText, { marginTop: 10 }]}>Loading Student Activity Sheet…</Text>
+      </View>
+    );
+  }
+
+  if (!pdfUrl) return null; // onUnavailable() already fired; parent falls back to RN sections
+
+  return (
+    <View style={[styles.sasCard, { padding: 0, overflow: 'hidden' }]}>
+      <InlineMaterialViewer
+        viewerUrl={getViewerUrl(pdfUrl, `SAS-${lessonId}.pdf`, 'application/pdf')}
+        height={isMobile ? 520 : 760}
+        fileName={`SAS-${lessonId}.pdf`}
+        fileType="application/pdf"
+      />
+    </View>
+  );
+}
+
 // ─── Inline Viewer ───────────────────────────────────────────────────────────
 // Mirrors the student-side viewer in CourseDetail.tsx: signed Firebase/GCS URLs
 // expire, so the preview can come back blank/404. When the caller passes a
@@ -1435,6 +1514,11 @@ const TeacherCourseDetail2 = ({
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
+  // Real-template SAS preview: null/undefined = still trying (or not
+  // attempted yet); set to the lesson id once that lesson's PDF render
+  // fails, so the view falls back to the hand-built RN sections below
+  // instead of showing a permanently blank/broken box.
+  const [sasPreviewFailedFor, setSasPreviewFailedFor] = useState<string | null>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
 
@@ -7978,125 +8062,149 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                     </Text>
                   </View>
 
-                  {Array.isArray(selectedLesson.objectives) && selectedLesson.objectives.length > 0 ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Intended Learning Outcomes</Text>
-                      <Text style={[styles.lessonPreviewSectionText, { marginBottom: 4 }]}>At the end of the lesson, you should be able to:</Text>
-                      {selectedLesson.objectives.map((o: string, i: number) => (
-                        <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{o}</Text>
-                      ))}
-                    </View>
+                  {/* ── Real-template SAS view ──────────────────────────────
+                      When a "Student Activity Sheet" lesson (has lessonPrep)
+                      is open, show the actual CTU Word template — filled in
+                      via /course-lessons/:id/sas-preview-pdf and rendered
+                      inline — instead of the hand-built RN sections below.
+                      Falls back to those RN sections automatically if the
+                      PDF hasn't loaded yet or the render fails, so nothing
+                      breaks for lessons without a lessonPrep block. */}
+                  {selectedLesson.lessonPrep && sasPreviewFailedFor !== selectedLesson.id ? (
+                    <SASTemplatePreview
+                      lessonId={selectedLesson.id}
+                      isMobile={isMobile}
+                      onUnavailable={() => setSasPreviewFailedFor(selectedLesson.id)}
+                    />
                   ) : null}
 
-                  {(Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0) ||
-                   (Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0) ? (
-                    <View style={styles.sasCard}>
-                      {Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0 ? (
-                        <>
-                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Materials</Text>
-                          <Text style={[styles.lessonPreviewSectionText, { marginBottom: 10 }]}>{selectedLesson.materials.join(', ')}</Text>
-                        </>
-                      ) : null}
-                      {Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0 ? (
-                        <>
-                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>References</Text>
-                          {selectedLesson.references.map((r: string, i: number) => (
-                            <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{r}</Text>
-                          ))}
-                        </>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  {Array.isArray(selectedLesson.sdgIntegration) && selectedLesson.sdgIntegration.length > 0 ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>SDG Integration</Text>
-                      {selectedLesson.sdgIntegration.map((s: any, i: number) => (
-                        <Text key={i} style={[styles.lessonPreviewSectionText, { marginBottom: 6 }]}>
-                          <Text style={[styles.lessonPreviewSectionText, { fontWeight: '700' }]}>{s.sdg}</Text>{s.description ? ` — ${s.description}` : ''}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
-
-                  {selectedLesson.lessonPrep ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Lesson Preparation / Review / Preview</Text>
-                      {Array.isArray(selectedLesson.lessonPrep.resources) && selectedLesson.lessonPrep.resources.length > 0 ? (
-                        <View style={{ marginBottom: 8 }}>
-                          {selectedLesson.lessonPrep.resources.map((r: any, i: number) => (
-                            <Text key={i} style={[styles.lessonPreviewSectionText, { color: '#1976D2' }]}>{r.label}{r.url ? `: ${r.url}` : ''}</Text>
+                  {/* Hand-built RN sections — only shown when this lesson has
+                      no lessonPrep (not a full SAS lesson) or the real
+                      template above failed to render, so the content is
+                      never silently unreachable. */}
+                  {!selectedLesson.lessonPrep || sasPreviewFailedFor === selectedLesson.id ? (
+                    <>
+                      {Array.isArray(selectedLesson.objectives) && selectedLesson.objectives.length > 0 ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Intended Learning Outcomes</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { marginBottom: 4 }]}>At the end of the lesson, you should be able to:</Text>
+                          {selectedLesson.objectives.map((o: string, i: number) => (
+                            <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{o}</Text>
                           ))}
                         </View>
                       ) : null}
-                      {selectedLesson.lessonPrep.activityTitle ? (
-                        <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge, { color: '#000' }]}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
+
+                      {(Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0) ||
+                       (Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0) ? (
+                        <View style={styles.sasCard}>
+                          {Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0 ? (
+                            <>
+                              <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Materials</Text>
+                              <Text style={[styles.lessonPreviewSectionText, { marginBottom: 10 }]}>{selectedLesson.materials.join(', ')}</Text>
+                            </>
+                          ) : null}
+                          {Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0 ? (
+                            <>
+                              <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>References</Text>
+                              {selectedLesson.references.map((r: string, i: number) => (
+                                <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{r}</Text>
+                              ))}
+                            </>
+                          ) : null}
+                        </View>
                       ) : null}
-                      {selectedLesson.lessonPrep.instructions ? (
-                        <Text style={[styles.lessonPreviewSectionText, { color: '#000', marginBottom: 8 }]}>
-                          {renderFormattedText(selectedLesson.lessonPrep.instructions, { color: '#000' })}
-                        </Text>
-                      ) : null}
-                      {Array.isArray(selectedLesson.lessonPrep.guideQuestions) && selectedLesson.lessonPrep.guideQuestions.length > 0 ? (
-                        <View style={{ marginBottom: 8 }}>
-                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge, { color: '#000' }]}>Guide Questions</Text>
-                          {selectedLesson.lessonPrep.guideQuestions.map((q: string, i: number) => (
-                            <Text key={i} style={styles.sasBulletText}>{i + 1}. {q}</Text>
+
+                      {Array.isArray(selectedLesson.sdgIntegration) && selectedLesson.sdgIntegration.length > 0 ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>SDG Integration</Text>
+                          {selectedLesson.sdgIntegration.map((s: any, i: number) => (
+                            <Text key={i} style={[styles.lessonPreviewSectionText, { marginBottom: 6 }]}>
+                              <Text style={[styles.lessonPreviewSectionText, { fontWeight: '700' }]}>{s.sdg}</Text>{s.description ? ` — ${s.description}` : ''}
+                            </Text>
                           ))}
                         </View>
                       ) : null}
-                      {selectedLesson.lessonPrep.transition ? (
-                        <Text style={[styles.lessonPreviewSectionText, { color: '#444', fontStyle: 'italic' }]}>{selectedLesson.lessonPrep.transition}</Text>
-                      ) : null}
-                    </View>
-                  ) : null}
 
-                  {selectedLesson.discussion ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Concept Notes / Discussion</Text>
-                      <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
-                        {renderFormattedText(selectedLesson.discussion, { color: '#000' })}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {Array.isArray(selectedLesson.keyTerms) && selectedLesson.keyTerms.length > 0 ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Key Terms to Remember</Text>
-                      {selectedLesson.keyTerms.map((k: any, i: number) => (
-                        <View key={i} style={{ flexDirection: 'row', marginBottom: 6 }}>
-                          <Text style={[styles.lessonPreviewSectionText, { width: 110, fontWeight: '700', color: '#000' }]}>{k.term}</Text>
-                          <Text style={[styles.lessonPreviewSectionText, { flex: 1 }]}>{k.meaning}</Text>
+                      {selectedLesson.lessonPrep ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Lesson Preparation / Review / Preview</Text>
+                          {Array.isArray(selectedLesson.lessonPrep.resources) && selectedLesson.lessonPrep.resources.length > 0 ? (
+                            <View style={{ marginBottom: 8 }}>
+                              {selectedLesson.lessonPrep.resources.map((r: any, i: number) => (
+                                <Text key={i} style={[styles.lessonPreviewSectionText, { color: '#1976D2' }]}>{r.label}{r.url ? `: ${r.url}` : ''}</Text>
+                              ))}
+                            </View>
+                          ) : null}
+                          {selectedLesson.lessonPrep.activityTitle ? (
+                            <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge, { color: '#000' }]}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
+                          ) : null}
+                          {selectedLesson.lessonPrep.instructions ? (
+                            <Text style={[styles.lessonPreviewSectionText, { color: '#000', marginBottom: 8 }]}>
+                              {renderFormattedText(selectedLesson.lessonPrep.instructions, { color: '#000' })}
+                            </Text>
+                          ) : null}
+                          {Array.isArray(selectedLesson.lessonPrep.guideQuestions) && selectedLesson.lessonPrep.guideQuestions.length > 0 ? (
+                            <View style={{ marginBottom: 8 }}>
+                              <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge, { color: '#000' }]}>Guide Questions</Text>
+                              {selectedLesson.lessonPrep.guideQuestions.map((q: string, i: number) => (
+                                <Text key={i} style={styles.sasBulletText}>{i + 1}. {q}</Text>
+                              ))}
+                            </View>
+                          ) : null}
+                          {selectedLesson.lessonPrep.transition ? (
+                            <Text style={[styles.lessonPreviewSectionText, { color: '#444', fontStyle: 'italic' }]}>{selectedLesson.lessonPrep.transition}</Text>
+                          ) : null}
                         </View>
-                      ))}
-                    </View>
-                  ) : null}
+                      ) : null}
 
-                  {Array.isArray(selectedLesson.takeaways) && selectedLesson.takeaways.length > 0 ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Take Aways</Text>
-                      {selectedLesson.takeaways.map((t: string, i: number) => (
-                        <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{t}</Text>
-                      ))}
-                    </View>
-                  ) : null}
+                      {selectedLesson.discussion ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Concept Notes / Discussion</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                            {renderFormattedText(selectedLesson.discussion, { color: '#000' })}
+                          </Text>
+                        </View>
+                      ) : null}
 
-                  {selectedLesson.guidedPractice ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Guided Practice</Text>
-                      <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
-                        {renderFormattedText(selectedLesson.guidedPractice, { color: '#000' })}
-                      </Text>
-                    </View>
-                  ) : null}
+                      {Array.isArray(selectedLesson.keyTerms) && selectedLesson.keyTerms.length > 0 ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Key Terms to Remember</Text>
+                          {selectedLesson.keyTerms.map((k: any, i: number) => (
+                            <View key={i} style={{ flexDirection: 'row', marginBottom: 6 }}>
+                              <Text style={[styles.lessonPreviewSectionText, { width: 110, fontWeight: '700', color: '#000' }]}>{k.term}</Text>
+                              <Text style={[styles.lessonPreviewSectionText, { flex: 1 }]}>{k.meaning}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
 
-                  {selectedLesson.activity ? (
-                    <View style={styles.sasCard}>
-                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Compu-Skill / Performance Task</Text>
-                      <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
-                        {renderFormattedText(selectedLesson.activity, { color: '#000' })}
-                      </Text>
-                    </View>
+                      {Array.isArray(selectedLesson.takeaways) && selectedLesson.takeaways.length > 0 ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Take Aways</Text>
+                          {selectedLesson.takeaways.map((t: string, i: number) => (
+                            <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{t}</Text>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {selectedLesson.guidedPractice ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Guided Practice</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                            {renderFormattedText(selectedLesson.guidedPractice, { color: '#000' })}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {selectedLesson.activity ? (
+                        <View style={styles.sasCard}>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Compu-Skill / Performance Task</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                            {renderFormattedText(selectedLesson.activity, { color: '#000' })}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
                   ) : null}
 
                   {renderTemplateFooterBanner()}
