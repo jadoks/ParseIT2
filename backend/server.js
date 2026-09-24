@@ -388,6 +388,7 @@ import { createAvatarThumbs } from "./avatarThumbs.js";
   const app = express();
   const allowedOrigins = [
     "https://parse-it-hub.vercel.app",
+    "https://parseithub.vercel.app",
     "http://localhost:8081", // for local dev
   ];
 
