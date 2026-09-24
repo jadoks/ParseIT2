@@ -339,6 +339,32 @@ function getGoogleDocsViewerUrl(fileUrl: string) {
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
 
+// ─── Microsoft Office viewer + download helpers (mirrors TeacherCourseDetail2) ───
+function getMicrosoftOfficeViewerUrl(fileUrl: string) {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
+}
+
+// Starts a download for a signed "attachment" URL: hidden <a> on web, system browser on native.
+async function openDownloadUrl(url: string) {
+  if (Platform.OS === 'web') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener';
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } else {
+    await Linking.openURL(url);
+  }
+}
+
+// Full-page Word viewer (not the embed) — used by "Print to PDF" on mobile so
+// the user lands on Microsoft's own print/PDF tools.
+function getMicrosoftOfficeFullViewerUrl(fileUrl: string) {
+  return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
+}
+
 // ✅ NEW: Best-effort storagePath resolver from a Firebase/GCS download URL.
 function resolveStoragePathFromUrl(fileUrl?: string | null): string | null {
   if (!fileUrl) return null;
@@ -367,6 +393,7 @@ function InlineMaterialViewer({
   storagePath,
   bucketPath,
   classId,
+  viewerUrl,
 }: {
   fileUrl: string;
   height: number;
@@ -375,6 +402,9 @@ function InlineMaterialViewer({
   storagePath?: string | null;
   bucketPath?: string | null;
   classId?: string;
+  // Optional ready-made embed URL (e.g. the Microsoft Office viewer for the
+  // filled SAS .docx). When set it is used instead of the Google Docs viewer.
+  viewerUrl?: string;
 }) {
   const [resolvedUrl, setResolvedUrl] = useState(fileUrl);
   const [hasError, setHasError] = useState(false);
@@ -429,7 +459,7 @@ function InlineMaterialViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity, hasAutoRefreshed, canRefresh]);
 
-  const displayUrl = getViewerUrl(resolvedUrl, fileName, fileType);
+  const displayUrl = viewerUrl || getViewerUrl(resolvedUrl, fileName, fileType);
   const RefreshBar = () =>
     canRefresh ? (
       <TouchableOpacity
@@ -824,6 +854,414 @@ const renderFormattedText = (text: string, baseStyle: any) => {
   });
 };
 
+// ─── Gmail-style selection toolbar for a module's lessons ────────────────────
+// [☐ ▾] checkbox + All/None menu, then a labelled Download button. The rows
+// themselves carry the per-lesson checkboxes. Selected lessons are downloaded as
+// their Student Activity Sheet (.docx) — one file, or a .zip when several are picked.
+function LessonSelectToolbar({
+  lessonIds,
+  selected,
+  onSelectAll,
+  onDownload,
+  downloading,
+}: {
+  lessonIds: string[];
+  selected: Record<string, boolean>;
+  onSelectAll: (value: boolean) => void;
+  onDownload: (ids: string[]) => void;
+  downloading: boolean;
+}) {
+  const { width: winW } = useWindowDimensions();
+  const boxRef = useRef<any>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 60, left: 12 });
+  const selectedIds = lessonIds.filter((id) => selected[id]);
+  const allSelected = lessonIds.length > 0 && selectedIds.length === lessonIds.length;
+  const someSelected = selectedIds.length > 0 && !allSelected;
+  const canDownload = selectedIds.length > 0 && !downloading;
+
+  const openMenu = () => {
+    if (boxRef.current?.measureInWindow) {
+      boxRef.current.measureInWindow((x: number, y: number, _w: number, h: number) => {
+        setMenuPos({ top: y + h + 4, left: Math.min(Math.max(8, x), Math.max(8, winW - 150)) });
+        setMenuOpen(true);
+      });
+    } else {
+      setMenuOpen(true);
+    }
+  };
+
+  return (
+    <View style={styles.lessonSelectBar}>
+      <View ref={boxRef} collapsable={false} style={styles.lessonSelectBox}>
+        <TouchableOpacity
+          onPress={() => onSelectAll(!(allSelected || someSelected))}
+          accessibilityLabel="Select all lessons"
+          hitSlop={{ top: 8, bottom: 8, left: 6, right: 2 }}
+          style={styles.lessonSelectBoxBtn}
+        >
+          {allSelected ? (
+            <Ionicons name="checkbox" size={22} color="#8B0000" />
+          ) : someSelected ? (
+            <View style={styles.lessonSelectIndeterminate}>
+              <View style={styles.lessonSelectIndeterminateBar} />
+            </View>
+          ) : (
+            <Ionicons name="square-outline" size={22} color="#666" />
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={openMenu}
+          accessibilityLabel="Selection options"
+          hitSlop={{ top: 8, bottom: 8, left: 2, right: 6 }}
+          style={styles.lessonSelectCaretBtn}
+        >
+          <Ionicons name="caret-down" size={11} color="#555" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.lessonSelectDivider} />
+
+      <TouchableOpacity
+        onPress={() => onDownload(selectedIds)}
+        disabled={!canDownload}
+        activeOpacity={0.8}
+        style={[styles.lessonSelectDownloadBtn, !canDownload && { opacity: 0.45 }]}
+      >
+        {downloading ? (
+          <ActivityIndicator size="small" color="#8B0000" />
+        ) : (
+          <Ionicons name="download-outline" size={18} color="#8B0000" />
+        )}
+        <Text style={styles.lessonSelectDownloadText}>
+          {downloading ? 'Preparing…' : selectedIds.length > 1 ? `Download ${selectedIds.length} lessons` : 'Download'}
+        </Text>
+      </TouchableOpacity>
+
+      <Text style={styles.lessonSelectCount} numberOfLines={1}>
+        {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select lessons to download'}
+      </Text>
+
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuOpen(false)}>
+          <View style={[styles.sasDocMenuCard, { top: menuPos.top, left: menuPos.left, minWidth: 130 }]}>
+            <TouchableOpacity
+              style={styles.sasDocMenuItem}
+              onPress={() => { setMenuOpen(false); onSelectAll(true); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sasDocMenuText}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sasDocMenuItem}
+              onPress={() => { setMenuOpen(false); onSelectAll(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sasDocMenuText}>None</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+// ─── Browser print (web only, no server) ─────────────────────────────────────
+// Downloads the filled SAS .docx, renders it into a hidden same-origin iframe
+// with `docx-preview`, and opens the browser's own print dialog ("Save as PDF").
+// Needs: npm i docx-preview. Throws if the file can't be fetched (e.g. storage
+// CORS) or rendered, so the caller can fall back to the Word viewer tab.
+async function printDocxInBrowser(docUrl: string, title: string | null | undefined, onReady: () => void) {
+  const response = await fetch(docUrl);
+  if (!response.ok) throw new Error(`Could not fetch the document (${response.status}).`);
+  const buffer = await response.arrayBuffer();
+  const { renderAsync } = await import('docx-preview');
+
+  const iframe: any = (document as any).createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  (document as any).body.appendChild(iframe);
+  const parentTitle = (document as any).title;
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    (document as any).title = parentTitle;
+    iframe.remove();
+  };
+
+  try {
+    const doc: any = iframe.contentDocument;
+    const win: any = iframe.contentWindow;
+    doc.open();
+    doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title></title></head><body></body></html>');
+    doc.close();
+
+    await renderAsync(buffer, doc.body, doc.head, {
+      className: 'docx',
+      inWrapper: false,
+      breakPages: true,
+      useBase64URL: true,
+      renderHeaders: true,
+      renderFooters: true,
+      renderFootnotes: true,
+    } as any);
+
+    // Match the printed page to the document's own page size.
+    const firstPage: any = doc.querySelector('section.docx');
+    const pageSize = firstPage?.style?.width && firstPage?.style?.minHeight
+      ? `${firstPage.style.width} ${firstPage.style.minHeight}`
+      : 'auto';
+    const style = doc.createElement('style');
+    style.textContent = `
+      @page { size: ${pageSize}; margin: 0; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      section.docx { box-shadow: none !important; margin: 0 !important; break-after: page; page-break-after: always; }
+      section.docx:last-of-type { break-after: auto; page-break-after: auto; }
+    `;
+    doc.head.appendChild(style);
+
+    // Wait for images/fonts so nothing prints blank.
+    await Promise.all(
+      Array.from(doc.images as ArrayLike<any>).map((img: any) =>
+        img.complete ? null : new Promise<void>((resolve) => { img.onload = img.onerror = () => resolve(); })
+      )
+    );
+    await doc.fonts?.ready;
+
+    // The browser uses the document title as the default "Save as PDF" file name.
+    if (title) {
+      doc.title = title;
+      (document as any).title = title;
+    }
+
+    win.addEventListener('afterprint', restore);
+    setTimeout(restore, 5 * 60 * 1000); // safety net for browsers that never fire afterprint
+    onReady();
+    win.focus();
+    win.print();
+  } catch (err) {
+    restore();
+    throw err;
+  }
+}
+
+// ─── Top-bar document menu (Download a Copy / Print to PDF) ──────────────────
+// Print to PDF:
+//  • Web    → opens the browser's print dialog for the filled document
+//             (Save as PDF), no server involved. If that fails, it falls back
+//             to the Word viewer in a new tab.
+//  • Mobile → opens the document in the Word viewer in the browser.
+function SasDocMenuButton({
+  docUrl,
+  downloadUrl,
+  title,
+}: {
+  docUrl: string | null;
+  downloadUrl: string | null;
+  title?: string | null;
+}) {
+  const { width: winW } = useWindowDimensions();
+  const btnRef = useRef<any>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 64, right: 12 });
+  const [preparingPrint, setPreparingPrint] = useState(false);
+  const ready = !!(docUrl || downloadUrl);
+
+  const openMenu = () => {
+    if (!ready) return;
+    if (btnRef.current?.measureInWindow) {
+      btnRef.current.measureInWindow((x: number, y: number, w: number, h: number) => {
+        setPos({ top: y + h + 6, right: Math.max(8, winW - (x + w)) });
+        setOpen(true);
+      });
+    } else {
+      setOpen(true);
+    }
+  };
+
+  const download = async () => {
+    setOpen(false);
+    const url = downloadUrl || docUrl;
+    if (!url) return;
+    try {
+      await openDownloadUrl(url);
+    } catch (err) {
+      console.warn('Could not download the document:', err);
+    }
+  };
+
+  const printToPdf = async () => {
+    setOpen(false);
+    if (!docUrl || preparingPrint) return;
+
+    // Mobile: open the Word viewer (its own Print / PDF tools).
+    if (Platform.OS !== 'web') {
+      try {
+        await Linking.openURL(getMicrosoftOfficeFullViewerUrl(docUrl));
+      } catch (err) {
+        console.warn('Could not open the Word viewer:', err);
+      }
+      return;
+    }
+
+    // Web: browser print dialog.
+    setPreparingPrint(true);
+    try {
+      await printDocxInBrowser(docUrl, title, () => setPreparingPrint(false));
+    } catch (err) {
+      console.warn('Browser print failed, opening the Word viewer instead:', err);
+      try {
+        (window as any).open(getMicrosoftOfficeFullViewerUrl(docUrl), '_blank', 'noopener');
+      } catch {}
+    } finally {
+      setPreparingPrint(false);
+    }
+  };
+
+  return (
+    <>
+      <View ref={btnRef} collapsable={false}>
+        <TouchableOpacity
+          onPress={openMenu}
+          disabled={!ready}
+          activeOpacity={0.8}
+          accessibilityLabel="Document options"
+          style={[styles.sasDocMenuBtn, !ready && { opacity: 0.45 }]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="document-text-outline" size={19} color="#444" />
+          <Ionicons name="chevron-down" size={13} color="#444" />
+        </TouchableOpacity>
+      </View>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOpen(false)}>
+          <View style={[styles.sasDocMenuCard, { top: pos.top, right: pos.right }]}>
+            <TouchableOpacity style={styles.sasDocMenuItem} onPress={download} activeOpacity={0.7}>
+              <Ionicons name="download-outline" size={18} color="#222" />
+              <Text style={styles.sasDocMenuText}>Download a Copy</Text>
+            </TouchableOpacity>
+            <View style={styles.sasDocMenuDivider} />
+            <TouchableOpacity style={styles.sasDocMenuItem} onPress={printToPdf} activeOpacity={0.7}>
+              <Ionicons name="print-outline" size={18} color="#222" />
+              <View>
+                <Text style={styles.sasDocMenuText}>Print to PDF</Text>
+                <Text style={styles.sasDocMenuHint}>
+                  {Platform.OS === 'web' ? 'Opens the print dialog' : 'Opens in the Word viewer'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Shown only while the document is being prepared for the browser print dialog */}
+      <Modal visible={preparingPrint} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.printPrepBackdrop}>
+          <View style={styles.printPrepCard}>
+            <ActivityIndicator size="small" color="#8B0000" />
+            <Text style={styles.printPrepText}>Preparing print preview…</Text>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+// ─── SAS Docx Preview (mirrors TeacherCourseDetail2) ─────────────────────────
+// Shows the real CTU SAS Word template, filled in by the server, inline in the
+// Microsoft Office viewer. GET /course-lessons/:id/sas-preview returns a signed
+// URL to the filled .docx — no PDF conversion. Calls onUnavailable() once if
+// the render fails so the caller can fall back to the plain lesson view.
+function SASTemplatePreview({
+  lessonId,
+  isMobile,
+  onUnavailable,
+  onLinksChange,
+}: {
+  lessonId: string;
+  isMobile: boolean;
+  onUnavailable: () => void;
+  // Reports the filled .docx links so the top bar can offer Download / Print.
+  onLinksChange?: (links: { url: string | null; downloadUrl: string | null }) => void;
+}) {
+  const [docUrl, setDocUrl] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const linksCbRef = useRef(onLinksChange);
+  linksCbRef.current = onLinksChange;
+  useEffect(() => {
+    linksCbRef.current?.({ url: docUrl, downloadUrl });
+  }, [docUrl, downloadUrl]);
+  useEffect(() => () => linksCbRef.current?.({ url: null, downloadUrl: null }), []);
+  const [loading, setLoading] = useState(true);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const reportedFailureRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    reportedFailureRef.current = false;
+    setDocUrl(null);
+    setDownloadUrl(null);
+    setLoading(true);
+
+    const fail = () => {
+      if (!cancelled && !reportedFailureRef.current) {
+        reportedFailureRef.current = true;
+        onUnavailable();
+      }
+    };
+
+    (async () => {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/course-lessons/${lessonId}/sas-preview`);
+        const data = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (response.ok && data?.url) {
+          setDocUrl(data.url);
+          setDownloadUrl(data.downloadUrl || null);
+        } else fail();
+      } catch (err) {
+        console.warn('SAS docx preview failed to load:', err);
+        fail();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId]);
+
+  const fileName = `SAS-${lessonId}.docx`;
+  const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  return (
+    <View
+      style={{ flex: 1, backgroundColor: '#ECECEC' }}
+      onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
+    >
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#8B0000" />
+          <Text style={[styles.lessonPreviewSectionText, { marginTop: 12 }]}>Preparing Student Activity Sheet…</Text>
+        </View>
+      ) : docUrl && containerHeight > 0 ? (
+        <InlineMaterialViewer
+          fileUrl={docUrl}
+          viewerUrl={getMicrosoftOfficeViewerUrl(docUrl)}
+          height={containerHeight}
+          fileName={fileName}
+          fileType={DOCX_MIME}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 const CourseDetail = ({
   course,
   initialTab = "materials",
@@ -990,6 +1428,13 @@ const CourseDetail = ({
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
+  // Set when the filled-.docx render fails so the modal falls back to the plain lesson view.
+  const [sasPreviewFailedFor, setSasPreviewFailedFor] = useState<string | null>(null);
+  // Links to the filled SAS .docx currently shown full-screen (feeds the top-bar Download / Print menu).
+  const [sasDocLinks, setSasDocLinks] = useState<{ url: string | null; downloadUrl: string | null }>({ url: null, downloadUrl: null });
+  // Lessons ticked in the Gmail-style selection bar (by lesson id) + which module is preparing a download.
+  const [selectedLessonIds, setSelectedLessonIds] = useState<Record<string, boolean>>({});
+  const [downloadingLessonsModuleId, setDownloadingLessonsModuleId] = useState<string | null>(null);
 
   // ── Course Template (school-wide letterhead header/footer) — read-only
   // here; mirrors the teacher's Lesson Preview so the Lesson Detail modal
@@ -2316,7 +2761,48 @@ const fetchModules = useCallback(async (silent = false) => {
     await downloadFromUrl(downloadUrl, fileName, mimeType);
   };
 
+  const toggleLessonSelected = (lessonId: string) =>
+    setSelectedLessonIds((prev) => ({ ...prev, [lessonId]: !prev[lessonId] }));
+
+  const setLessonsSelected = (lessonIds: string[], value: boolean) =>
+    setSelectedLessonIds((prev) => {
+      const next = { ...prev };
+      lessonIds.forEach((id) => { next[id] = value; });
+      return next;
+    });
+
+  // Downloads the ticked lessons of one module: a single .docx, or a .zip for several.
+  const handleDownloadSelectedLessons = async (mod: any, lessonIds: string[]) => {
+    if (lessonIds.length === 0 || downloadingLessonsModuleId) return;
+    setDownloadingLessonsModuleId(mod.id);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/course-lessons/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonIds, zipName: `Module ${mod.moduleNumber} - Lessons` }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.url) {
+        showFeedback('error', 'Download failed', data?.error || 'Could not prepare the download. Please try again.');
+        return;
+      }
+      await openDownloadUrl(data.url);
+      const skipped: string[] = Array.isArray(data.skipped) ? data.skipped : [];
+      if (skipped.length > 0) {
+        showFeedback('info', 'Some lessons were skipped', `Not included: ${skipped.join(', ')}`);
+      } else {
+        showFeedback('success', 'Download started', data.count > 1 ? `${data.count} lessons downloaded as a .zip.` : 'Lesson downloaded.');
+      }
+    } catch (err) {
+      console.warn('Lesson download failed:', err);
+      showFeedback('error', 'Download failed', 'Could not prepare the download. Please try again.');
+    } finally {
+      setDownloadingLessonsModuleId(null);
+    }
+  };
+
   const handleOpenLessonDetail = async (lesson: any) => {
+    setSasPreviewFailedFor(null);
     setSelectedLesson(lesson);
     setLessonDetailModalVisible(true);
     setIsLessonLoading(true);
@@ -3159,12 +3645,38 @@ const fetchModules = useCallback(async (silent = false) => {
                               const sortedLessons = [...mod.lessons].sort((a: any, b: any) =>
                                 (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0)
                               );
-                              return sortedLessons.map((lesson: any, li: number) => (
+                              const moduleLessonIds: string[] = sortedLessons.map((l: any) => l.id).filter(Boolean);
+                              return (
+                              <>
+                              <LessonSelectToolbar
+                                lessonIds={moduleLessonIds}
+                                selected={selectedLessonIds}
+                                onSelectAll={(value) => setLessonsSelected(moduleLessonIds, value)}
+                                onDownload={(ids) => handleDownloadSelectedLessons(mod, ids)}
+                                downloading={downloadingLessonsModuleId === mod.id}
+                              />
+                              {sortedLessons.map((lesson: any, li: number) => {
+                                const isTicked = !!(lesson.id && selectedLessonIds[lesson.id]);
+                                return (
                                 <TouchableOpacity
                                   key={lesson.id || li}
                                   onPress={() => handleOpenLessonDetail(lesson)}
-                                  style={{ backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                                  style={[
+                                    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' },
+                                    isTicked && { backgroundColor: '#EAF1FB', borderColor: '#B9D0F2' },
+                                  ]}
                                 >
+                                  {!!lesson.id && (
+                                    <TouchableOpacity
+                                      onPress={() => toggleLessonSelected(lesson.id)}
+                                      accessibilityLabel={`Select lesson ${lesson.title}`}
+                                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                                      style={{ paddingRight: 10 }}
+                                    >
+                                      <Ionicons name={isTicked ? 'checkbox' : 'square-outline'} size={22} color={isTicked ? '#8B0000' : '#777'} />
+                                    </TouchableOpacity>
+                                  )}
+                                  <View style={{ flex: 1 }}>
                                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
                                       Lesson {lesson.lessonNumber || (li + 1)}: {lesson.title}
@@ -3180,8 +3692,12 @@ const fetchModules = useCallback(async (silent = false) => {
                                       {lesson.description}
                                     </Text>
                                   )}
+                                  </View>
                                 </TouchableOpacity>
-                              ));
+                                );
+                              })}
+                              </>
+                              );
                             })()
                           ) : (
                             <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
@@ -3379,9 +3895,27 @@ const fetchModules = useCallback(async (silent = false) => {
                 Module Content &amp; Activities
               </Text>
             </View>
+            {selectedLesson && selectedLesson.type !== 'manual_file' && sasPreviewFailedFor !== selectedLesson.id ? (
+              <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} title={selectedLesson.title} />
+            ) : null}
           </View>
 
-          {/* Scrollable document */}
+          {/* Docx preview — full screen, inline, under the same top bar (mirrors the
+              teacher's Lesson Preview). Shown for every text lesson; the plain page
+              view below is only used for uploaded-file lessons, while loading, or
+              if the docx render fails. */}
+          {selectedLesson && !isLessonLoading && selectedLesson.type !== 'manual_file' && sasPreviewFailedFor !== selectedLesson.id ? (
+            <SASTemplatePreview
+              key={selectedLesson.id}
+              lessonId={selectedLesson.id}
+              isMobile={!isLargeScreen}
+              onLinksChange={setSasDocLinks}
+              onUnavailable={() => {
+                setSasPreviewFailedFor(selectedLesson.id);
+                showFeedback('info', 'Preview unavailable', 'Showing the plain lesson view instead.');
+              }}
+            />
+          ) : (
           <ScrollView
             style={styles.flexOne}
             showsVerticalScrollIndicator={true}
@@ -3592,6 +4126,7 @@ const fetchModules = useCallback(async (silent = false) => {
               </Text>
             )}
           </ScrollView>
+          )}
         </SafeAreaView>
       </Modal>
 
@@ -5808,6 +6343,84 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ECECEC',
   },
+  lessonSelectBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    backgroundColor: '#FFF',
+  },
+  lessonSelectBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#F3F3F3',
+    borderWidth: 1,
+    borderColor: '#E2E2E2',
+  },
+  lessonSelectBoxBtn: { padding: 3 },
+  lessonSelectCaretBtn: { paddingHorizontal: 5, paddingVertical: 6 },
+  lessonSelectIndeterminate: {
+    width: 18,
+    height: 18,
+    margin: 2,
+    borderRadius: 3,
+    borderWidth: 2,
+    borderColor: '#8B0000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lessonSelectIndeterminateBar: { width: 8, height: 2.5, borderRadius: 1, backgroundColor: '#8B0000' },
+  lessonSelectDivider: { width: 1, height: 22, backgroundColor: '#E2E2E2' },
+  lessonSelectDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FAF5F5',
+  },
+  lessonSelectDownloadText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#8B0000' },
+  lessonSelectCount: { flex: 1, textAlign: 'right', fontFamily: FONT_BODY, fontSize: 12, color: '#777' },
+  sasDocMenuBtn: {
+    height: 36,
+    paddingHorizontal: 11,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    backgroundColor: '#F5F5F5',
+  },
+  sasDocMenuCard: {
+    position: 'absolute',
+    minWidth: 200,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  sasDocMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 11 },
+  sasDocMenuText: { fontFamily: FONT_BODY, fontSize: 14, color: '#222' },
+  sasDocMenuHint: { fontFamily: FONT_BODY, fontSize: 11, color: '#888', marginTop: 1 },
+  sasDocMenuDivider: { height: 1, backgroundColor: '#EEE', marginHorizontal: 12 },
+  printPrepBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  printPrepCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderRadius: 12, backgroundColor: '#FFF', elevation: 8 },
+  printPrepText: { fontFamily: FONT_BODY, fontSize: 14, color: '#222' },
   lessonPreviewTopBar: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1487,16 +1487,107 @@ function LessonSelectToolbar({
   );
 }
 
+// ─── Browser print (web only, no server) ─────────────────────────────────────
+// Downloads the filled SAS .docx, renders it into a hidden same-origin iframe
+// with `docx-preview`, and opens the browser's own print dialog ("Save as PDF").
+// Needs: npm i docx-preview. Throws if the file can't be fetched (e.g. storage
+// CORS) or rendered, so the caller can fall back to the Word viewer tab.
+async function printDocxInBrowser(docUrl: string, title: string | null | undefined, onReady: () => void) {
+  const response = await fetch(docUrl);
+  if (!response.ok) throw new Error(`Could not fetch the document (${response.status}).`);
+  const buffer = await response.arrayBuffer();
+  const { renderAsync } = await import('docx-preview');
+
+  const iframe: any = (document as any).createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  (document as any).body.appendChild(iframe);
+  const parentTitle = (document as any).title;
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    (document as any).title = parentTitle;
+    iframe.remove();
+  };
+
+  try {
+    const doc: any = iframe.contentDocument;
+    const win: any = iframe.contentWindow;
+    doc.open();
+    doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title></title></head><body></body></html>');
+    doc.close();
+
+    await renderAsync(buffer, doc.body, doc.head, {
+      className: 'docx',
+      inWrapper: false,
+      breakPages: true,
+      useBase64URL: true,
+      renderHeaders: true,
+      renderFooters: true,
+      renderFootnotes: true,
+    } as any);
+
+    // Match the printed page to the document's own page size.
+    const firstPage: any = doc.querySelector('section.docx');
+    const pageSize = firstPage?.style?.width && firstPage?.style?.minHeight
+      ? `${firstPage.style.width} ${firstPage.style.minHeight}`
+      : 'auto';
+    const style = doc.createElement('style');
+    style.textContent = `
+      @page { size: ${pageSize}; margin: 0; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      section.docx { box-shadow: none !important; margin: 0 !important; break-after: page; page-break-after: always; }
+      section.docx:last-of-type { break-after: auto; page-break-after: auto; }
+    `;
+    doc.head.appendChild(style);
+
+    // Wait for images/fonts so nothing prints blank.
+    await Promise.all(
+      Array.from(doc.images as ArrayLike<any>).map((img: any) =>
+        img.complete ? null : new Promise<void>((resolve) => { img.onload = img.onerror = () => resolve(); })
+      )
+    );
+    await doc.fonts?.ready;
+
+    // The browser uses the document title as the default "Save as PDF" file name.
+    if (title) {
+      doc.title = title;
+      (document as any).title = title;
+    }
+
+    win.addEventListener('afterprint', restore);
+    setTimeout(restore, 5 * 60 * 1000); // safety net for browsers that never fire afterprint
+    onReady();
+    win.focus();
+    win.print();
+  } catch (err) {
+    restore();
+    throw err;
+  }
+}
+
 // ─── Top-bar document menu (Download a Copy / Print to PDF) ──────────────────
-// Mirrors the menu in Microsoft's viewer footer, but lives in the app's own top
-// bar. Download uses an "attachment" link so the file saves as "<Lesson>.docx".
-// The embedded viewer is cross-origin, so we can't trigger its print dialog from
-// here — Print to PDF opens the full Word viewer in a new tab instead.
-function SasDocMenuButton({ docUrl, downloadUrl }: { docUrl: string | null; downloadUrl: string | null }) {
+// Print to PDF:
+//  • Web    → opens the browser's print dialog for the filled document
+//             (Save as PDF), no server involved. If that fails, it falls back
+//             to the Word viewer in a new tab.
+//  • Mobile → opens the document in the Word viewer in the browser.
+function SasDocMenuButton({
+  docUrl,
+  downloadUrl,
+  title,
+}: {
+  docUrl: string | null;
+  downloadUrl: string | null;
+  title?: string | null;
+}) {
   const { width: winW } = useWindowDimensions();
   const btnRef = useRef<any>(null);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 64, right: 12 });
+  const [preparingPrint, setPreparingPrint] = useState(false);
   const ready = !!(docUrl || downloadUrl);
 
   const openMenu = () => {
@@ -1524,13 +1615,29 @@ function SasDocMenuButton({ docUrl, downloadUrl }: { docUrl: string | null; down
 
   const printToPdf = async () => {
     setOpen(false);
-    if (!docUrl) return;
-    const url = getMicrosoftOfficeFullViewerUrl(docUrl);
+    if (!docUrl || preparingPrint) return;
+
+    // Mobile: open the Word viewer (its own Print / PDF tools).
+    if (Platform.OS !== 'web') {
+      try {
+        await Linking.openURL(getMicrosoftOfficeFullViewerUrl(docUrl));
+      } catch (err) {
+        console.warn('Could not open the Word viewer:', err);
+      }
+      return;
+    }
+
+    // Web: browser print dialog.
+    setPreparingPrint(true);
     try {
-      if (Platform.OS === 'web') (window as any).open(url, '_blank', 'noopener');
-      else await Linking.openURL(url);
+      await printDocxInBrowser(docUrl, title, () => setPreparingPrint(false));
     } catch (err) {
-      console.warn('Could not open the Word viewer:', err);
+      console.warn('Browser print failed, opening the Word viewer instead:', err);
+      try {
+        (window as any).open(getMicrosoftOfficeFullViewerUrl(docUrl), '_blank', 'noopener');
+      } catch {}
+    } finally {
+      setPreparingPrint(false);
     }
   };
 
@@ -1549,6 +1656,7 @@ function SasDocMenuButton({ docUrl, downloadUrl }: { docUrl: string | null; down
           <Ionicons name="chevron-down" size={13} color="#444" />
         </TouchableOpacity>
       </View>
+
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOpen(false)}>
           <View style={[styles.sasDocMenuCard, { top: pos.top, right: pos.right }]}>
@@ -1561,11 +1669,23 @@ function SasDocMenuButton({ docUrl, downloadUrl }: { docUrl: string | null; down
               <Ionicons name="print-outline" size={18} color="#222" />
               <View>
                 <Text style={styles.sasDocMenuText}>Print to PDF</Text>
-                <Text style={styles.sasDocMenuHint}>Opens in the Word viewer</Text>
+                <Text style={styles.sasDocMenuHint}>
+                  {Platform.OS === 'web' ? 'Opens the print dialog' : 'Opens in the Word viewer'}
+                </Text>
               </View>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Shown only while the document is being prepared for the browser print dialog */}
+      <Modal visible={preparingPrint} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.printPrepBackdrop}>
+          <View style={styles.printPrepCard}>
+            <ActivityIndicator size="small" color="#8B0000" />
+            <Text style={styles.printPrepText}>Preparing print preview…</Text>
+          </View>
+        </View>
       </Modal>
     </>
   );
@@ -8805,7 +8925,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
             {selectedLesson ? (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {selectedLesson.type !== 'manual_file' && sasPreviewFailedFor !== selectedLesson.id ? (
-                  <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} />
+                  <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} title={selectedLesson.title} />
                 ) : null}
                 <TouchableOpacity
                   onPress={() => {
@@ -10084,7 +10204,11 @@ DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
                 Draft preview — not saved yet
               </Text>
             </View>
-            <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} />
+            <SasDocMenuButton
+              docUrl={sasDocLinks.url}
+              downloadUrl={sasDocLinks.downloadUrl}
+              title={draftPreviewIndex !== null ? pendingGeneratedLessons[draftPreviewIndex]?.title : undefined}
+            />
           </View>
           {draftPreviewIndex !== null && pendingGeneratedLessons[draftPreviewIndex] ? (
             <SASTemplatePreview
@@ -11658,6 +11782,9 @@ const styles = StyleSheet.create({
   sasDocMenuText: { fontFamily: FONT_BODY, fontSize: 14, color: '#222' },
   sasDocMenuHint: { fontFamily: FONT_BODY, fontSize: 11, color: '#888', marginTop: 1 },
   sasDocMenuDivider: { height: 1, backgroundColor: '#EEE', marginHorizontal: 12 },
+  printPrepBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  printPrepCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderRadius: 12, backgroundColor: '#FFF', elevation: 8 },
+  printPrepText: { fontFamily: FONT_BODY, fontSize: 14, color: '#222' },
   lessonPreviewIconBtn: {
     width: 36,
     height: 36,
