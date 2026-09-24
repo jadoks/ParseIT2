@@ -876,6 +876,21 @@ function getMicrosoftOfficeViewerUrl(fileUrl: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
 
+// Starts a download for a signed "attachment" URL: hidden <a> on web, system browser on native.
+async function openDownloadUrl(url: string) {
+  if (Platform.OS === 'web') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener';
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } else {
+    await Linking.openURL(url);
+  }
+}
+
 // Full-page Word viewer (not the embed) — used by "Print to PDF" so the teacher
 // lands on Microsoft's own print/PDF tools in a new tab.
 function getMicrosoftOfficeFullViewerUrl(fileUrl: string) {
@@ -1356,6 +1371,118 @@ function SasFieldPicker({
   );
 }
 
+// ─── Gmail-style selection toolbar for a module's lessons ────────────────────
+// [☐ ▾] checkbox + All/None menu, then a labelled Download button. The rows
+// themselves carry the per-lesson checkboxes. Selected lessons are downloaded as
+// their Student Activity Sheet (.docx) — one file, or a .zip when several are picked.
+function LessonSelectToolbar({
+  lessonIds,
+  selected,
+  onSelectAll,
+  onDownload,
+  downloading,
+}: {
+  lessonIds: string[];
+  selected: Record<string, boolean>;
+  onSelectAll: (value: boolean) => void;
+  onDownload: (ids: string[]) => void;
+  downloading: boolean;
+}) {
+  const { width: winW } = useWindowDimensions();
+  const boxRef = useRef<any>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 60, left: 12 });
+  const selectedIds = lessonIds.filter((id) => selected[id]);
+  const allSelected = lessonIds.length > 0 && selectedIds.length === lessonIds.length;
+  const someSelected = selectedIds.length > 0 && !allSelected;
+  const canDownload = selectedIds.length > 0 && !downloading;
+
+  const openMenu = () => {
+    if (boxRef.current?.measureInWindow) {
+      boxRef.current.measureInWindow((x: number, y: number, _w: number, h: number) => {
+        setMenuPos({ top: y + h + 4, left: Math.min(Math.max(8, x), Math.max(8, winW - 150)) });
+        setMenuOpen(true);
+      });
+    } else {
+      setMenuOpen(true);
+    }
+  };
+
+  return (
+    <View style={styles.lessonSelectBar}>
+      <View ref={boxRef} collapsable={false} style={styles.lessonSelectBox}>
+        <TouchableOpacity
+          onPress={() => onSelectAll(!(allSelected || someSelected))}
+          accessibilityLabel="Select all lessons"
+          hitSlop={{ top: 8, bottom: 8, left: 6, right: 2 }}
+          style={styles.lessonSelectBoxBtn}
+        >
+          {allSelected ? (
+            <Ionicons name="checkbox" size={22} color="#8B0000" />
+          ) : someSelected ? (
+            <View style={styles.lessonSelectIndeterminate}>
+              <View style={styles.lessonSelectIndeterminateBar} />
+            </View>
+          ) : (
+            <Ionicons name="square-outline" size={22} color="#666" />
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={openMenu}
+          accessibilityLabel="Selection options"
+          hitSlop={{ top: 8, bottom: 8, left: 2, right: 6 }}
+          style={styles.lessonSelectCaretBtn}
+        >
+          <Ionicons name="caret-down" size={11} color="#555" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.lessonSelectDivider} />
+
+      <TouchableOpacity
+        onPress={() => onDownload(selectedIds)}
+        disabled={!canDownload}
+        activeOpacity={0.8}
+        style={[styles.lessonSelectDownloadBtn, !canDownload && { opacity: 0.45 }]}
+      >
+        {downloading ? (
+          <ActivityIndicator size="small" color="#8B0000" />
+        ) : (
+          <Ionicons name="download-outline" size={18} color="#8B0000" />
+        )}
+        <Text style={styles.lessonSelectDownloadText}>
+          {downloading ? 'Preparing…' : selectedIds.length > 1 ? `Download ${selectedIds.length} lessons` : 'Download'}
+        </Text>
+      </TouchableOpacity>
+
+      <Text style={styles.lessonSelectCount} numberOfLines={1}>
+        {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select lessons to download'}
+      </Text>
+
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuOpen(false)}>
+          <View style={[styles.sasDocMenuCard, { top: menuPos.top, left: menuPos.left, minWidth: 130 }]}>
+            <TouchableOpacity
+              style={styles.sasDocMenuItem}
+              onPress={() => { setMenuOpen(false); onSelectAll(true); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sasDocMenuText}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sasDocMenuItem}
+              onPress={() => { setMenuOpen(false); onSelectAll(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sasDocMenuText}>None</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
 // ─── Top-bar document menu (Download a Copy / Print to PDF) ──────────────────
 // Mirrors the menu in Microsoft's viewer footer, but lives in the app's own top
 // bar. Download uses an "attachment" link so the file saves as "<Lesson>.docx".
@@ -1385,17 +1512,7 @@ function SasDocMenuButton({ docUrl, downloadUrl }: { docUrl: string | null; down
     const url = downloadUrl || docUrl;
     if (!url) return;
     try {
-      if (Platform.OS === 'web') {
-        const a = document.createElement('a');
-        a.href = url;
-        a.rel = 'noopener';
-        a.download = '';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      } else {
-        await Linking.openURL(url);
-      }
+      await openDownloadUrl(url);
     } catch (err) {
       console.warn('Could not download the document:', err);
     }
@@ -2117,6 +2234,9 @@ const TeacherCourseDetail2 = ({
   // Display order of the sections (drag to re-arrange) for the Manual Lesson form.
   const [newLessonSectionOrder, setNewLessonSectionOrder] = useState<string[]>([]);
   // Links to the filled SAS .docx currently shown full-screen (feeds the top-bar Download / Print menu).
+  // Lessons ticked in the Gmail-style selection bar (by lesson id) + which module is preparing a download.
+  const [selectedLessonIds, setSelectedLessonIds] = useState<Record<string, boolean>>({});
+  const [downloadingLessonsModuleId, setDownloadingLessonsModuleId] = useState<string | null>(null);
   const [sasDocLinks, setSasDocLinks] = useState<{ url: string | null; downloadUrl: string | null }>({ url: null, downloadUrl: null });
 
   // Helpers: turn a "one item per line" textarea into a clean string[]
@@ -2537,6 +2657,47 @@ useEffect(() => {
       }
     } catch (error) {
       console.error('Error saving lessons:', error);
+    }
+  };
+
+  const toggleLessonSelected = (lessonId: string) =>
+    setSelectedLessonIds((prev) => ({ ...prev, [lessonId]: !prev[lessonId] }));
+
+  const setLessonsSelected = (lessonIds: string[], value: boolean) =>
+    setSelectedLessonIds((prev) => {
+      const next = { ...prev };
+      lessonIds.forEach((id) => { next[id] = value; });
+      return next;
+    });
+
+  // Downloads the ticked lessons of one module: a single .docx, or a .zip for several.
+  const handleDownloadSelectedLessons = async (mod: any, lessonIds: string[]) => {
+    if (lessonIds.length === 0 || downloadingLessonsModuleId) return;
+    setDownloadingLessonsModuleId(mod.id);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-lessons/download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ lessonIds, zipName: `Module ${mod.moduleNumber} - Lessons` }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.url) {
+        toast.show('error', 'Download failed', data?.error || 'Could not prepare the download. Please try again.');
+        return;
+      }
+      await openDownloadUrl(data.url);
+      const skipped: string[] = Array.isArray(data.skipped) ? data.skipped : [];
+      if (skipped.length > 0) {
+        toast.show('info', 'Some lessons were skipped', `Not included: ${skipped.join(', ')}`);
+      } else {
+        toast.show('success', 'Download started', data.count > 1 ? `${data.count} lessons downloaded as a .zip.` : 'Lesson downloaded.');
+      }
+    } catch (err) {
+      console.warn('Lesson download failed:', err);
+      toast.show('error', 'Download failed', 'Could not prepare the download. Please try again.');
+    } finally {
+      setDownloadingLessonsModuleId(null);
     }
   };
 
@@ -7668,12 +7829,38 @@ the button looked completely dead.
                               const sortedLessons = [...mod.lessons].sort((a: any, b: any) =>
                                 (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0)
                               );
-                              return sortedLessons.map((lesson: any, li: number) => (
+                              const moduleLessonIds: string[] = sortedLessons.map((l: any) => l.id).filter(Boolean);
+                              return (
+                              <>
+                              <LessonSelectToolbar
+                                lessonIds={moduleLessonIds}
+                                selected={selectedLessonIds}
+                                onSelectAll={(value) => setLessonsSelected(moduleLessonIds, value)}
+                                onDownload={(ids) => handleDownloadSelectedLessons(mod, ids)}
+                                downloading={downloadingLessonsModuleId === mod.id}
+                              />
+                              {sortedLessons.map((lesson: any, li: number) => {
+                                const isTicked = !!(lesson.id && selectedLessonIds[lesson.id]);
+                                return (
                                 <TouchableOpacity
                                   key={lesson.id || li}
                                   onPress={() => handleOpenLessonDetail(lesson)}
-                                  style={{ backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                                  style={[
+                                    { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' },
+                                    isTicked && { backgroundColor: '#EAF1FB', borderColor: '#B9D0F2' },
+                                  ]}
                                 >
+                                  {!!lesson.id && (
+                                    <TouchableOpacity
+                                      onPress={() => toggleLessonSelected(lesson.id)}
+                                      accessibilityLabel={`Select lesson ${lesson.title}`}
+                                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                                      style={{ paddingRight: 10 }}
+                                    >
+                                      <Ionicons name={isTicked ? 'checkbox' : 'square-outline'} size={22} color={isTicked ? '#8B0000' : '#777'} />
+                                    </TouchableOpacity>
+                                  )}
+                                  <View style={{ flex: 1 }}>
                                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
                                       Lesson {lesson.lessonNumber || (li + 1)}: {lesson.title}
@@ -7689,8 +7876,12 @@ the button looked completely dead.
                                       {lesson.description}
                                     </Text>
                                   )}
+                                  </View>
                                 </TouchableOpacity>
-                              ));
+                                );
+                              })}
+                              </>
+                              );
                             })()
                           ) : (
                             <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
@@ -11362,6 +11553,53 @@ const styles = StyleSheet.create({
     color: '#111',
     marginTop: 6,
   },
+  lessonSelectBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    backgroundColor: '#FFF',
+  },
+  lessonSelectBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#F3F3F3',
+    borderWidth: 1,
+    borderColor: '#E2E2E2',
+  },
+  lessonSelectBoxBtn: { padding: 3 },
+  lessonSelectCaretBtn: { paddingHorizontal: 5, paddingVertical: 6 },
+  lessonSelectIndeterminate: {
+    width: 18,
+    height: 18,
+    margin: 2,
+    borderRadius: 3,
+    borderWidth: 2,
+    borderColor: '#8B0000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lessonSelectIndeterminateBar: { width: 8, height: 2.5, borderRadius: 1, backgroundColor: '#8B0000' },
+  lessonSelectDivider: { width: 1, height: 22, backgroundColor: '#E2E2E2' },
+  lessonSelectDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FAF5F5',
+  },
+  lessonSelectDownloadText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#8B0000' },
+  lessonSelectCount: { flex: 1, textAlign: 'right', fontFamily: FONT_BODY, fontSize: 12, color: '#777' },
   sasDocMenuBtn: {
     height: 36,
     paddingHorizontal: 11,

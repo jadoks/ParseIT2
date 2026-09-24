@@ -770,7 +770,7 @@ async function createReadSignedUrl(storagePath) {
  * attachment) under a friendly name, e.g. "Strategy Patterns.docx". Not cached —
  * the name differs per lesson. Used by the "Download a Copy" button on the SAS preview.
  */
-async function createDownloadSignedUrl(storagePath, downloadName) {
+async function createDownloadSignedUrl(storagePath, downloadName, ext = ".docx") {
   const base =
     String(downloadName || "Student Activity Sheet")
       .replace(/[\\/:*?"<>|\r\n]+/g, " ")
@@ -782,7 +782,7 @@ async function createDownloadSignedUrl(storagePath, downloadName) {
     version: "v4",
     action: "read",
     expires: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
-    responseDisposition: `attachment; filename="${ascii}.docx"; filename*=UTF-8''${encodeURIComponent(base)}.docx`,
+    responseDisposition: `attachment; filename="${ascii}${ext}"; filename*=UTF-8''${encodeURIComponent(base)}${ext}`,
   });
   return url;
 }
@@ -19140,7 +19140,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   //   • any edit produces a new path, so neither our signed-URL cache nor the viewer
   //     can ever show a stale copy,
   //   • older versions for the same lesson/draft are deleted after a fresh render.
-  async function renderSasPreviewUrl({ lesson, courseName, weekLabel, storageDir, filePrefix }) {
+  // Renders (or re-uses) the filled .docx in Storage and returns its storage path.
+  async function renderSasDocxToStorage({ lesson, courseName, weekLabel, storageDir, filePrefix }) {
     const templatePath = path.join(process.cwd(), "templates", "sas-template.docx");
     if (!fs.existsSync(templatePath)) {
       const err = new Error("SAS Word template is missing on the server (templates/sas-template.docx).");
@@ -19189,6 +19190,12 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         console.warn("SAS preview cleanup skipped:", cleanupErr.message);
       }
     }
+    return storagePath;
+  }
+
+  // Preview links for one lesson: a viewer link + an "attachment" link.
+  async function renderSasPreviewUrl({ lesson, courseName, weekLabel, storageDir, filePrefix }) {
+    const storagePath = await renderSasDocxToStorage({ lesson, courseName, weekLabel, storageDir, filePrefix });
     const url = await createReadSignedUrl(storagePath);
     // Separate "attachment" link for the Download a Copy button. Best-effort:
     // if signing fails the preview itself must still work.
@@ -19281,6 +19288,111 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       return res.json({ success: true, url, downloadUrl });
     } catch (error) {
       return sasPreviewErrorResponse(res, error, "SAS draft preview error:");
+    }
+  });
+
+  /**
+   * DOWNLOAD SELECTED LESSONS (teacher picks lessons with the checkboxes in a module)
+   * Body: { lessonIds: string[], zipName?: string }
+   *  • 1 lesson  → that lesson's Student Activity Sheet (.docx) — or the original file
+   *                if the lesson was uploaded as a file.
+   *  • 2+ lessons → one .zip with a file per lesson.
+   * Returns { url, fileName, count, skipped } — url is a short-lived signed
+   * "attachment" link, so the browser saves it instead of opening it.
+   */
+  const DOWNLOAD_MAX_LESSONS = 50;
+  const safeDownloadName = (value, fallback) =>
+    String(value || "").replace(/[\\/:*?"<>|\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 100) || fallback;
+
+  app.post("/course-lessons/download", requireAuth, async (req, res) => {
+    try {
+      const rawIds = Array.isArray(req.body?.lessonIds) ? req.body.lessonIds : [];
+      const lessonIds = [...new Set(rawIds.filter((id) => typeof id === "string" && id.trim()))].slice(0, DOWNLOAD_MAX_LESSONS);
+      if (lessonIds.length === 0) return res.status(400).json({ error: "Select at least one lesson to download." });
+
+      const snaps = await Promise.all(lessonIds.map((id) => db.collection("courseLessons").doc(id).get()));
+      const lessons = snaps
+        .filter((snap) => snap.exists)
+        .map((snap) => ({ id: snap.id, ...snap.data() }))
+        .sort((a, b) => (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0));
+      if (lessons.length === 0) return res.status(404).json({ error: "The selected lessons were not found." });
+
+      const contextCache = new Map();
+      const entries = [];
+      const skipped = [];
+      for (const lesson of lessons) {
+        try {
+          if (lesson.type === "manual_file") {
+            // Uploaded-file lesson → hand back the original file.
+            if (!lesson.storagePath) { skipped.push(lesson.title || lesson.id); continue; }
+            entries.push({ lesson, storagePath: lesson.storagePath, ext: path.extname(lesson.fileName || lesson.storagePath) || "" });
+          } else {
+            const ctxKey = `${lesson.classId}|${lesson.moduleId}`;
+            if (!contextCache.has(ctxKey)) contextCache.set(ctxKey, await loadSasCourseContext(lesson.classId, lesson.moduleId));
+            const { courseName, weekLabel } = contextCache.get(ctxKey);
+            const storagePath = await renderSasDocxToStorage({
+              lesson,
+              courseName,
+              weekLabel,
+              storageDir: `sas-previews/${lesson.classId || "unknown-class"}`,
+              filePrefix: lesson.id,
+            });
+            entries.push({ lesson, storagePath, ext: ".docx" });
+          }
+        } catch (lessonErr) {
+          console.warn(`Lesson download skipped (${lesson.id}):`, lessonErr.message);
+          skipped.push(lesson.title || lesson.id);
+        }
+      }
+      if (entries.length === 0) {
+        return res.status(500).json({ error: "None of the selected lessons could be prepared for download." });
+      }
+
+      // One lesson → direct link to its file.
+      if (entries.length === 1) {
+        const [only] = entries;
+        const baseName = safeDownloadName(only.lesson.title, "Lesson");
+        const url = await createDownloadSignedUrl(only.storagePath, baseName, only.ext);
+        return res.json({ success: true, url, fileName: `${baseName}${only.ext}`, count: 1, skipped });
+      }
+
+      // Several lessons → one zip.
+      const zip = new PizZip();
+      const usedNames = new Set();
+      for (const entry of entries) {
+        const [buffer] = await bucket.file(entry.storagePath).download();
+        const base = safeDownloadName(`Lesson ${entry.lesson.lessonNumber ?? ""} - ${entry.lesson.title || ""}`, "Lesson");
+        let name = `${base}${entry.ext}`;
+        for (let n = 2; usedNames.has(name.toLowerCase()); n += 1) name = `${base} (${n})${entry.ext}`;
+        usedNames.add(name.toLowerCase());
+        zip.file(name, buffer);
+      }
+      const zipBuffer = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+      const zipDir = `sas-downloads/${req.user.uid}`;
+      const zipStoragePath = `${zipDir}/lessons-${Date.now()}.zip`;
+      await bucket.file(zipStoragePath).save(zipBuffer, {
+        metadata: { contentType: "application/zip", cacheControl: "private,max-age=0,no-transform" },
+        resumable: false,
+      });
+
+      // Best-effort: remove this teacher's zips older than an hour.
+      try {
+        const [old] = await bucket.getFiles({ prefix: `${zipDir}/` });
+        await Promise.all(
+          old
+            .filter((f) => f.name !== zipStoragePath && Date.now() - new Date(f.metadata?.timeCreated || 0).getTime() > 60 * 60 * 1000)
+            .map((f) => f.delete().catch(() => {}))
+        );
+      } catch (cleanupErr) {
+        console.warn("Lesson zip cleanup skipped:", cleanupErr.message);
+      }
+
+      const zipBase = safeDownloadName(req.body?.zipName, "Lessons");
+      const url = await createDownloadSignedUrl(zipStoragePath, zipBase, ".zip");
+      return res.json({ success: true, url, fileName: `${zipBase}.zip`, count: entries.length, skipped });
+    } catch (error) {
+      console.error("Lesson download error:", error);
+      return res.status(500).json({ error: "Failed to prepare the download." });
     }
   });
 
