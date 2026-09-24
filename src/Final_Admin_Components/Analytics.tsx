@@ -180,7 +180,7 @@ type InfoItem = {
   label: string;
   live?: string; // the value currently shown on screen
   formula: string; // how it is computed
-  source: string; // where the data comes from
+  source: string; // where the data comes from, in plain language
   note?: string; // caveat worth knowing
 };
 
@@ -881,26 +881,25 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     latestTrend && firstTrend ? latestTrend.average - firstTrend.average : 0;
 
   // ---- "?" explanations. `live` values are read from the same payload the screen renders.
-  // Formulas mirror GET /admin-analytics in server.js. ----
+  // Formulas mirror how the server calculates each number. ----
   const sm = analytics.summary;
   const workload =
     sm.totalPendingAssignments +
     sm.totalSubmittedAssignments +
     sm.totalMissingAssignments +
     sm.totalGradedAssignments;
-  const rows = "one row per student x assignment, across every student enrolled in the selected classes";
 
   const scoreItem: InfoItem = {
     label: "Step 1 - Assignment score (%)",
     formula:
-      "score earned ÷ the assignment's total score × 100, rounded, for submissions with status \"graded\". If an assignment has no total score set, it is treated as 100.",
-    source: "server.js -> GET /admin-analytics, using getPercentFromScore() on the classSubmissions and classAssignments collections.",
+      "Score earned ÷ the assignment's total score × 100, rounded, for graded submissions. If an assignment has no total score set, it is treated as 100.",
+    source: "Student Assignment Scores (the grade entered on each graded submission) and the total score set on each Class Assignment, for the classes in the selected School Year and Semester.",
   };
   const studentAvgItem: InfoItem = {
     label: "Step 2 - Student average",
     formula:
       "For each class a student is enrolled in: average of that student's graded scores, rounded. The student's overall average is the average of those per-class averages (classes with graded work only), rounded.",
-    source: "studentRiskMap / studentRows in GET /admin-analytics (server.js).",
+    source: "Each student's Student Assignment Scores in every class they are enrolled in (Class Enrollment).",
     note: "Each class counts equally, no matter how many assignments it has.",
   };
 
@@ -915,8 +914,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           label: "Pass rate",
           live: `${sm.passRate}%  (of ${analytics.totals.evaluatedStudents} evaluated students)`,
           formula: "students with overall average >= 75 ÷ students with at least 1 graded assignment × 100, rounded.",
-          source: "passingStudents / evaluatedStudents in GET /admin-analytics (server.js).",
-          note: "Students with no graded work are left out. The card turns green at 75% or higher (that color rule is in this screen, not the server).",
+          source: "Each student's overall average (Step 2). Students with at least 1 graded assignment are the evaluated students.",
+          note: "Students with no graded work are left out. The card turns green at 75% or higher (the color is only a visual cue).",
         },
       ],
     },
@@ -930,7 +929,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           label: "Fail rate",
           live: `${sm.failRate}%`,
           formula: "students with overall average < 75 ÷ students with at least 1 graded assignment × 100, rounded.",
-          source: "failedStudents / evaluatedStudents in GET /admin-analytics (server.js).",
+          source: "Each student's overall average (Step 2). Students with at least 1 graded assignment are the evaluated students.",
           note: "Pass and fail are rounded separately, so they can add up to 99% or 101%.",
         },
       ],
@@ -945,7 +944,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           label: "Department average",
           live: `${sm.departmentAverage}%`,
           formula: "Average of every evaluated student's overall average, rounded. Students with no graded work are excluded.",
-          source: "departmentAverage in GET /admin-analytics (server.js).",
+          source: "Each evaluated student's overall average (Step 2).",
           note: "Every student counts equally, regardless of how many classes or assignments they have.",
         },
       ],
@@ -959,14 +958,14 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           live: `${analytics.trend.length} point(s)`,
           formula:
             "Graded submissions are grouped by calendar day (graded date, else submitted date, else assignment due date, else created date). Each point is the average score (%) of that day's graded submissions. Only the latest 8 days are returned.",
-          source: "trendMap -> trend in GET /admin-analytics (server.js). The point label comes from normalizeAnalyticsDateLabel().",
+          source: "Student Assignment Scores of all enrolled students in the selected classes, grouped by the day they were graded.",
           note: "Labels show month and day only, so the same date in two different years would be merged. Submissions with no date show as 'Activity N' at the end.",
         },
         {
           label: "Change badge (pts)",
           live: `${trendDelta >= 0 ? "+" : ""}${trendDelta} pts`,
           formula: "Last point's average minus first point's average (percentage points, not percent).",
-          source: "trendDelta in this screen, from analytics.trend.",
+          source: "The difference between the first and last point of the Assignment Performance Line.",
           note: "Needs at least 2 points, otherwise no line is drawn.",
         },
       ],
@@ -979,7 +978,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           label: "Submission completion",
           live: `${sm.completionRate}%  (${sm.totalSubmittedAssignments + sm.totalGradedAssignments} of ${workload})`,
           formula: "(submitted + graded) ÷ (pending + submitted + missing + graded) × 100, rounded.",
-          source: `Totals counted in GET /admin-analytics (server.js): ${rows}.`,
+          source: "Counted from Class Assignments and Student Submissions: every student enrolled in the selected classes is checked against every assignment posted in their class.",
           note: `Currently ${sm.totalGradedAssignments} graded, ${sm.totalSubmittedAssignments} submitted, ${sm.totalPendingAssignments} pending, ${sm.totalMissingAssignments} missing. Missing = due date has passed and no submission; pending = not yet due and no submission.`,
         },
       ],
@@ -992,7 +991,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           label: "Grading completion",
           live: `${sm.assignmentCompletionRate}%  (${sm.totalGradedAssignments} of ${workload})`,
           formula: "graded ÷ (pending + submitted + missing + graded) × 100, rounded.",
-          source: `Totals counted in GET /admin-analytics (server.js): ${rows}.`,
+          source: "Counted from Class Assignments and Student Submissions: every student enrolled in the selected classes is checked against every assignment posted in their class.",
           note: "Graded work whose score can't be read as a number is left out of every total.",
         },
       ],
@@ -1007,7 +1006,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           live: `${Math.min(analytics.sectionComparison.length, 8)} of ${analytics.sectionComparison.length} section(s) shown`,
           formula:
             "For each class: the average of its evaluated students' class averages. A section's value = the sum of (class average × evaluated students) ÷ total evaluated students across its classes, rounded.",
-          source: "sectionMap -> sectionComparison in GET /admin-analytics (server.js).",
+          source: "Student Assignment Scores grouped by the section set on each class (Class Enrollment).",
           note: "Sorted lowest average first, sections with no graded work (0%) last; the 8 lowest are shown. '(N unique • M enrollments)' counts distinct students vs. class enrollment records.",
         },
       ],
@@ -1022,7 +1021,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           live: `${Math.min(analytics.yearLevelComparison.length, 6)} of ${analytics.yearLevelComparison.length} year level(s) shown`,
           formula:
             "Same method as Section Comparison, grouped by the class's year level: the average of the classes' averages, weighted by evaluated students, rounded.",
-          source: "yearMap -> yearLevelComparison in GET /admin-analytics (server.js).",
+          source: "Student Assignment Scores grouped by the year level set on each class (Class Enrollment).",
           note: "Year levels are listed alphabetically and only the first 6 are shown. A year level with no graded work shows 0%.",
         },
       ],
@@ -1036,15 +1035,15 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           label: "Subject average (%)",
           live: `${Math.min(analytics.subjectDifficulty.length, 6)} of ${analytics.subjectDifficulty.length} subject(s) shown`,
           formula:
-            "Average of all graded scores (%) for assignments sharing the same header (falls back to the class name), across all students. Each graded submission counts equally.",
-          source: "subjectMap -> subjectDifficulty in GET /admin-analytics (server.js).",
-          note: "'Subject' here is the assignment header, so it may not match your course names. A subject with no graded work shows (0%).",
+            "Average of all graded scores (%) for assignments sharing the same heading (falls back to the class name), across all students. Each graded submission counts equally.",
+          source: "Student Assignment Scores of all enrolled students, grouped by the heading of each Class Assignment.",
+          note: "'Subject' here is the heading of each Class Assignment, so it may not match your course names. A subject with no graded work shows (0%).",
         },
         {
           label: "Difficulty label",
           formula:
             "High Difficulty = has graded work and average < 75. Otherwise Moderate = any missing work or 3+ pending. Otherwise No Data (nothing graded) or Stable.",
-          source: "subjectDifficulty in GET /admin-analytics (server.js).",
+          source: "The same grouping as above: graded averages plus the missing and pending counts of each subject.",
         },
       ],
     },
@@ -1057,8 +1056,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           live: `${analytics.suggestions.length} suggestion(s)`,
           formula:
             "Priority Section quotes the section with the lowest average (see Section Comparison). Faculty Recommendation names the top-ranked subject in Subject Difficulty. System Recommendation counts High + Moderate risk students.",
-          source: "suggestions in GET /admin-analytics (server.js).",
-          note: "These are fixed rules on the server, not a live AI model.",
+          source: "Built from the Section Comparison, Subject Difficulty Trend and Assignment Risk Population cards.",
+          note: "These are written from fixed rules, not by a live AI model.",
         },
       ],
     },
@@ -1073,7 +1072,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           live: `${analytics.atRiskStudents.length} shown of ${sm.atRiskCount} flagged`,
           formula:
             "High = average < 75 or 3+ missing. Moderate = average < 85, or 1+ missing, or 3+ pending. Low otherwise. No Data = nothing graded and nothing missing. Counts are totals across all of the student's classes.",
-          source: "getAdminRiskLevel() and atRiskStudents in GET /admin-analytics (server.js).",
+          source: "Each student's average and their missing and pending work across all their classes (Class Enrollment, Class Assignments and Student Submissions).",
           note: "Only the 8 highest-priority students are listed (High first, then most missing, then lowest average). The reason text checks missing work first, so a student with a low average and 1 missing assignment shows only the missing reason.",
         },
       ],

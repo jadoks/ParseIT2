@@ -128,7 +128,7 @@ type InfoItem = {
   label: string;
   live?: string; // the value currently shown on screen
   formula: string; // how it is computed
-  source: string; // which file/function the data comes from
+  source: string; // where the data comes from, in plain language
   note?: string; // caveat worth knowing
 };
 
@@ -401,15 +401,15 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
   const assignmentScoreItem: InfoItem = {
     label: 'Assignment score (%)',
     formula:
-      'points earned ÷ max points × 100, only for assignments with status "graded" that have valid points and a max above 0.',
+      'Score earned ÷ total score of the assignment × 100, only for graded assignments that have a valid score and a total score above 0.',
     source:
-      'Raw assignments from Firebase (the `courses` prop). analyticsService.buildStudentAnalytics() uses the exact value; metrics.getScorePercent() rounds it to a whole number for averages.',
+      'Your graded assignments on the Assignments screen (the score your teacher entered on each one). Averages use the score rounded to a whole number; the highest grade, grade distribution, score trend and recent grades use the exact score.',
   };
 
   const subjectAverageItem: InfoItem = {
     label: 'Subject average',
     formula: 'Average of the rounded scores (%) of the graded assignments in one course.',
-    source: 'buildSubjectAnalyticsSummary() in analytics/analyticsService.ts, using metrics.getAssignmentAverage().',
+    source: 'Your graded assignments in that course, from the Assignments screen. Shown in the Subject Average Comparison card and in each Per-Subject Details card.',
   };
 
   const infoContent: Record<Exclude<InfoKey, 'subjectAverage' | 'subjectHighest' | 'subjectLowest' | 'subjectCompletion' | 'subjectTrend'>, InfoContent> = {
@@ -423,14 +423,14 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           label: 'Overall average',
           live: analytics.overallAverage > 0 ? `${Math.round(analytics.overallAverage)}%` : 'N/A',
           formula: 'Average of your subject averages (subjects with no graded work are skipped), rounded.',
-          source: 'buildStudentAnalytics() in analytics/analyticsService.ts -> overallAverage.',
+          source: 'Your subject averages, as shown in the Subject Average Comparison card and the Per-Subject Details cards.',
           note: 'Each subject counts equally, no matter how many assignments it has. Values are rounded at each step.',
         },
         {
           label: 'Trend badge (pts)',
           live: `${analytics.overallTrend > 0 ? '+' : ''}${analytics.overallTrend} pts`,
           formula: 'Your last graded score minus your first graded score, in date order (percentage points, not percent).',
-          source: 'analyticsService.buildStudentAnalytics() -> overallTrend, from assignmentScoreTrend.',
+          source: 'The scores in your Assignment Score Trend chart: the last point minus the first point.',
           note: 'Arrow: ↑ above +2, ↓ below -2, → in between.',
         },
       ],
@@ -444,7 +444,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           live: analytics.predictedFinalGrade > 0 ? `${Math.round(analytics.predictedFinalGrade)}%` : 'N/A',
           formula:
             'overall average − (pending × 1) − (missing × 3) + (submitted × 1), kept between 0 and 100 and rounded. Shows N/A if nothing is graded yet.',
-          source: 'metrics.getPredictedGrade(), called from buildStudentAnalytics() with your totals.',
+          source: 'Your Overall Average, together with your counts of pending assignments, missing work and submitted assignments still waiting for a grade.',
           note: `Right now: average ${analytics.overallAverage}%, ${analytics.totalPendingAssignments} pending, ${analytics.totalMissingAssignments} missing, ${analytics.totalSubmittedAssignments} submitted. This is a fixed-rule estimate, not a real grade forecast: each missing assignment costs 3 points, each pending costs 1, and each submitted-but-ungraded adds 1.`,
         },
       ],
@@ -458,7 +458,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           label: 'Highest assignment grade',
           live: analytics.highestAssignmentGrade > 0 ? `${Math.round(analytics.highestAssignmentGrade)}%` : 'N/A',
           formula: 'Maximum assignment score (%) across all graded assignments in all your courses.',
-          source: 'buildStudentAnalytics() in analytics/analyticsService.ts -> highestAssignmentGrade.',
+          source: 'Your graded assignments in all your courses (the same scores listed in Recent Assignment Grades).',
           note: 'Shows N/A when there are no graded assignments (or the best score is 0%).',
         },
       ],
@@ -474,7 +474,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
               ? `${completionPct}%  (${analytics.totalGradedAssignments} of ${analytics.totalAssignmentsCount})`
               : 'N/A',
           formula: 'graded assignments ÷ total assignments × 100, rounded.',
-          source: 'totalGradedAssignments and totalAssignmentsCount, summed over all courses in buildStudentAnalytics().',
+          source: 'Your assignments across all courses on the Assignments screen: graded assignments out of all assignments (the count shown under the card).',
           note: 'Only graded work counts as complete. Submitted (or late) work still waiting for a grade, pending work and missing work are counted as not complete yet.',
         },
       ],
@@ -488,7 +488,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           label: 'Bar label (%)',
           live: `${analytics.subjectSummaries.length} course(s)`,
           formula: 'The subject average, limited to 0-100 for display.',
-          source: 'subjectBarData in this file, from analytics.subjectSummaries.',
+          source: 'The Average shown in each Per-Subject Details card, one bar per course.',
           note: 'A course with no graded work yet has no average and shows as 0%.',
         },
       ],
@@ -502,7 +502,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           label: 'Score bands',
           live: `${dist.excellent} excellent, ${dist.good} good, ${dist.average} average, ${dist.needsImprovement} needs improvement`,
           formula: 'Excellent = 90% and above. Good = 80-89%. Average = 70-79%. Needs Improvement = below 70%. Each slice is a count of assignments, not a percentage.',
-          source: 'gradeDistribution in analyticsService.buildStudentAnalytics(), using the exact (unrounded) score of each graded assignment.',
+          source: 'Your graded assignments (the same ones listed in Recent Assignment Grades). Each assignment is counted once, using its exact score.',
           note: 'Risk levels use 75% as the cut-off, so a 72% is "Average" here but still pulls a subject toward High risk.',
         },
       ],
@@ -516,7 +516,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           label: 'Each point on the line',
           live: `${analytics.assignmentScoreTrend.length} graded assignment(s)`,
           formula: 'One point per graded assignment, sorted by graded date (falls back to submitted date). The label shows the score rounded to a whole percent.',
-          source: 'assignmentScoreTrend in analyticsService.buildStudentAnalytics().',
+          source: 'Your graded assignments from oldest to newest (the same scores listed in Recent Assignment Grades).',
           note: 'Assignments with no date are placed at the end of the line.',
         },
       ],
@@ -530,7 +530,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           label: 'Score color',
           live: `${analytics.recentGradedAssignments.length} graded assignment(s)`,
           formula: 'Green = 90% and above, blue = 80-89%, amber = 70-79%, red = below 70%.',
-          source: 'recentGradedAssignments in analyticsService.buildStudentAnalytics(); colors set in this file.',
+          source: 'Your graded assignments on the Assignments screen. The colors are only a visual guide to the score.',
           note: 'The list is ordered by assignment ID (newest ID first) to match the Assignments screen, not strictly by graded date.',
         },
       ],
@@ -563,7 +563,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
               label: 'Highest grade',
               live: subject.highestGrade > 0 ? `${Math.round(subject.highestGrade)}%` : 'N/A',
               formula: 'Maximum assignment score (%) among the graded assignments in this course.',
-              source: 'buildSubjectAnalyticsSummary() in analytics/analyticsService.ts -> highestGrade.',
+              source: 'Your graded assignments in this course, from the Assignments screen.',
               note: 'Shows N/A when the course has no graded work (or the best score is 0%).',
             },
           ],
@@ -578,7 +578,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
               label: 'Lowest grade',
               live: subject.lowestGrade > 0 ? `${Math.round(subject.lowestGrade)}%` : 'N/A',
               formula: 'Minimum assignment score (%) among the graded assignments in this course.',
-              source: 'buildSubjectAnalyticsSummary() in analytics/analyticsService.ts -> lowestGrade.',
+              source: 'Your graded assignments in this course, from the Assignments screen.',
               note: 'Shows N/A when the course has no graded work, and also when your lowest score is exactly 0%.',
             },
           ],
@@ -595,7 +595,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                   ? `${subject.gradedCount}/${subject.totalAssignments} (${Math.round((subject.gradedCount / subject.totalAssignments) * 100)}%)`
                   : 'N/A',
               formula: 'graded assignments ÷ total assignments in this course × 100, rounded.',
-              source: 'gradedCount and totalAssignments from buildSubjectAnalyticsSummary().',
+              source: 'The Assignments screen count for this course: graded assignments out of all assignments in the course.',
               note: 'Only graded work counts. Submitted, pending and missing assignments are not complete yet.',
             },
           ],
@@ -609,7 +609,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
               label: 'Trend (pts)',
               live: `${subject.trendSymbol} ${subject.trend > 0 ? '+' : ''}${subject.trend} pts`,
               formula: 'Last graded score minus first graded score in this course (percentage points, not percent).',
-              source: 'metrics.getTrendValue() over getAssignmentScoreSeries(), called from buildSubjectAnalyticsSummary().',
+              source: 'The first and last graded scores in this course, taken in the order the course lists its assignments.',
               note: 'Arrow: ↑ above +2, ↓ below -2, → in between. Scores are taken in the order the course lists its assignments, and you need at least 2 graded scores.',
             },
           ],

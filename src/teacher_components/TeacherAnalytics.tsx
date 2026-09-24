@@ -130,7 +130,7 @@ type MetricInfoItem = {
   label: string;
   live?: string; // the live number/value currently shown on screen
   formula: string; // how it is computed
-  source: string; // which file/function the data comes from
+  source: string; // where the data comes from, in plain language
   note?: string; // caveat worth knowing
 };
 
@@ -1115,9 +1115,9 @@ export default function TeacherAnalytics({
     const assignmentPercent: MetricInfoItem = {
       label: "Step 1 - Assignment score (%)",
       formula:
-        "points earned ÷ max points × 100, only for assignments with status \"graded\". Assignments with no valid max points are skipped.",
+        "Score earned ÷ total score of the assignment × 100, only for graded assignments. Assignments with no valid total score are skipped.",
       source:
-        "Raw assignments passed in through the `students` prop (from Firebase). Calculated by getScorePercent() in analytics/metrics.ts (the component's getAssignmentPercent() calls it, so both places always agree).",
+        "Student Assignment Scores: the grade your teachers entered on each graded assignment, for every student in the selected class.",
     };
 
     const studentAverage: MetricInfoItem = {
@@ -1125,7 +1125,7 @@ export default function TeacherAnalytics({
       formula:
         "Average of the student's assignment scores per subject, then the average of those subject averages (subjects with no graded work are skipped). Rounded to a whole number.",
       source:
-        "buildSubjectAnalyticsSummary() -> buildStudentAnalytics() -> buildTeacherStudentRow() in analytics/analyticsService.ts, using average() and getAssignmentAverage() from analytics/metrics.ts.",
+        "Worked out from each student's own Student Assignment Scores, first per subject and then across subjects.",
       note: "Each subject counts equally, no matter how many assignments it has, and values are rounded at every step.",
     };
 
@@ -1143,7 +1143,7 @@ export default function TeacherAnalytics({
             formula:
               "Average of all students' overall averages. Students with 0 graded assignments are excluded.",
             source:
-              "buildTeacherAnalyticsSummary() in analytics/analyticsService.ts -> summary.classAverage.",
+              "Worked out from every student's overall average (Step 2) in the selected class.",
             note: `Based on ${evaluated.length} of ${summary.totalStudents} student(s) that have graded work.`,
           },
         ],
@@ -1158,7 +1158,7 @@ export default function TeacherAnalytics({
             formula:
               "students with overall average >= 75 ÷ students with at least 1 graded assignment × 100, rounded.",
             source:
-              "studentInsights (TeacherAnalytics.tsx) built from summary.studentRows, i.e. each student's overall average from analyticsService.ts. 75 is the same threshold riskEngine.ts uses for 'High' risk.",
+              "Each student's overall average (Step 2 of Class Assignment Mean). 75% is also the cut-off that puts a student in High risk.",
             note: "Students with no graded work are left out of both numbers.",
           },
         ],
@@ -1173,7 +1173,7 @@ export default function TeacherAnalytics({
             formula:
               "(graded + submitted) ÷ (graded + submitted + pending + missing) × 100, rounded.",
             source:
-              "Totals summed from summary.studentRows (analyticsService.ts). 'Submitted' counts status submitted or late. 'Pending' is not-yet-due work; overdue pending work is reclassified as 'missing' by normalizeAssignmentStatus() in metrics.ts.",
+              "Counted from every student's assignments in the selected class. Graded work and submitted work (including late) counts as completed. Work that is not yet due is pending. Work that is past its due date and not turned in is missing.",
             note: `Currently ${totalGraded} graded, ${totalSubmitted} submitted, ${totalPending} pending, ${totalMissing} missing.`,
           },
         ],
@@ -1188,7 +1188,7 @@ export default function TeacherAnalytics({
             formula:
               "(High-risk students × 2 + Moderate-risk students) ÷ (evaluated students × 2) × 100, rounded. Evaluated = total students minus 'No Data' students.",
             source:
-              "Risk counts come from summary in buildTeacherAnalyticsSummary() (analyticsService.ts). Each student's level comes from getRiskLevel() in analytics/riskEngine.ts.",
+              "The number of High and Moderate risk students, as shown in the Class Overview card. Each student's level depends on their average and their missing and pending work (rules below).",
             note: "Risk level rules: High = average < 75 or 3+ missing. Moderate = average < 85, or 1+ missing, or 3+ pending. Otherwise Low. No Data = nothing graded and nothing missing. 100% means every evaluated student is High risk.",
           },
         ],
@@ -1202,7 +1202,7 @@ export default function TeacherAnalytics({
             live: `${classHighestScore}%`,
             formula: "Maximum of all graded assignment scores (%) across all students and subjects in scope.",
             source:
-              "Computed directly in TeacherAnalytics.tsx (classHighestScore) from the raw assignments, using getAssignmentPercent(). It does not go through analyticsService.ts.",
+              "The best score among all Student Assignment Scores of the students in the selected class.",
           },
         ],
       },
@@ -1215,7 +1215,7 @@ export default function TeacherAnalytics({
             live: `${classLowestScore}%`,
             formula: "Minimum of all graded assignment scores (%) across all students and subjects in scope.",
             source:
-              "Computed directly in TeacherAnalytics.tsx (classLowestScore) from the raw assignments, using getAssignmentPercent().",
+              "The weakest score among all Student Assignment Scores of the students in the selected class.",
           },
         ],
       },
@@ -1229,13 +1229,13 @@ export default function TeacherAnalytics({
             formula:
               "Graded assignments are sorted by graded date (falls back to submitted date, then due date) and grouped by calendar day. Each point is the average score (%) of that day's graded assignments. Only the latest 6 points are shown.",
             source:
-              "performanceTrend in TeacherAnalytics.tsx, from the raw assignments of all students in scope.",
+              "Student Assignment Scores of all students in the selected class, grouped by the day they were graded.",
           },
           {
             label: "Change badge (pts)",
             live: `${trendDelta >= 0 ? "+" : ""}${trendDelta} pts`,
             formula: "Last point's average minus first point's average (percentage points, not percent).",
-            source: "trendDelta in TeacherAnalytics.tsx.",
+            source: "The difference between the first and last point of the Performance Trend Line Graph.",
             note: "Needs at least 2 points, otherwise it shows 0.",
           },
         ],
@@ -1250,8 +1250,8 @@ export default function TeacherAnalytics({
             formula:
               "Rule-based: trend >= +5 pts is positive, <= -5 pts is declining; attention index >= 20% is 'high load'; the lowest topic average and the top-priority student's average are quoted as-is.",
             source:
-              "academicInsights in TeacherAnalytics.tsx, using attentionIndex, trendDelta, weakTopics and atRiskStudents (see their own '?' icons).",
-            note: "These insights are generated by fixed rules in the component, not by a live AI model.",
+              "Built from the Attention Index, the change shown on the Performance Trend Line Graph, the Lowest Performing Assignment Topics and the Assignment Risk Students list (see their own ? icons).",
+            note: "These insights are written from fixed rules on this dashboard, not by a live AI model.",
           },
         ],
       },
@@ -1263,13 +1263,13 @@ export default function TeacherAnalytics({
             label: "Risk bars",
             formula:
               "Count of students per risk level. Bar width = count ÷ total students × 100.",
-            source: "summary.noDataCount / highRiskCount / moderateRiskCount / lowRiskCount from analyticsService.ts, levels from riskEngine.getRiskLevel().",
+            source: "Each student's risk level in the selected class, using the same rules as the Attention Index.",
           },
           {
             label: "Grade range bars",
             formula:
               "Each student's overall average is placed in 90-100, 80-89, 75-79 or Below 75. Students with no graded work are not counted. Bar width = count ÷ total students × 100.",
-            source: "gradeBuckets in TeacherAnalytics.tsx, using each student's overall average (Step 2 of Class Mean).",
+            source: "Each student's overall average (Step 2 of Class Assignment Mean).",
           },
         ],
       },
@@ -1282,7 +1282,7 @@ export default function TeacherAnalytics({
             live: weakTopics[0] ? `${weakTopics[0].topic}: ${weakTopics[0].average}%` : undefined,
             formula:
               "Assignments are grouped by topic (falls back to the assignment title, then 'Uncategorized'). Topic average = average of the graded scores (%) in that topic across all students. The 5 lowest are shown.",
-            source: "topicSummaries in TeacherAnalytics.tsx, from the raw assignments.",
+            source: "Student Assignment Scores of all students in the selected class, grouped by assignment topic.",
             note: "Only topics with at least 1 graded assignment are ranked. Bars turn red below 75%.",
           },
         ],
@@ -1297,7 +1297,7 @@ export default function TeacherAnalytics({
             live: `${topStudents.length} student(s) listed`,
             formula:
               "Students with at least 1 graded assignment, sorted by overall average, highest first. Rank = 1 + number of students with a strictly higher average, so ties share a rank.",
-            source: "topStudents and studentInsights in TeacherAnalytics.tsx.",
+            source: "Each student's overall average (Step 2 of Class Assignment Mean), ranked from highest to lowest.",
           },
         ],
       },
@@ -1307,15 +1307,15 @@ export default function TeacherAnalytics({
         items: [
           {
             label: "Assignment average (%)",
-            formula: "The student's overall average (Step 2 of Class Mean).",
-            source: "summary.studentRows from analyticsService.ts.",
+            formula: "The student's overall average (Step 2 of Class Assignment Mean).",
+            source: "Worked out from the student's own Student Assignment Scores (see Class Assignment Mean).",
           },
           {
             label: "Percentile (P)",
             live: `${studentInsights.filter((s) => s.totalGradedAssignments > 0).length} evaluated student(s)`,
             formula:
               "students whose average is <= this student's average ÷ evaluated students × 100, rounded. P80 means the student is at or above 80% of the group. The bar width equals this value.",
-            source: "studentInsights in TeacherAnalytics.tsx.",
+            source: "The overall averages of all evaluated students in the selected class, compared with each other.",
             note: "Students with no graded work are not part of the comparison. They show 'No Data' and no rank.",
           },
         ],
@@ -1326,20 +1326,20 @@ export default function TeacherAnalytics({
         items: [
           {
             label: "Assignment Average (%)",
-            formula: "The student's overall average (Step 2 of Class Mean).",
-            source: "summary.studentRows from analyticsService.ts.",
+            formula: "The student's overall average (Step 2 of Class Assignment Mean).",
+            source: "Worked out from the student's own Student Assignment Scores (see Class Assignment Mean).",
           },
           {
             label: "Percentile (P)",
-            formula: "Same as the Percentile Ranking card: evaluated students at or below this average ÷ evaluated students × 100.",
-            source: "studentInsights in TeacherAnalytics.tsx.",
+            formula: "Same as the Student Assignment Percentile Ranking card: evaluated students at or below this average ÷ evaluated students × 100.",
+            source: "The overall averages of all evaluated students in the selected class, compared with each other.",
           },
           {
             label: "Risk level, reason and trend chip",
             live: `${atRiskStudents.length} flagged`,
             formula:
-              "Level comes from riskEngine.getRiskLevel() (High: average < 75 or 3+ missing; Moderate: average < 85, 1+ missing, or 3+ pending). The written reason uses the same thresholds. Trend = last graded score minus first graded score, in date order; above 0 is Improving, below 0 is Declining.",
-            source: "riskEngine.ts, analyticsService.buildStudentAnalytics() (overallTrend), and insightReason() in this file.",
+              "Level rules: High = average below 75 or 3+ missing; Moderate = average below 85, 1+ missing, or 3+ pending. The written reason uses the same rules. Trend = last graded score minus first graded score, in date order; above 0 is Improving, below 0 is Declining.",
+            source: "The student's average, missing work and pending work in the selected class, and their Student Assignment Scores in date order for the trend.",
           },
         ],
       },
