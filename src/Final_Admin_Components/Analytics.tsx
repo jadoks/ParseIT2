@@ -31,6 +31,7 @@ type SummaryCardProps = {
   trend: string;
   widthValue: DimensionValue;
   tone?: "default" | "danger" | "success" | "warning";
+  onInfoPress?: () => void;
 };
 
 type SectionCardProps = {
@@ -39,6 +40,7 @@ type SectionCardProps = {
   icon: React.ReactNode;
   children: React.ReactNode;
   widthValue?: DimensionValue;
+  onInfoPress?: () => void;
 };
 
 type ProgressBarProps = {
@@ -161,12 +163,65 @@ const emptyAnalytics: AdminAnalyticsPayload = {
   availableSemesters: [],
 };
 
+type InfoKey =
+  | "passRate"
+  | "failRate"
+  | "departmentAverage"
+  | "trend"
+  | "submissionCompletion"
+  | "gradingCompletion"
+  | "sectionComparison"
+  | "yearComparison"
+  | "subjectDifficulty"
+  | "suggestions"
+  | "riskPopulation";
+
+type InfoItem = {
+  label: string;
+  live?: string; // the value currently shown on screen
+  formula: string; // how it is computed
+  source: string; // where the data comes from
+  note?: string; // caveat worth knowing
+};
+
+type InfoContent = { title: string; summary: string; items: InfoItem[] };
+
+function InfoButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel="How is this calculated?"
+      style={styles.infoButton}
+    >
+      <Ionicons name="help-circle-outline" size={18} color="#A07C7C" />
+    </Pressable>
+  );
+}
+
+function TrendMetricLabel({
+  label,
+  onInfoPress,
+}: {
+  label: string;
+  onInfoPress: () => void;
+}) {
+  return (
+    <View style={styles.trendMetricLabelRow}>
+      <Text style={styles.trendMetricLabel}>{label}</Text>
+      <InfoButton onPress={onInfoPress} />
+    </View>
+  );
+}
+
 function SummaryCard({
   label,
   value,
   trend,
   widthValue,
   tone = "default",
+  onInfoPress,
 }: SummaryCardProps) {
   return (
     <View
@@ -178,7 +233,10 @@ function SummaryCard({
         tone === "warning" && styles.summaryCardWarning,
       ]}
     >
-      <Text style={styles.summaryLabel}>{label}</Text>
+      <View style={styles.summaryLabelRow}>
+        <Text style={[styles.summaryLabel, { marginBottom: 0 }]}>{label}</Text>
+        {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
+      </View>
       <Text style={styles.summaryValue}>{value}</Text>
       <Text
         style={[
@@ -200,6 +258,7 @@ function SectionCard({
   icon,
   children,
   widthValue = "100%",
+  onInfoPress,
 }: SectionCardProps) {
   return (
     <View style={[styles.sectionCard, { width: widthValue }]}>
@@ -213,7 +272,10 @@ function SectionCard({
           <View style={styles.iconBox}>{icon}</View>
 
           <View style={styles.sectionCardHeaderTextWrap}>
-            <Text style={styles.sectionCardTitle}>{title}</Text>
+            <View style={styles.sectionCardTitleRow}>
+              <Text style={[styles.sectionCardTitle, { marginBottom: 0, flexShrink: 1 }]}>{title}</Text>
+              {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
+            </View>
             <Text style={styles.sectionCardSubtitle}>{subtitle}</Text>
           </View>
         </View>
@@ -248,14 +310,19 @@ function StatRow({
   label,
   value,
   tone = "default",
+  onInfoPress,
 }: {
   label: string;
   value: string;
   tone?: "default" | "danger" | "success" | "warning";
+  onInfoPress?: () => void;
 }) {
   return (
     <View style={styles.statRow}>
-      <Text style={styles.statRowLabel}>{label}</Text>
+      <View style={styles.statRowLabelWrap}>
+        <Text style={[styles.statRowLabel, { flex: 0, paddingRight: 0, flexShrink: 1 }]}>{label}</Text>
+        {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
+      </View>
       <Text
         style={[
           styles.statRowValue,
@@ -333,12 +400,14 @@ function AcademicTrendChart({
   completionRate,
   assignmentCompletionRate,
   departmentAverage,
+  onInfo,
 }: {
   data: AdminAnalyticsPayload["trend"];
   width: number;
   completionRate: number;
   assignmentCompletionRate: number;
   departmentAverage: number;
+  onInfo: (key: InfoKey) => void;
 }) {
   const isSmall = width < 768;
   const isVerySmall = width < 480;
@@ -392,19 +461,19 @@ function AcademicTrendChart({
         <View style={styles.trendMetricGridInline}>
           <View style={styles.trendMetricCard}>
             <Text style={styles.trendMetricValue}>{completionRate}%</Text>
-            <Text style={styles.trendMetricLabel}>Submission Completion</Text>
+            <TrendMetricLabel label="Submission Completion" onInfoPress={() => onInfo("submissionCompletion")} />
           </View>
 
           <View style={styles.trendMetricCard}>
             <Text style={styles.trendMetricValue}>
               {assignmentCompletionRate}%
             </Text>
-            <Text style={styles.trendMetricLabel}>Grading Completion</Text>
+            <TrendMetricLabel label="Grading Completion" onInfoPress={() => onInfo("gradingCompletion")} />
           </View>
 
           <View style={styles.trendMetricCard}>
             <Text style={styles.trendMetricValue}>{departmentAverage}%</Text>
-            <Text style={styles.trendMetricLabel}>Institution Average</Text>
+            <TrendMetricLabel label="Institution Average" onInfoPress={() => onInfo("departmentAverage")} />
           </View>
         </View>
       </View>
@@ -706,6 +775,9 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     useState<AdminAnalyticsPayload>(emptyAnalytics);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
+  // Which "?" explanation is open (null = closed)
+  const [activeInfo, setActiveInfo] = useState<InfoKey | null>(null);
+  const openInfo = (key: InfoKey) => setActiveInfo(key);
 
   const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>("");
   const [selectedSemester, setSelectedSemester] = useState<string>("");
@@ -808,9 +880,263 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
   const trendDelta =
     latestTrend && firstTrend ? latestTrend.average - firstTrend.average : 0;
 
+  // ---- "?" explanations. `live` values are read from the same payload the screen renders.
+  // Formulas mirror GET /admin-analytics in server.js. ----
+  const sm = analytics.summary;
+  const workload =
+    sm.totalPendingAssignments +
+    sm.totalSubmittedAssignments +
+    sm.totalMissingAssignments +
+    sm.totalGradedAssignments;
+  const rows = "one row per student x assignment, across every student enrolled in the selected classes";
+
+  const scoreItem: InfoItem = {
+    label: "Step 1 - Assignment score (%)",
+    formula:
+      "score earned ÷ the assignment's total score × 100, rounded, for submissions with status \"graded\". If an assignment has no total score set, it is treated as 100.",
+    source: "server.js -> GET /admin-analytics, using getPercentFromScore() on the classSubmissions and classAssignments collections.",
+  };
+  const studentAvgItem: InfoItem = {
+    label: "Step 2 - Student average",
+    formula:
+      "For each class a student is enrolled in: average of that student's graded scores, rounded. The student's overall average is the average of those per-class averages (classes with graded work only), rounded.",
+    source: "studentRiskMap / studentRows in GET /admin-analytics (server.js).",
+    note: "Each class counts equally, no matter how many assignments it has.",
+  };
+
+  const infoContent: Record<InfoKey, InfoContent> = {
+    passRate: {
+      title: "Pass Rate",
+      summary: "The share of evaluated students whose overall average meets the passing mark.",
+      items: [
+        scoreItem,
+        studentAvgItem,
+        {
+          label: "Pass rate",
+          live: `${sm.passRate}%  (of ${analytics.totals.evaluatedStudents} evaluated students)`,
+          formula: "students with overall average >= 75 ÷ students with at least 1 graded assignment × 100, rounded.",
+          source: "passingStudents / evaluatedStudents in GET /admin-analytics (server.js).",
+          note: "Students with no graded work are left out. The card turns green at 75% or higher (that color rule is in this screen, not the server).",
+        },
+      ],
+    },
+    failRate: {
+      title: "Fail Rate (below passing)",
+      summary: "The share of evaluated students whose overall average is under the passing mark.",
+      items: [
+        scoreItem,
+        studentAvgItem,
+        {
+          label: "Fail rate",
+          live: `${sm.failRate}%`,
+          formula: "students with overall average < 75 ÷ students with at least 1 graded assignment × 100, rounded.",
+          source: "failedStudents / evaluatedStudents in GET /admin-analytics (server.js).",
+          note: "Pass and fail are rounded separately, so they can add up to 99% or 101%.",
+        },
+      ],
+    },
+    departmentAverage: {
+      title: "Department / Institution Average",
+      summary: "The average grade of all evaluated students in the selected school year and semester.",
+      items: [
+        scoreItem,
+        studentAvgItem,
+        {
+          label: "Department average",
+          live: `${sm.departmentAverage}%`,
+          formula: "Average of every evaluated student's overall average, rounded. Students with no graded work are excluded.",
+          source: "departmentAverage in GET /admin-analytics (server.js).",
+          note: "Every student counts equally, regardless of how many classes or assignments they have.",
+        },
+      ],
+    },
+    trend: {
+      title: "Semester Performance Trend",
+      summary: "Average assignment grade over time across all graded work, and how much it changed.",
+      items: [
+        {
+          label: "Each point on the line",
+          live: `${analytics.trend.length} point(s)`,
+          formula:
+            "Graded submissions are grouped by calendar day (graded date, else submitted date, else assignment due date, else created date). Each point is the average score (%) of that day's graded submissions. Only the latest 8 days are returned.",
+          source: "trendMap -> trend in GET /admin-analytics (server.js). The point label comes from normalizeAnalyticsDateLabel().",
+          note: "Labels show month and day only, so the same date in two different years would be merged. Submissions with no date show as 'Activity N' at the end.",
+        },
+        {
+          label: "Change badge (pts)",
+          live: `${trendDelta >= 0 ? "+" : ""}${trendDelta} pts`,
+          formula: "Last point's average minus first point's average (percentage points, not percent).",
+          source: "trendDelta in this screen, from analytics.trend.",
+          note: "Needs at least 2 points, otherwise no line is drawn.",
+        },
+      ],
+    },
+    submissionCompletion: {
+      title: "Submission Completion",
+      summary: "How much of the total assigned workload has been turned in (including graded work).",
+      items: [
+        {
+          label: "Submission completion",
+          live: `${sm.completionRate}%  (${sm.totalSubmittedAssignments + sm.totalGradedAssignments} of ${workload})`,
+          formula: "(submitted + graded) ÷ (pending + submitted + missing + graded) × 100, rounded.",
+          source: `Totals counted in GET /admin-analytics (server.js): ${rows}.`,
+          note: `Currently ${sm.totalGradedAssignments} graded, ${sm.totalSubmittedAssignments} submitted, ${sm.totalPendingAssignments} pending, ${sm.totalMissingAssignments} missing. Missing = due date has passed and no submission; pending = not yet due and no submission.`,
+        },
+      ],
+    },
+    gradingCompletion: {
+      title: "Grading Completion",
+      summary: "How much of the total assigned workload has actually been graded.",
+      items: [
+        {
+          label: "Grading completion",
+          live: `${sm.assignmentCompletionRate}%  (${sm.totalGradedAssignments} of ${workload})`,
+          formula: "graded ÷ (pending + submitted + missing + graded) × 100, rounded.",
+          source: `Totals counted in GET /admin-analytics (server.js): ${rows}.`,
+          note: "Graded work whose score can't be read as a number is left out of every total.",
+        },
+      ],
+    },
+    sectionComparison: {
+      title: "Section Comparison",
+      summary: "Average grade per section, lowest first.",
+      items: [
+        scoreItem,
+        {
+          label: "Section average (%)",
+          live: `${Math.min(analytics.sectionComparison.length, 8)} of ${analytics.sectionComparison.length} section(s) shown`,
+          formula:
+            "For each class: the average of its evaluated students' class averages. A section's value = the sum of (class average × evaluated students) ÷ total evaluated students across its classes, rounded.",
+          source: "sectionMap -> sectionComparison in GET /admin-analytics (server.js).",
+          note: "Sorted lowest average first, sections with no graded work (0%) last; the 8 lowest are shown. '(N unique • M enrollments)' counts distinct students vs. class enrollment records.",
+        },
+      ],
+    },
+    yearComparison: {
+      title: "Year-Level Comparison",
+      summary: "Average grade per year level.",
+      items: [
+        scoreItem,
+        {
+          label: "Year-level average (%)",
+          live: `${Math.min(analytics.yearLevelComparison.length, 6)} of ${analytics.yearLevelComparison.length} year level(s) shown`,
+          formula:
+            "Same method as Section Comparison, grouped by the class's year level: the average of the classes' averages, weighted by evaluated students, rounded.",
+          source: "yearMap -> yearLevelComparison in GET /admin-analytics (server.js).",
+          note: "Year levels are listed alphabetically and only the first 6 are shown. A year level with no graded work shows 0%.",
+        },
+      ],
+    },
+    subjectDifficulty: {
+      title: "Subject Difficulty Trend",
+      summary: "Subjects ranked by how hard students are finding them.",
+      items: [
+        scoreItem,
+        {
+          label: "Subject average (%)",
+          live: `${Math.min(analytics.subjectDifficulty.length, 6)} of ${analytics.subjectDifficulty.length} subject(s) shown`,
+          formula:
+            "Average of all graded scores (%) for assignments sharing the same header (falls back to the class name), across all students. Each graded submission counts equally.",
+          source: "subjectMap -> subjectDifficulty in GET /admin-analytics (server.js).",
+          note: "'Subject' here is the assignment header, so it may not match your course names. A subject with no graded work shows (0%).",
+        },
+        {
+          label: "Difficulty label",
+          formula:
+            "High Difficulty = has graded work and average < 75. Otherwise Moderate = any missing work or 3+ pending. Otherwise No Data (nothing graded) or Stable.",
+          source: "subjectDifficulty in GET /admin-analytics (server.js).",
+        },
+      ],
+    },
+    suggestions: {
+      title: "Intervention Suggestions",
+      summary: "Short recommendations built from the numbers on this dashboard.",
+      items: [
+        {
+          label: "Where the percentages come from",
+          live: `${analytics.suggestions.length} suggestion(s)`,
+          formula:
+            "Priority Section quotes the section with the lowest average (see Section Comparison). Faculty Recommendation names the top-ranked subject in Subject Difficulty. System Recommendation counts High + Moderate risk students.",
+          source: "suggestions in GET /admin-analytics (server.js).",
+          note: "These are fixed rules on the server, not a live AI model.",
+        },
+      ],
+    },
+    riskPopulation: {
+      title: "Assignment Risk Population",
+      summary: "Students flagged High or Moderate risk, with their average.",
+      items: [
+        scoreItem,
+        studentAvgItem,
+        {
+          label: "Risk level",
+          live: `${analytics.atRiskStudents.length} shown of ${sm.atRiskCount} flagged`,
+          formula:
+            "High = average < 75 or 3+ missing. Moderate = average < 85, or 1+ missing, or 3+ pending. Low otherwise. No Data = nothing graded and nothing missing. Counts are totals across all of the student's classes.",
+          source: "getAdminRiskLevel() and atRiskStudents in GET /admin-analytics (server.js).",
+          note: "Only the 8 highest-priority students are listed (High first, then most missing, then lowest average). The reason text checks missing work first, so a student with a low average and 1 missing assignment shows only the missing reason.",
+        },
+      ],
+    },
+  };
+  const activeContent = activeInfo ? infoContent[activeInfo] : null;
+
   return (
     // Added onLayout to capture the exact width of the container
     <View onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}>
+      <Modal
+        visible={activeContent !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveInfo(null)}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.infoOverlay} onPress={() => setActiveInfo(null)}>
+          <Pressable style={styles.infoSheet} onPress={() => {}}>
+            {activeContent ? (
+              <>
+                <View style={styles.infoHeader}>
+                  <View style={styles.infoHeaderIcon}>
+                    <Ionicons name="help-circle-outline" size={22} color="#8B0000" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoTitle}>{activeContent.title}</Text>
+                    <Text style={styles.infoSummary}>{activeContent.summary}</Text>
+                  </View>
+                  <Pressable onPress={() => setActiveInfo(null)} hitSlop={10} accessibilityLabel="Close explanation">
+                    <Ionicons name="close" size={22} color="#5F3B3B" />
+                  </Pressable>
+                </View>
+                <ScrollView style={styles.infoScroll} showsVerticalScrollIndicator>
+                  {activeContent.items.map((item) => (
+                    <View key={item.label} style={styles.infoItem}>
+                      <View style={styles.infoItemHeader}>
+                        <Text style={styles.infoItemLabel}>{item.label}</Text>
+                        {item.live ? (
+                          <View style={styles.infoLivePill}>
+                            <Text style={styles.infoLiveText}>{item.live}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.infoFieldLabel}>HOW IT IS COMPUTED</Text>
+                      <Text style={styles.infoFormula}>{item.formula}</Text>
+                      <Text style={styles.infoFieldLabel}>WHERE THE DATA COMES FROM</Text>
+                      <Text style={styles.infoBody}>{item.source}</Text>
+                      {item.note ? (
+                        <View style={styles.infoNote}>
+                          <Ionicons name="information-circle-outline" size={16} color="#8B0000" />
+                          <Text style={styles.infoNoteText}>{item.note}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View style={styles.heroRow}>
         <View style={[styles.heroCard, isMobile && styles.heroCardMobile]}>
           <View
@@ -887,6 +1213,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         />
         <SummaryCard
           label="Pass Rate"
+          onInfoPress={() => openInfo("passRate")}
           value={`${analytics.summary.passRate}%`}
           trend={`${analytics.summary.failRate}% below passing`}
           widthValue={summaryWidth}
@@ -939,6 +1266,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
             <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow
                 label="Department Average"
+                onInfoPress={() => openInfo("departmentAverage")}
                 value={`${analytics.summary.departmentAverage}%`}
                 tone={analytics.summary.departmentAverage >= 75 ? "success" : "danger"}
               />
@@ -954,10 +1282,10 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
               <StatRow label="No Data Students" value={`${analytics.summary.noDataCount}`} />
             </View>
             <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
-              <StatRow label="Pass Rate" value={`${analytics.summary.passRate}%`} tone="success" />
+              <StatRow label="Pass Rate" value={`${analytics.summary.passRate}%`} tone="success" onInfoPress={() => openInfo("passRate")} />
             </View>
             <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
-              <StatRow label="Fail Rate" value={`${analytics.summary.failRate}%`} tone="danger" />
+              <StatRow label="Fail Rate" value={`${analytics.summary.failRate}%`} tone="danger" onInfoPress={() => openInfo("failRate")} />
             </View>
           </View>
         </SectionCard>
@@ -967,6 +1295,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue="100%"
           title="Semester Performance Trend"
+          onInfoPress={() => openInfo("trend")}
           subtitle={
             latestTrend
               ? `${latestTrend.label} latest average • ${trendDelta >= 0 ? "+" : ""}${trendDelta} pts`
@@ -982,6 +1311,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
             completionRate={analytics.summary.completionRate}
             assignmentCompletionRate={analytics.summary.assignmentCompletionRate}
             departmentAverage={analytics.summary.departmentAverage}
+            onInfo={openInfo}
           />
 
           {analytics.trend.filter(
@@ -992,21 +1322,21 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
                 <Text style={styles.trendMetricValue}>
                   {analytics.summary.completionRate}%
                 </Text>
-                <Text style={styles.trendMetricLabel}>Submission Completion</Text>
+                <TrendMetricLabel label="Submission Completion" onInfoPress={() => openInfo("submissionCompletion")} />
               </View>
 
               <View style={styles.trendMetricCard}>
                 <Text style={styles.trendMetricValue}>
                   {analytics.summary.assignmentCompletionRate}%
                 </Text>
-                <Text style={styles.trendMetricLabel}>Grading Completion</Text>
+                <TrendMetricLabel label="Grading Completion" onInfoPress={() => openInfo("gradingCompletion")} />
               </View>
 
               <View style={styles.trendMetricCard}>
                 <Text style={styles.trendMetricValue}>
                   {analytics.summary.departmentAverage}%
                 </Text>
-                <Text style={styles.trendMetricLabel}>Institution Average</Text>
+                <TrendMetricLabel label="Institution Average" onInfoPress={() => openInfo("departmentAverage")} />
               </View>
             </View>
           ) : null}
@@ -1016,6 +1346,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Section Comparison"
+          onInfoPress={() => openInfo("sectionComparison")}
           subtitle="Compare average assignment grades across sections"
           icon={
             <MaterialCommunityIcons
@@ -1041,6 +1372,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Year-Level Comparison"
+          onInfoPress={() => openInfo("yearComparison")}
           subtitle="Compare assignment performance across year levels"
           icon={
             <Ionicons name="school-outline" size={24} color="#8B0000" />
@@ -1062,6 +1394,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Subject Difficulty Trend"
+          onInfoPress={() => openInfo("subjectDifficulty")}
           subtitle="Subjects identified through low assignment grades, missing submissions, and pending assignments"
           icon={<Ionicons name="book-outline" size={24} color="#8B0000" />}
         >
@@ -1088,6 +1421,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Intervention Suggestions"
+          onInfoPress={() => openInfo("suggestions")}
           subtitle="AI-generated recommendations based on institution-wide assignment performance"
           icon={<Ionicons name="medkit-outline" size={24} color="#8B0000" />}
         >
@@ -1102,6 +1436,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue="100%"
           title="Assignment Risk Population"
+          onInfoPress={() => openInfo("riskPopulation")}
           subtitle="Students identified through low assignment grades, missing assignments, and incomplete coursework"
           icon={<Ionicons name="warning-outline" size={24} color="#DC2626" />}
         >
@@ -1331,4 +1666,28 @@ const styles = StyleSheet.create({
     paddingVertical: 12, borderRadius: 12, backgroundColor: "#EBD4D4", alignItems: "center",
   },
   modalCancelText: { fontSize: 14, fontWeight: "800", color: "#7A4A4A" },
+
+  // ===== "?" INFO ICON + EXPLANATION MODAL =====
+  infoButton: { padding: 2, alignItems: "center", justifyContent: "center" },
+  summaryLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  sectionCardTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
+  statRowLabelWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 12 },
+  trendMetricLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  infoOverlay: { flex: 1, backgroundColor: "rgba(43, 17, 17, 0.45)", justifyContent: "center", alignItems: "center", padding: 16 },
+  infoSheet: { width: "100%", maxWidth: 560, maxHeight: "85%", backgroundColor: "#FFFFFF", borderRadius: 22, padding: 18 },
+  infoHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  infoHeaderIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: "#F1E0E0", alignItems: "center", justifyContent: "center" },
+  infoTitle: { fontSize: 17, fontWeight: "800", color: "#2B1111" },
+  infoSummary: { fontSize: 13, lineHeight: 19, color: "#8A6F6F", marginTop: 3 },
+  infoScroll: { marginTop: 14 },
+  infoItem: { borderWidth: 1, borderColor: "#EBD4D4", borderRadius: 16, padding: 14, backgroundColor: "#FAF5F5", marginBottom: 12 },
+  infoItemHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  infoItemLabel: { fontSize: 14, fontWeight: "800", color: "#2B1111", flexShrink: 1 },
+  infoLivePill: { backgroundColor: "#F1E0E0", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  infoLiveText: { fontSize: 12, fontWeight: "800", color: "#8B0000" },
+  infoFieldLabel: { fontSize: 10, letterSpacing: 0.6, fontWeight: "800", color: "#A07C7C", marginTop: 12 },
+  infoFormula: { fontSize: 13, lineHeight: 20, color: "#2B1111", marginTop: 4 },
+  infoBody: { fontSize: 12, lineHeight: 18, color: "#5F3B3B", marginTop: 4 },
+  infoNote: { flexDirection: "row", gap: 8, marginTop: 12, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#EBD4D4", borderRadius: 12, padding: 10 },
+  infoNoteText: { flex: 1, fontSize: 12, lineHeight: 18, color: "#5F3B3B" },
 });

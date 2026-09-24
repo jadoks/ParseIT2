@@ -9,9 +9,9 @@ export const getScorePercent = (
 ): number | null => {
   if (
     assignment.status !== 'graded' ||
-    assignment.points === undefined ||
-    assignment.maxPoints === undefined ||
-    assignment.maxPoints === 0
+    assignment.points == null ||
+    assignment.maxPoints == null ||
+    assignment.maxPoints <= 0
   ) {
     return null;
   }

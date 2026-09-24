@@ -207,12 +207,6 @@ export const buildStudentAnalytics = (
     totalGradedAssignments
   );
 
-  const scoreSeries = subjectSummaries
-    .filter((summary) => summary.gradedCount > 0)
-    .map((summary) => summary.average);
-
-  const overallTrend = getTrendValue(scoreSeries);
-
   const weakestSubject = getWeakestSubject(subjectSummaries);
   const strongestSubject = getStrongestSubject(subjectSummaries);
 
@@ -277,6 +271,14 @@ export const buildStudentAnalytics = (
         new Date().toISOString(),
     }))
     .sort((a, b) => toSafeTime(a.date) - toSafeTime(b.date));
+
+  // Overall trend is now chronological: last graded score minus first graded
+  // score across ALL of the student's graded assignments, ordered by date.
+  // (Previously it compared subject averages in course order, so the
+  // Improving/Declining label depended on how courses happened to be listed.)
+  const overallTrend = getTrendValue(
+    assignmentScoreTrend.map((point) => point.score)
+  );
 
   // Grade Distribution Buckets
   const gradeDistribution = { excellent: 0, good: 0, average: 0, needsImprovement: 0 };

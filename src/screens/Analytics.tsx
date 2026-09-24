@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { buildStudentAnalytics } from '../analytics/analyticsService';
 import {
   AnalyticsAssignment,
@@ -106,6 +109,58 @@ const formatDueDate = (dueDate?: any) => {
   return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+type InfoKey =
+  | 'overallAverage'
+  | 'predictedGrade'
+  | 'highestGrade'
+  | 'completionRate'
+  | 'subjectChart'
+  | 'gradeDistribution'
+  | 'scoreTrend'
+  | 'recentGrades'
+  | 'subjectAverage'
+  | 'subjectHighest'
+  | 'subjectLowest'
+  | 'subjectCompletion'
+  | 'subjectTrend';
+
+type InfoItem = {
+  label: string;
+  live?: string; // the value currently shown on screen
+  formula: string; // how it is computed
+  source: string; // which file/function the data comes from
+  note?: string; // caveat worth knowing
+};
+
+type InfoContent = { title: string; summary: string; items: InfoItem[] };
+
+const InfoButton = ({ onPress }: { onPress: () => void }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    accessibilityRole="button"
+    accessibilityLabel="How is this calculated?"
+    activeOpacity={0.7}
+    style={styles.infoButton}
+  >
+    <MaterialCommunityIcons name="help-circle-outline" size={17} color={COLORS.subtext} />
+  </TouchableOpacity>
+);
+
+const SectionTitle = ({ title, onInfoPress }: { title: string; onInfoPress: () => void }) => (
+  <View style={styles.sectionTitleRow}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    <InfoButton onPress={onInfoPress} />
+  </View>
+);
+
+const InfoLabel = ({ label, onInfoPress }: { label: string; onInfoPress: () => void }) => (
+  <View style={styles.infoLabelRow}>
+    <Text style={styles.subjectInfoLabel}>{label}</Text>
+    <InfoButton onPress={onInfoPress} />
+  </View>
+);
+
 const MetricCard = ({
   title,
   value,
@@ -114,6 +169,7 @@ const MetricCard = ({
   cardStyle,
   trend,
   trendDirection,
+  onInfoPress,
 }: {
   title: string;
   value: string;
@@ -122,6 +178,7 @@ const MetricCard = ({
   cardStyle?: object;
   trend?: number;
   trendDirection?: TrendDirection;
+  onInfoPress?: () => void;
 }) => (
   <View
     style={[
@@ -130,7 +187,10 @@ const MetricCard = ({
       { borderLeftColor: accentColor || COLORS.primary },
     ]}
   >
-    <Text style={styles.metricTitle}>{title}</Text>
+    <View style={styles.metricTitleRow}>
+      <Text style={[styles.metricTitle, { marginBottom: 0 }]}>{title}</Text>
+      {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
+    </View>
     <View style={styles.metricRow}>
       <Text style={styles.metricValue}>{value}</Text>
       {trend !== undefined && (
@@ -235,6 +295,9 @@ const Analytics: React.FC<AnalyticsProps> = ({
 }) => {
   const { width } = useWindowDimensions();
   const [showAllSubjects, setShowAllSubjects] = useState(false);
+  // Which "?" explanation is open (null = closed). `subject` is set for the per-subject icons.
+  const [activeInfo, setActiveInfo] = useState<{ key: InfoKey; subject?: SubjectAnalyticsSummary } | null>(null);
+  const openInfo = (key: InfoKey, subject?: SubjectAnalyticsSummary) => setActiveInfo({ key, subject });
 
   const isMobile = width < 768;
   const isTablet = width >= 768;
@@ -328,7 +391,287 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
   const hasMoreSubjects = sortedSubjectSummaries.length > 3;
   const hiddenSubjectCount = Math.max(sortedSubjectSummaries.length - 3, 0);
 
+  // ---- "?" explanations. Every `live` value is read from the same data the screen renders. ----
+  const dist = analytics.gradeDistribution;
+  const completionPct =
+    analytics.totalAssignmentsCount > 0
+      ? Math.round((analytics.totalGradedAssignments / analytics.totalAssignmentsCount) * 100)
+      : 0;
+
+  const assignmentScoreItem: InfoItem = {
+    label: 'Assignment score (%)',
+    formula:
+      'points earned ÷ max points × 100, only for assignments with status "graded" that have valid points and a max above 0.',
+    source:
+      'Raw assignments from Firebase (the `courses` prop). analyticsService.buildStudentAnalytics() uses the exact value; metrics.getScorePercent() rounds it to a whole number for averages.',
+  };
+
+  const subjectAverageItem: InfoItem = {
+    label: 'Subject average',
+    formula: 'Average of the rounded scores (%) of the graded assignments in one course.',
+    source: 'buildSubjectAnalyticsSummary() in analytics/analyticsService.ts, using metrics.getAssignmentAverage().',
+  };
+
+  const infoContent: Record<Exclude<InfoKey, 'subjectAverage' | 'subjectHighest' | 'subjectLowest' | 'subjectCompletion' | 'subjectTrend'>, InfoContent> = {
+    overallAverage: {
+      title: 'Overall Average',
+      summary: 'Your average across all subjects that have at least one graded assignment.',
+      items: [
+        assignmentScoreItem,
+        subjectAverageItem,
+        {
+          label: 'Overall average',
+          live: analytics.overallAverage > 0 ? `${Math.round(analytics.overallAverage)}%` : 'N/A',
+          formula: 'Average of your subject averages (subjects with no graded work are skipped), rounded.',
+          source: 'buildStudentAnalytics() in analytics/analyticsService.ts -> overallAverage.',
+          note: 'Each subject counts equally, no matter how many assignments it has. Values are rounded at each step.',
+        },
+        {
+          label: 'Trend badge (pts)',
+          live: `${analytics.overallTrend > 0 ? '+' : ''}${analytics.overallTrend} pts`,
+          formula: 'Your last graded score minus your first graded score, in date order (percentage points, not percent).',
+          source: 'analyticsService.buildStudentAnalytics() -> overallTrend, from assignmentScoreTrend.',
+          note: 'Arrow: ↑ above +2, ↓ below -2, → in between.',
+        },
+      ],
+    },
+    predictedGrade: {
+      title: 'Predicted Final Grade',
+      summary: 'A simple estimate of where your grade is heading based on your current standing.',
+      items: [
+        {
+          label: 'Predicted grade',
+          live: analytics.predictedFinalGrade > 0 ? `${Math.round(analytics.predictedFinalGrade)}%` : 'N/A',
+          formula:
+            'overall average − (pending × 1) − (missing × 3) + (submitted × 1), kept between 0 and 100 and rounded. Shows N/A if nothing is graded yet.',
+          source: 'metrics.getPredictedGrade(), called from buildStudentAnalytics() with your totals.',
+          note: `Right now: average ${analytics.overallAverage}%, ${analytics.totalPendingAssignments} pending, ${analytics.totalMissingAssignments} missing, ${analytics.totalSubmittedAssignments} submitted. This is a fixed-rule estimate, not a real grade forecast: each missing assignment costs 3 points, each pending costs 1, and each submitted-but-ungraded adds 1.`,
+        },
+      ],
+    },
+    highestGrade: {
+      title: 'Highest Assignment Grade',
+      summary: 'Your best single assignment score.',
+      items: [
+        assignmentScoreItem,
+        {
+          label: 'Highest assignment grade',
+          live: analytics.highestAssignmentGrade > 0 ? `${Math.round(analytics.highestAssignmentGrade)}%` : 'N/A',
+          formula: 'Maximum assignment score (%) across all graded assignments in all your courses.',
+          source: 'buildStudentAnalytics() in analytics/analyticsService.ts -> highestAssignmentGrade.',
+          note: 'Shows N/A when there are no graded assignments (or the best score is 0%).',
+        },
+      ],
+    },
+    completionRate: {
+      title: 'Completion Rate',
+      summary: 'How much of your assigned work has been graded.',
+      items: [
+        {
+          label: 'Completion rate',
+          live:
+            analytics.totalAssignmentsCount > 0
+              ? `${completionPct}%  (${analytics.totalGradedAssignments} of ${analytics.totalAssignmentsCount})`
+              : 'N/A',
+          formula: 'graded assignments ÷ total assignments × 100, rounded.',
+          source: 'totalGradedAssignments and totalAssignmentsCount, summed over all courses in buildStudentAnalytics().',
+          note: 'Only graded work counts as complete. Submitted (or late) work still waiting for a grade, pending work and missing work are counted as not complete yet.',
+        },
+      ],
+    },
+    subjectChart: {
+      title: 'Subject Average Comparison',
+      summary: 'One bar per course showing your current average in it.',
+      items: [
+        subjectAverageItem,
+        {
+          label: 'Bar label (%)',
+          live: `${analytics.subjectSummaries.length} course(s)`,
+          formula: 'The subject average, limited to 0-100 for display.',
+          source: 'subjectBarData in this file, from analytics.subjectSummaries.',
+          note: 'A course with no graded work yet has no average and shows as 0%.',
+        },
+      ],
+    },
+    gradeDistribution: {
+      title: 'Grade Distribution',
+      summary: 'How many of your graded assignments fall in each score band.',
+      items: [
+        assignmentScoreItem,
+        {
+          label: 'Score bands',
+          live: `${dist.excellent} excellent, ${dist.good} good, ${dist.average} average, ${dist.needsImprovement} needs improvement`,
+          formula: 'Excellent = 90% and above. Good = 80-89%. Average = 70-79%. Needs Improvement = below 70%. Each slice is a count of assignments, not a percentage.',
+          source: 'gradeDistribution in analyticsService.buildStudentAnalytics(), using the exact (unrounded) score of each graded assignment.',
+          note: 'Risk levels use 75% as the cut-off, so a 72% is "Average" here but still pulls a subject toward High risk.',
+        },
+      ],
+    },
+    scoreTrend: {
+      title: 'Assignment Score Trend',
+      summary: 'Your graded assignment scores from oldest to newest.',
+      items: [
+        assignmentScoreItem,
+        {
+          label: 'Each point on the line',
+          live: `${analytics.assignmentScoreTrend.length} graded assignment(s)`,
+          formula: 'One point per graded assignment, sorted by graded date (falls back to submitted date). The label shows the score rounded to a whole percent.',
+          source: 'assignmentScoreTrend in analyticsService.buildStudentAnalytics().',
+          note: 'Assignments with no date are placed at the end of the line.',
+        },
+      ],
+    },
+    recentGrades: {
+      title: 'Recent Assignment Grades',
+      summary: 'The score you earned on each graded assignment.',
+      items: [
+        assignmentScoreItem,
+        {
+          label: 'Score color',
+          live: `${analytics.recentGradedAssignments.length} graded assignment(s)`,
+          formula: 'Green = 90% and above, blue = 80-89%, amber = 70-79%, red = below 70%.',
+          source: 'recentGradedAssignments in analyticsService.buildStudentAnalytics(); colors set in this file.',
+          note: 'The list is ordered by assignment ID (newest ID first) to match the Assignments screen, not strictly by graded date.',
+        },
+      ],
+    },
+  };
+
+  const getSubjectInfo = (key: InfoKey, subject: SubjectAnalyticsSummary): InfoContent => {
+    const scope = `in ${subject.courseName}`;
+    switch (key) {
+      case 'subjectAverage':
+        return {
+          title: `Average - ${subject.courseName}`,
+          summary: `Your average ${scope}.`,
+          items: [
+            assignmentScoreItem,
+            {
+              ...subjectAverageItem,
+              live: subject.average > 0 ? `${Math.round(subject.average)}%  (${subject.gradedCount} graded)` : 'N/A',
+              note: 'Shows N/A when nothing is graded yet in this course.',
+            },
+          ],
+        };
+      case 'subjectHighest':
+        return {
+          title: `Highest Grade - ${subject.courseName}`,
+          summary: `Your best assignment score ${scope}.`,
+          items: [
+            assignmentScoreItem,
+            {
+              label: 'Highest grade',
+              live: subject.highestGrade > 0 ? `${Math.round(subject.highestGrade)}%` : 'N/A',
+              formula: 'Maximum assignment score (%) among the graded assignments in this course.',
+              source: 'buildSubjectAnalyticsSummary() in analytics/analyticsService.ts -> highestGrade.',
+              note: 'Shows N/A when the course has no graded work (or the best score is 0%).',
+            },
+          ],
+        };
+      case 'subjectLowest':
+        return {
+          title: `Lowest Grade - ${subject.courseName}`,
+          summary: `Your weakest assignment score ${scope}.`,
+          items: [
+            assignmentScoreItem,
+            {
+              label: 'Lowest grade',
+              live: subject.lowestGrade > 0 ? `${Math.round(subject.lowestGrade)}%` : 'N/A',
+              formula: 'Minimum assignment score (%) among the graded assignments in this course.',
+              source: 'buildSubjectAnalyticsSummary() in analytics/analyticsService.ts -> lowestGrade.',
+              note: 'Shows N/A when the course has no graded work, and also when your lowest score is exactly 0%.',
+            },
+          ],
+        };
+      case 'subjectCompletion':
+        return {
+          title: `Completion Rate - ${subject.courseName}`,
+          summary: `How much of the assigned work ${scope} has been graded.`,
+          items: [
+            {
+              label: 'Completion rate',
+              live:
+                subject.totalAssignments > 0
+                  ? `${subject.gradedCount}/${subject.totalAssignments} (${Math.round((subject.gradedCount / subject.totalAssignments) * 100)}%)`
+                  : 'N/A',
+              formula: 'graded assignments ÷ total assignments in this course × 100, rounded.',
+              source: 'gradedCount and totalAssignments from buildSubjectAnalyticsSummary().',
+              note: 'Only graded work counts. Submitted, pending and missing assignments are not complete yet.',
+            },
+          ],
+        };
+      default:
+        return {
+          title: `Trend - ${subject.courseName}`,
+          summary: `How your scores ${scope} have moved.`,
+          items: [
+            {
+              label: 'Trend (pts)',
+              live: `${subject.trendSymbol} ${subject.trend > 0 ? '+' : ''}${subject.trend} pts`,
+              formula: 'Last graded score minus first graded score in this course (percentage points, not percent).',
+              source: 'metrics.getTrendValue() over getAssignmentScoreSeries(), called from buildSubjectAnalyticsSummary().',
+              note: 'Arrow: ↑ above +2, ↓ below -2, → in between. Scores are taken in the order the course lists its assignments, and you need at least 2 graded scores.',
+            },
+          ],
+        };
+    }
+  };
+
+  const activeContent: InfoContent | null = activeInfo
+    ? activeInfo.subject
+      ? getSubjectInfo(activeInfo.key, activeInfo.subject)
+      : infoContent[activeInfo.key as keyof typeof infoContent]
+    : null;
+
   return (
+    <>
+      <Modal visible={activeContent !== null} transparent animationType="fade" onRequestClose={() => setActiveInfo(null)} statusBarTranslucent>
+        <Pressable style={styles.infoOverlay} onPress={() => setActiveInfo(null)}>
+          <Pressable style={styles.infoSheet} onPress={() => {}}>
+            {activeContent ? (
+              <>
+                <View style={styles.infoHeader}>
+                  <View style={styles.infoHeaderIcon}>
+                    <MaterialCommunityIcons name="help-circle-outline" size={22} color={COLORS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoTitle}>{activeContent.title}</Text>
+                    <Text style={styles.infoSummary}>{activeContent.summary}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setActiveInfo(null)} hitSlop={10} accessibilityLabel="Close explanation">
+                    <MaterialCommunityIcons name="close" size={22} color={COLORS.text} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.infoScroll} showsVerticalScrollIndicator>
+                  {activeContent.items.map((item) => (
+                    <View key={item.label} style={styles.infoItem}>
+                      <View style={styles.infoItemHeader}>
+                        <Text style={styles.infoItemLabel}>{item.label}</Text>
+                        {item.live ? (
+                          <View style={styles.infoLivePill}>
+                            <Text style={styles.infoLiveText}>{item.live}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.infoFieldLabel}>HOW IT IS COMPUTED</Text>
+                      <Text style={styles.infoFormula}>{item.formula}</Text>
+                      <Text style={styles.infoFieldLabel}>WHERE THE DATA COMES FROM</Text>
+                      <Text style={styles.infoBody}>{item.source}</Text>
+                      {item.note ? (
+                        <View style={styles.infoNote}>
+                          <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.info} />
+                          <Text style={styles.infoNoteText}>{item.note}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Hero Section */}
       <View style={styles.heroCard}>
@@ -353,6 +696,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           title="Overall Average"
           value={analytics.overallAverage > 0 ? `${Math.round(analytics.overallAverage)}%` : 'N/A'}
           subtitle="Across graded assignments"
+          onInfoPress={() => openInfo('overallAverage')}
           accentColor={strongestColor}
           cardStyle={metricCardResponsiveStyle}
           trend={analytics.overallTrend}
@@ -362,6 +706,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           title="Predicted Final Grade"
           value={analytics.predictedFinalGrade > 0 ? `${Math.round(analytics.predictedFinalGrade)}%` : 'N/A'}
           subtitle="Based on current academic output"
+          onInfoPress={() => openInfo('predictedGrade')}
           accentColor={COLORS.info}
           cardStyle={metricCardResponsiveStyle}
         />
@@ -369,6 +714,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           title="Highest Assignment Grade"
           value={analytics.highestAssignmentGrade > 0 ? `${Math.round(analytics.highestAssignmentGrade)}%` : 'N/A'}
           subtitle="Across all graded assignments"
+          onInfoPress={() => openInfo('highestGrade')}
           accentColor={COLORS.success}
           cardStyle={metricCardResponsiveStyle}
         />
@@ -380,6 +726,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
               : 'N/A'
           }
           subtitle={`${analytics.totalGradedAssignments} / ${analytics.totalAssignmentsCount} assignments`}
+          onInfoPress={() => openInfo('completionRate')}
           accentColor={COLORS.primary}
           cardStyle={metricCardResponsiveStyle}
         />
@@ -403,7 +750,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
       <View style={[styles.chartGrid, isChartGrid && styles.chartGridLarge]}>
         {/* Subject Average Comparison */}
         <View style={[styles.sectionCard, isChartGrid && styles.chartCardHalf]}>
-          <Text style={styles.sectionTitle}>Subject Average Comparison</Text>
+          <SectionTitle title="Subject Average Comparison" onInfoPress={() => openInfo('subjectChart')} />
           <Text style={styles.sectionCaption}>Bar chart of your current average per course</Text>
           <View style={styles.chartContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator bounces contentContainerStyle={styles.chartScrollContent}>
@@ -429,7 +776,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
 
         {/* Grade Distribution */}
         <View style={[styles.sectionCard, isChartGrid && styles.chartCardHalf]}>
-          <Text style={styles.sectionTitle}>Grade Distribution</Text>
+          <SectionTitle title="Grade Distribution" onInfoPress={() => openInfo('gradeDistribution')} />
           <Text style={styles.sectionCaption}>Breakdown of your grades across all assignments</Text>
           <View style={styles.chartContainerCentered}>
             <PieChart
@@ -459,7 +806,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
 
         {/* Assignment Score Trend */}
         <View style={[styles.sectionCard, isChartGrid && styles.chartCardHalf]}>
-          <Text style={styles.sectionTitle}>Assignment Score Trend</Text>
+          <SectionTitle title="Assignment Score Trend" onInfoPress={() => openInfo('scoreTrend')} />
           <Text style={styles.sectionCaption}>Line chart of your scores in chronological order</Text>
           <View style={styles.chartContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator bounces contentContainerStyle={styles.chartScrollContent}>
@@ -509,7 +856,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
 
             {/* Recent Assignment Grades */}
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Recent Assignment Grades</Text>
+        <SectionTitle title="Recent Assignment Grades" onInfoPress={() => openInfo('recentGrades')} />
         <Text style={styles.sectionCaption}>Your latest graded assignments</Text>
         {analytics.recentGradedAssignments.length === 0 ? (
           <View style={styles.emptyStateCard}>
@@ -654,27 +1001,30 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                     <View style={[styles.subjectRiskBadge, { backgroundColor: `${riskColor}18` }]}>
                       <Text style={[styles.subjectRiskBadgeText, { color: riskColor }]}>{subject.riskLevel}</Text>
                     </View>
-                    <Text style={[styles.subjectTrend, { color: getTrendColor(subject.trendDirection) }]}>
-                      {subject.trendSymbol} {subject.trend > 0 ? '+' : ''}{subject.trend}
-                    </Text>
+                    <View style={styles.infoLabelRow}>
+                      <Text style={[styles.subjectTrend, { color: getTrendColor(subject.trendDirection) }]}>
+                        {subject.trendSymbol} {subject.trend > 0 ? '+' : ''}{subject.trend}
+                      </Text>
+                      <InfoButton onPress={() => openInfo('subjectTrend', subject)} />
+                    </View>
                   </View>
                 </View>
                 <View style={styles.subjectDivider} />
                 <View style={styles.subjectInfoGrid}>
                   <View style={styles.subjectInfoItem}>
-                    <Text style={styles.subjectInfoLabel}>Average</Text>
+                    <InfoLabel label="Average" onInfoPress={() => openInfo('subjectAverage', subject)} />
                     <Text style={styles.subjectInfoValue}>{subject.average > 0 ? `${Math.round(subject.average)}%` : 'N/A'}</Text>
                   </View>
                   <View style={styles.subjectInfoItem}>
-                    <Text style={styles.subjectInfoLabel}>Highest Grade</Text>
+                    <InfoLabel label="Highest Grade" onInfoPress={() => openInfo('subjectHighest', subject)} />
                     <Text style={styles.subjectInfoValue}>{subject.highestGrade > 0 ? `${Math.round(subject.highestGrade)}%` : 'N/A'}</Text>
                   </View>
                   <View style={styles.subjectInfoItem}>
-                    <Text style={styles.subjectInfoLabel}>Lowest Grade</Text>
+                    <InfoLabel label="Lowest Grade" onInfoPress={() => openInfo('subjectLowest', subject)} />
                     <Text style={styles.subjectInfoValue}>{subject.lowestGrade > 0 ? `${Math.round(subject.lowestGrade)}%` : 'N/A'}</Text>
                   </View>
                   <View style={styles.subjectInfoItem}>
-                    <Text style={styles.subjectInfoLabel}>Completion Rate</Text>
+                    <InfoLabel label="Completion Rate" onInfoPress={() => openInfo('subjectCompletion', subject)} />
                     <Text style={styles.subjectInfoValue}>
                       {subject.totalAssignments > 0
                         ? `${subject.gradedCount}/${subject.totalAssignments} (${Math.round((subject.gradedCount / subject.totalAssignments) * 100)}%)`
@@ -700,6 +1050,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
         ))}
       </View>
     </ScrollView>
+    </>
   );
 };
 
@@ -789,4 +1140,25 @@ const styles = StyleSheet.create({
   recommendationRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   recommendationDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: COLORS.primary, marginTop: 6, marginRight: 10 },
   recommendationText: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: '#374151', lineHeight: 22 },
+  infoButton: { padding: 2, alignItems: 'center', justifyContent: 'center' },
+  metricTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  infoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  infoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  infoSheet: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: COLORS.surface, borderRadius: 22, padding: 18 },
+  infoHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  infoHeaderIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#F7EDED', alignItems: 'center', justifyContent: 'center' },
+  infoTitle: { fontFamily: FONT_TITLE, color: COLORS.text, fontSize: 17, fontWeight: WEIGHT_TITLE },
+  infoSummary: { fontFamily: FONT_BODY, color: COLORS.subtext, fontSize: 13, lineHeight: 19, marginTop: 3 },
+  infoScroll: { marginTop: 14 },
+  infoItem: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 16, padding: 14, backgroundColor: '#FBFCFE', marginBottom: 12 },
+  infoItemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  infoItemLabel: { fontFamily: FONT_TITLE, color: COLORS.text, fontSize: 14, fontWeight: WEIGHT_TITLE, flexShrink: 1 },
+  infoLivePill: { backgroundColor: '#EAF2FF', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  infoLiveText: { fontFamily: FONT_BODY, color: COLORS.info, fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
+  infoFieldLabel: { fontFamily: FONT_BODY, color: COLORS.subtext, fontSize: 10, letterSpacing: 0.6, fontWeight: WEIGHT_EMPHASIS, marginTop: 12 },
+  infoFormula: { fontFamily: FONT_BODY, color: COLORS.text, fontSize: 13, lineHeight: 20, marginTop: 4 },
+  infoBody: { fontFamily: FONT_BODY, color: '#374151', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  infoNote: { flexDirection: 'row', gap: 8, marginTop: 12, backgroundColor: '#EAF2FF', borderRadius: 12, padding: 10 },
+  infoNoteText: { fontFamily: FONT_BODY, flex: 1, color: '#374151', fontSize: 12, lineHeight: 18 },
 });

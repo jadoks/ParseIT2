@@ -14,6 +14,7 @@ import {
 import { LineChart } from "react-native-chart-kit";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
+import { getScorePercent } from "../analytics/metrics";
 import { AssignmentCourse } from "../screens/Assignments";
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -44,6 +45,7 @@ type StudentInsight = {
   studentName: string;
   overallAverage: number;
   totalPendingAssignments: number;
+  totalMissingAssignments: number;
   totalSubmittedAssignments: number;
   totalGradedAssignments: number;
   riskLevel: string;
@@ -109,6 +111,54 @@ const insightTone = {
   info: { bg: palette.blueSoft, color: palette.blue },
 };
 
+type MetricKey =
+  | "classMean"
+  | "passingRate"
+  | "completionRate"
+  | "attentionIndex"
+  | "highestScore"
+  | "lowestScore"
+  | "trendGraph"
+  | "aiInsights"
+  | "classOverview"
+  | "topics"
+  | "topStudents"
+  | "percentile"
+  | "riskStudents";
+
+type MetricInfoItem = {
+  label: string;
+  live?: string; // the live number/value currently shown on screen
+  formula: string; // how it is computed
+  source: string; // which file/function the data comes from
+  note?: string; // caveat worth knowing
+};
+
+type MetricInfo = {
+  title: string;
+  summary: string;
+  items: MetricInfoItem[];
+};
+
+const InfoButton = ({
+  onPress,
+  color = palette.textMuted,
+}: {
+  onPress: () => void;
+  color?: string;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    accessibilityRole="button"
+    accessibilityLabel="How is this calculated?"
+    style={styles.infoButton}
+    activeOpacity={0.7}
+  >
+    <MaterialCommunityIcons name="help-circle-outline" size={17} color={color} />
+  </TouchableOpacity>
+);
+
 const formatPercentWidth = (value: number, maxValue: number): `${number}%` => {
   if (maxValue <= 0) return "0%";
   const safe = Math.max((value / maxValue) * 100, value > 0 ? 4 : 0);
@@ -146,20 +196,12 @@ const getNumericTime = (value: any, fallback = 0) => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+// Delegates to metrics.getScorePercent so this screen and analyticsService.ts
+// always calculate an assignment's percentage the same way. Assignments with
+// no valid max points are skipped (they used to be silently treated as /100).
 const getAssignmentPercent = (assignment: any): number | null => {
-  if (
-    assignment?.status !== "graded" ||
-    typeof assignment?.points !== "number"
-  ) {
-    return null;
-  }
-
-  const maxPoints =
-    typeof assignment?.maxPoints === "number" && assignment.maxPoints > 0
-      ? assignment.maxPoints
-      : 100;
-
-  return Math.round((assignment.points / maxPoints) * 100);
+  if (typeof assignment?.points !== "number") return null;
+  return getScorePercent(assignment);
 };
 
 const getRiskPalette = (risk: string) => {
@@ -230,17 +272,22 @@ const SectionCard = ({
   rightNode,
   children,
   style,
+  onInfoPress,
 }: {
   title: string;
   subtitle?: string;
   rightNode?: React.ReactNode;
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  onInfoPress?: () => void;
 }) => (
   <View style={[styles.sectionCard, style]}>
     <View style={styles.sectionHeader}>
       <View style={styles.sectionHeaderText}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
+        </View>
         {subtitle ? (
           <Text style={styles.sectionSubtitle}>{subtitle}</Text>
         ) : null}
@@ -258,6 +305,7 @@ const MetricCard = ({
   icon,
   accent,
   softBg,
+  onInfoPress,
 }: {
   title: string;
   value: string | number;
@@ -265,12 +313,14 @@ const MetricCard = ({
   icon: string;
   accent: string;
   softBg: string;
+  onInfoPress?: () => void;
 }) => (
   <View style={styles.metricCard}>
     <View style={styles.metricTopRow}>
       <View style={[styles.metricIconWrap, { backgroundColor: softBg }]}>
         <MaterialCommunityIcons name={icon} size={22} color={accent} />
       </View>
+      {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
     </View>
     <Text style={styles.metricValue}>{value}</Text>
     <Text style={styles.metricTitle}>{title}</Text>
@@ -319,63 +369,69 @@ const CircularMiniStat = ({
   accent,
   softBg,
   icon,
+  onInfoPress,
 }: {
   value: string | number;
   label: string;
   accent: string;
   softBg: string;
   icon: string;
+  onInfoPress?: () => void;
 }) => (
   <View style={styles.miniStatCard}>
-    <View style={[styles.miniStatIcon, { backgroundColor: softBg }]}>
-      <MaterialCommunityIcons name={icon} size={18} color={accent} />
+    <View style={styles.miniStatTopRow}>
+      <View style={[styles.miniStatIcon, { backgroundColor: softBg }]}>
+        <MaterialCommunityIcons name={icon} size={18} color={accent} />
+      </View>
+      {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
     </View>
     <Text style={styles.miniStatValue}>{value}</Text>
     <Text style={styles.miniStatLabel}>{label}</Text>
   </View>
 );
 
-const insightReason = ({
-  average,
-  pending,
-  trend,
-  graded,
-}: {
+type InsightArgs = {
   average: number;
   pending: number;
+  missing: number;
   trend: number;
   graded: number;
-}) => {
-  if (graded === 0) return "No graded assignments yet. Assignment risk cannot be evaluated.";
-  if (average < 75 && pending >= 2 && trend < 0)
-    return "Low assignment average, multiple missing assignments, and declining trend";
-  if (average < 75 && pending >= 2)
+};
+
+// Mirrors riskEngine.getRiskLevel/getRiskReason (average < 75 or 3+ missing =
+// High; average < 85, 1+ missing or 3+ pending = Moderate) so the written
+// reason always agrees with the risk level shown next to it.
+const insightReason = ({ average, pending, missing, trend, graded }: InsightArgs) => {
+  if (graded === 0 && missing === 0)
+    return "No graded assignments yet. Assignment risk cannot be evaluated.";
+  if (graded === 0)
+    return "Missing assignments and no graded work recorded yet";
+  if (average < 75 && missing >= 3 && trend < 0)
+    return "Low assignment average, repeated missing assignments, and declining trend";
+  if (average < 75 && missing >= 3)
     return "Low assignment average and repeated missing assignments";
   if (average < 75) return "Assignment average is below passing threshold";
-  if (pending >= 2) return "Several missing assignments need completion";
+  if (missing >= 3) return "Multiple missing assignments detected";
+  if (missing >= 1) return "Missing assignments need completion";
+  if (pending >= 3) return "Several pending assignments may become missing soon";
+  if (average < 85) return "Performance is fair but still needs improvement";
   if (trend < 0) return "Recent assignment performance trend is declining";
   return "Monitor assignment consistency and maintain current progress";
 };
 
-const insightIntervention = ({
-  average,
-  pending,
-  trend,
-  graded,
-}: {
-  average: number;
-  pending: number;
-  trend: number;
-  graded: number;
-}) => {
-  if (graded === 0)
+const insightIntervention = ({ average, pending, missing, trend, graded }: InsightArgs) => {
+  if (graded === 0 && missing === 0)
     return "Wait for graded assignments before assigning intervention.";
-  if (average < 75 && pending >= 2)
+  if (graded === 0)
+    return "Follow up on missing assignments and set short-term deadlines.";
+  if (average < 75 && missing >= 1)
     return "Schedule 1:1 remediation and set an assignment submission recovery plan.";
   if (average < 75)
     return "Provide targeted tutoring and assignment reassessment support.";
-  if (pending >= 2)
+  if (missing >= 1)
     return "Follow up on missing assignments and set short-term deadlines.";
+  if (pending >= 3)
+    return "Remind the student to submit pending assignments before their due dates.";
   if (trend < 0)
     return "Check recent learning barriers and monitor the next assignment.";
   return "Sustain assignment progress with light-touch monitoring.";
@@ -390,6 +446,8 @@ export default function TeacherAnalytics({
   students = [],
 }: TeacherAnalyticsProps) {
   const [showClassDropdown, setShowClassDropdown] = useState(false);
+  // Which "? how is this calculated" explanation is open (null = closed)
+  const [activeInfo, setActiveInfo] = useState<MetricKey | null>(null);
   const classButtonRef = useRef<any>(null);
   // Real on-screen coordinates of the trigger button, captured right before
   // opening. Used to anchor the large-screen dropdown, which now renders in
@@ -522,11 +580,31 @@ export default function TeacherAnalytics({
     [summary.studentRows],
   );
 
+  const totalGraded = useMemo(
+    () =>
+      summary.studentRows.reduce(
+        (sum, student) => sum + student.totalGradedAssignments,
+        0,
+      ),
+    [summary.studentRows],
+  );
+
+  const totalMissing = useMemo(
+    () =>
+      summary.studentRows.reduce(
+        (sum, student) => sum + student.totalMissingAssignments,
+        0,
+      ),
+    [summary.studentRows],
+  );
+
+  // Completed work (graded + submitted) against the full assigned workload
+  // (graded + submitted + pending + missing).
   const completionRate = useMemo(() => {
-    const total = totalPending + totalSubmitted;
-    if (total === 0) return 0;
-    return Math.round((totalSubmitted / total) * 100);
-  }, [totalPending, totalSubmitted]);
+    const workload = totalGraded + totalSubmitted + totalPending + totalMissing;
+    if (workload === 0) return 0;
+    return Math.round(((totalGraded + totalSubmitted) / workload) * 100);
+  }, [totalGraded, totalSubmitted, totalPending, totalMissing]);
 
   const studentInsights = useMemo<StudentInsight[]>(() => {
     const baseRows = filteredStudents.map((student) => {
@@ -559,6 +637,7 @@ export default function TeacherAnalytics({
         .filter((value): value is number => value !== null);
       const average = row?.overallAverage ?? 0;
       const pending = row?.totalPendingAssignments ?? 0;
+      const missing = row?.totalMissingAssignments ?? 0;
       const graded = row?.totalGradedAssignments ?? gradedAssignments.length;
       const trendNumber =
         typeof row?.overallTrend === "number" ? row.overallTrend : 0;
@@ -571,6 +650,7 @@ export default function TeacherAnalytics({
           : "Unassigned",
         overallAverage: average,
         totalPendingAssignments: row?.totalPendingAssignments ?? 0,
+        totalMissingAssignments: missing,
         totalSubmittedAssignments: row?.totalSubmittedAssignments ?? 0,
         totalGradedAssignments: graded,
         riskLevel: row?.riskLevel ?? (graded === 0 ? "No Data" : "Low"),
@@ -578,10 +658,11 @@ export default function TeacherAnalytics({
         latestGrade: latestGraded ? getAssignmentPercent(latestGraded) : null,
         highestScore: scores.length ? Math.max(...scores) : null,
         lowestScore: scores.length ? Math.min(...scores) : null,
-        riskReason: insightReason({ average, pending, trend: trendNumber, graded }),
+        riskReason: insightReason({ average, pending, missing, trend: trendNumber, graded }),
         recommendedIntervention: insightIntervention({
           average,
           pending,
+          missing,
           trend: trendNumber,
           graded,
         }),
@@ -590,16 +671,21 @@ export default function TeacherAnalytics({
       };
     });
 
-    const sortedDescending = [...baseRows].sort(
-      (a, b) => b.overallAverage - a.overallAverage,
+    // Percentile/rank only compare students who actually have graded work, so
+    // "No Data" students no longer count as 0% and drag everyone's P value.
+    const evaluatedRows = baseRows.filter(
+      (student) => student.totalGradedAssignments > 0,
     );
-    const total = sortedDescending.length;
+    const total = evaluatedRows.length;
 
     return baseRows.map((student) => {
-      const betterCount = sortedDescending.filter(
+      if (student.totalGradedAssignments === 0) {
+        return { ...student, percentileRank: 0, rank: total + 1 };
+      }
+      const betterCount = evaluatedRows.filter(
         (item) => item.overallAverage > student.overallAverage,
       ).length;
-      const lowerOrEqualCount = sortedDescending.filter(
+      const lowerOrEqualCount = evaluatedRows.filter(
         (item) => item.overallAverage <= student.overallAverage,
       ).length;
       const rank = betterCount + 1;
@@ -741,8 +827,10 @@ export default function TeacherAnalytics({
       .sort((a, b) => a.average - b.average);
   }, [allAssignments]);
 
+  // Topics with no graded work yet have no average, so they are not ranked
+  // (they used to show as 0% and crowd out real weak topics).
   const weakTopics = useMemo(
-    () => topicSummaries.slice(0, 5),
+    () => topicSummaries.filter((topic) => topic.gradedCount > 0).slice(0, 5),
     [topicSummaries],
   );
 
@@ -1013,6 +1101,269 @@ export default function TeacherAnalytics({
     weakTopics,
   ]);
 
+  // Explanations shown by the "?" icons. Every `live` value is read from the
+  // same variables the dashboard renders, so the modal always matches the screen.
+  const metricInfo = useMemo<Record<MetricKey, MetricInfo>>(() => {
+    const evaluated = studentInsights.filter(
+      (student) => student.totalGradedAssignments > 0,
+    );
+    const passed = evaluated.filter(
+      (student) => student.overallAverage >= 75,
+    ).length;
+    const evaluatedForRisk = summary.totalStudents - (summary.noDataCount ?? 0);
+
+    const assignmentPercent: MetricInfoItem = {
+      label: "Step 1 - Assignment score (%)",
+      formula:
+        "points earned ÷ max points × 100, only for assignments with status \"graded\". Assignments with no valid max points are skipped.",
+      source:
+        "Raw assignments passed in through the `students` prop (from Firebase). Calculated by getScorePercent() in analytics/metrics.ts (the component's getAssignmentPercent() calls it, so both places always agree).",
+    };
+
+    const studentAverage: MetricInfoItem = {
+      label: "Step 2 - Student overall average",
+      formula:
+        "Average of the student's assignment scores per subject, then the average of those subject averages (subjects with no graded work are skipped). Rounded to a whole number.",
+      source:
+        "buildSubjectAnalyticsSummary() -> buildStudentAnalytics() -> buildTeacherStudentRow() in analytics/analyticsService.ts, using average() and getAssignmentAverage() from analytics/metrics.ts.",
+      note: "Each subject counts equally, no matter how many assignments it has, and values are rounded at every step.",
+    };
+
+    return {
+      classMean: {
+        title: "Class Assignment Mean",
+        summary:
+          "The average of every student's overall assignment average in the selected class.",
+        items: [
+          assignmentPercent,
+          studentAverage,
+          {
+            label: "Step 3 - Class mean",
+            live: classHealth === "No Data" ? "No Data" : `${summary.classAverage}%`,
+            formula:
+              "Average of all students' overall averages. Students with 0 graded assignments are excluded.",
+            source:
+              "buildTeacherAnalyticsSummary() in analytics/analyticsService.ts -> summary.classAverage.",
+            note: `Based on ${evaluated.length} of ${summary.totalStudents} student(s) that have graded work.`,
+          },
+        ],
+      },
+      passingRate: {
+        title: "Assignment Passing Rate",
+        summary: "The share of evaluated students whose overall average is 75% or higher.",
+        items: [
+          {
+            label: "Passing rate",
+            live: `${passingRate}%  (${passed} of ${evaluated.length})`,
+            formula:
+              "students with overall average >= 75 ÷ students with at least 1 graded assignment × 100, rounded.",
+            source:
+              "studentInsights (TeacherAnalytics.tsx) built from summary.studentRows, i.e. each student's overall average from analyticsService.ts. 75 is the same threshold riskEngine.ts uses for 'High' risk.",
+            note: "Students with no graded work are left out of both numbers.",
+          },
+        ],
+      },
+      completionRate: {
+        title: "Assignment Completion Rate",
+        summary: "How much of the total assigned workload has been completed.",
+        items: [
+          {
+            label: "Completion rate",
+            live: `${completionRate}%  (${totalGraded + totalSubmitted} of ${totalGraded + totalSubmitted + totalPending + totalMissing})`,
+            formula:
+              "(graded + submitted) ÷ (graded + submitted + pending + missing) × 100, rounded.",
+            source:
+              "Totals summed from summary.studentRows (analyticsService.ts). 'Submitted' counts status submitted or late. 'Pending' is not-yet-due work; overdue pending work is reclassified as 'missing' by normalizeAssignmentStatus() in metrics.ts.",
+            note: `Currently ${totalGraded} graded, ${totalSubmitted} submitted, ${totalPending} pending, ${totalMissing} missing.`,
+          },
+        ],
+      },
+      attentionIndex: {
+        title: "Attention Index",
+        summary: "How heavy the class's intervention load is, from 0% to 100%.",
+        items: [
+          {
+            label: "Attention index",
+            live: `${attentionIndex}%  (${summary.highRiskCount} high, ${summary.moderateRiskCount} moderate, ${evaluatedForRisk} evaluated)`,
+            formula:
+              "(High-risk students × 2 + Moderate-risk students) ÷ (evaluated students × 2) × 100, rounded. Evaluated = total students minus 'No Data' students.",
+            source:
+              "Risk counts come from summary in buildTeacherAnalyticsSummary() (analyticsService.ts). Each student's level comes from getRiskLevel() in analytics/riskEngine.ts.",
+            note: "Risk level rules: High = average < 75 or 3+ missing. Moderate = average < 85, or 1+ missing, or 3+ pending. Otherwise Low. No Data = nothing graded and nothing missing. 100% means every evaluated student is High risk.",
+          },
+        ],
+      },
+      highestScore: {
+        title: "Highest Assignment Score",
+        summary: "The best single assignment score in the selected scope.",
+        items: [
+          {
+            label: "Highest score",
+            live: `${classHighestScore}%`,
+            formula: "Maximum of all graded assignment scores (%) across all students and subjects in scope.",
+            source:
+              "Computed directly in TeacherAnalytics.tsx (classHighestScore) from the raw assignments, using getAssignmentPercent(). It does not go through analyticsService.ts.",
+          },
+        ],
+      },
+      lowestScore: {
+        title: "Lowest Assignment Score",
+        summary: "The weakest single assignment score in the selected scope.",
+        items: [
+          {
+            label: "Lowest score",
+            live: `${classLowestScore}%`,
+            formula: "Minimum of all graded assignment scores (%) across all students and subjects in scope.",
+            source:
+              "Computed directly in TeacherAnalytics.tsx (classLowestScore) from the raw assignments, using getAssignmentPercent().",
+          },
+        ],
+      },
+      trendGraph: {
+        title: "Performance Trend",
+        summary: "Class-wide average score over time, and how much it changed.",
+        items: [
+          {
+            label: "Each point on the line",
+            live: `${performanceTrend.length} point(s)`,
+            formula:
+              "Graded assignments are sorted by graded date (falls back to submitted date, then due date) and grouped by calendar day. Each point is the average score (%) of that day's graded assignments. Only the latest 6 points are shown.",
+            source:
+              "performanceTrend in TeacherAnalytics.tsx, from the raw assignments of all students in scope.",
+          },
+          {
+            label: "Change badge (pts)",
+            live: `${trendDelta >= 0 ? "+" : ""}${trendDelta} pts`,
+            formula: "Last point's average minus first point's average (percentage points, not percent).",
+            source: "trendDelta in TeacherAnalytics.tsx.",
+            note: "Needs at least 2 points, otherwise it shows 0.",
+          },
+        ],
+      },
+      aiInsights: {
+        title: "AI-Generated Insights",
+        summary: "Plain-language messages produced from the numbers on this dashboard.",
+        items: [
+          {
+            label: "Where the percentages come from",
+            live: `Attention ${attentionIndex}%, trend ${trendDelta >= 0 ? "+" : ""}${trendDelta} pts`,
+            formula:
+              "Rule-based: trend >= +5 pts is positive, <= -5 pts is declining; attention index >= 20% is 'high load'; the lowest topic average and the top-priority student's average are quoted as-is.",
+            source:
+              "academicInsights in TeacherAnalytics.tsx, using attentionIndex, trendDelta, weakTopics and atRiskStudents (see their own '?' icons).",
+            note: "These insights are generated by fixed rules in the component, not by a live AI model.",
+          },
+        ],
+      },
+      classOverview: {
+        title: "Class Overview",
+        summary: "How many students fall in each risk level and each average range.",
+        items: [
+          {
+            label: "Risk bars",
+            formula:
+              "Count of students per risk level. Bar width = count ÷ total students × 100.",
+            source: "summary.noDataCount / highRiskCount / moderateRiskCount / lowRiskCount from analyticsService.ts, levels from riskEngine.getRiskLevel().",
+          },
+          {
+            label: "Grade range bars",
+            formula:
+              "Each student's overall average is placed in 90-100, 80-89, 75-79 or Below 75. Students with no graded work are not counted. Bar width = count ÷ total students × 100.",
+            source: "gradeBuckets in TeacherAnalytics.tsx, using each student's overall average (Step 2 of Class Mean).",
+          },
+        ],
+      },
+      topics: {
+        title: "Lowest Performing Topics",
+        summary: "Topics with the lowest average assignment score.",
+        items: [
+          {
+            label: "Topic average (%)",
+            live: weakTopics[0] ? `${weakTopics[0].topic}: ${weakTopics[0].average}%` : undefined,
+            formula:
+              "Assignments are grouped by topic (falls back to the assignment title, then 'Uncategorized'). Topic average = average of the graded scores (%) in that topic across all students. The 5 lowest are shown.",
+            source: "topicSummaries in TeacherAnalytics.tsx, from the raw assignments.",
+            note: "Only topics with at least 1 graded assignment are ranked. Bars turn red below 75%.",
+          },
+        ],
+      },
+      topStudents: {
+        title: "Top Performing Students",
+        summary: "The five students with the highest overall assignment average.",
+        items: [
+          studentAverage,
+          {
+            label: "Ranking",
+            live: `${topStudents.length} student(s) listed`,
+            formula:
+              "Students with at least 1 graded assignment, sorted by overall average, highest first. Rank = 1 + number of students with a strictly higher average, so ties share a rank.",
+            source: "topStudents and studentInsights in TeacherAnalytics.tsx.",
+          },
+        ],
+      },
+      percentile: {
+        title: "Percentile Ranking",
+        summary: "Where each student stands compared with the other evaluated students in the selected class.",
+        items: [
+          {
+            label: "Assignment average (%)",
+            formula: "The student's overall average (Step 2 of Class Mean).",
+            source: "summary.studentRows from analyticsService.ts.",
+          },
+          {
+            label: "Percentile (P)",
+            live: `${studentInsights.filter((s) => s.totalGradedAssignments > 0).length} evaluated student(s)`,
+            formula:
+              "students whose average is <= this student's average ÷ evaluated students × 100, rounded. P80 means the student is at or above 80% of the group. The bar width equals this value.",
+            source: "studentInsights in TeacherAnalytics.tsx.",
+            note: "Students with no graded work are not part of the comparison. They show 'No Data' and no rank.",
+          },
+        ],
+      },
+      riskStudents: {
+        title: "Assignment Risk Students",
+        summary: "Students flagged High or Moderate, with the numbers behind each flag.",
+        items: [
+          {
+            label: "Assignment Average (%)",
+            formula: "The student's overall average (Step 2 of Class Mean).",
+            source: "summary.studentRows from analyticsService.ts.",
+          },
+          {
+            label: "Percentile (P)",
+            formula: "Same as the Percentile Ranking card: evaluated students at or below this average ÷ evaluated students × 100.",
+            source: "studentInsights in TeacherAnalytics.tsx.",
+          },
+          {
+            label: "Risk level, reason and trend chip",
+            live: `${atRiskStudents.length} flagged`,
+            formula:
+              "Level comes from riskEngine.getRiskLevel() (High: average < 75 or 3+ missing; Moderate: average < 85, 1+ missing, or 3+ pending). The written reason uses the same thresholds. Trend = last graded score minus first graded score, in date order; above 0 is Improving, below 0 is Declining.",
+            source: "riskEngine.ts, analyticsService.buildStudentAnalytics() (overallTrend), and insightReason() in this file.",
+          },
+        ],
+      },
+    };
+  }, [
+    studentInsights,
+    summary,
+    classHealth,
+    passingRate,
+    completionRate,
+    totalSubmitted,
+    totalPending,
+    totalGraded,
+    totalMissing,
+    attentionIndex,
+    classHighestScore,
+    classLowestScore,
+    performanceTrend,
+    trendDelta,
+    weakTopics,
+    topStudents,
+    atRiskStudents,
+  ]);
+
   const chartData = useMemo(() => {
     const fallback = performanceTrend.length
       ? performanceTrend
@@ -1030,6 +1381,92 @@ export default function TeacherAnalytics({
 
   return (
     <>
+      {/* "?" explanation modal - shared by every info icon on this screen */}
+      <Modal
+        visible={activeInfo !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveInfo(null)}
+        statusBarTranslucent
+      >
+        <Pressable
+          style={styles.infoOverlay}
+          onPress={() => setActiveInfo(null)}
+        >
+          <Pressable style={styles.infoSheet} onPress={() => {}}>
+            {activeInfo ? (
+              <>
+                <View style={styles.infoHeader}>
+                  <View style={styles.infoHeaderIcon}>
+                    <MaterialCommunityIcons
+                      name="help-circle-outline"
+                      size={22}
+                      color={palette.primary}
+                    />
+                  </View>
+                  <View style={styles.infoHeaderText}>
+                    <Text style={styles.infoTitle}>
+                      {metricInfo[activeInfo].title}
+                    </Text>
+                    <Text style={styles.infoSummary}>
+                      {metricInfo[activeInfo].summary}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setActiveInfo(null)}
+                    hitSlop={10}
+                    accessibilityLabel="Close explanation"
+                  >
+                    <MaterialCommunityIcons
+                      name="close"
+                      size={22}
+                      color={palette.text}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  style={styles.infoScroll}
+                  showsVerticalScrollIndicator
+                >
+                  {metricInfo[activeInfo].items.map((item) => (
+                    <View key={item.label} style={styles.infoItem}>
+                      <View style={styles.infoItemHeader}>
+                        <Text style={styles.infoItemLabel}>{item.label}</Text>
+                        {item.live ? (
+                          <View style={styles.infoLivePill}>
+                            <Text style={styles.infoLiveText}>{item.live}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      <Text style={styles.infoFieldLabel}>HOW IT IS COMPUTED</Text>
+                      <Text style={styles.infoFormula}>{item.formula}</Text>
+
+                      <Text style={styles.infoFieldLabel}>
+                        WHERE THE DATA COMES FROM
+                      </Text>
+                      <Text style={styles.infoBody}>{item.source}</Text>
+
+                      {item.note ? (
+                        <View style={styles.infoNote}>
+                          <MaterialCommunityIcons
+                            name="information-outline"
+                            size={16}
+                            color={palette.blue}
+                          />
+                          <Text style={styles.infoNoteText}>{item.note}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* ✅ On mobile/small screens the options list opens in a real
           top-level Modal (bottom sheet) since an inline absolutely
           positioned View sitting inside the ScrollView would get
@@ -1251,6 +1688,7 @@ export default function TeacherAnalytics({
             <CircularMiniStat
               value={classHealth === "No Data" ? "No Data" : `${summary.classAverage}%`}
               label="Class Assignment Mean"
+              onInfoPress={() => setActiveInfo("classMean")}
               accent={palette.primary}
               softBg={palette.primarySoft}
               icon="chart-line"
@@ -1258,6 +1696,7 @@ export default function TeacherAnalytics({
             <CircularMiniStat
               value={`${passingRate}%`}
               label="Assignment Passing Rate"
+              onInfoPress={() => setActiveInfo("passingRate")}
               accent={palette.green}
               softBg={palette.greenSoft}
               icon="school-outline"
@@ -1284,7 +1723,8 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Assignment Completion Rate"
             value={`${completionRate}%`}
-            helper="Graded assignments against total assigned workload"
+            helper="Graded and submitted assignments against total assigned workload"
+            onInfoPress={() => setActiveInfo("completionRate")}
             icon="check-decagram-outline"
             accent={palette.green}
             softBg={palette.greenSoft}
@@ -1301,6 +1741,7 @@ export default function TeacherAnalytics({
             title="Attention Index"
             value={`${attentionIndex}%`}
             helper="Weighted assignment intervention pressure indicator"
+            onInfoPress={() => setActiveInfo("attentionIndex")}
             icon="radar"
             accent={palette.primary}
             softBg={palette.primarySoft}
@@ -1310,16 +1751,18 @@ export default function TeacherAnalytics({
         <View style={responsiveMetricStyle}>
           <MetricCard
             title="Highest Assignment Score"
-            value={classHighestScore}
+            value={`${classHighestScore}%`}
             helper="Highest assignment score recorded"
+            onInfoPress={() => setActiveInfo("highestScore")}
             icon="arrow-up-bold-circle-outline"
             accent={palette.green}
             softBg={palette.greenSoft}
           />
           <MetricCard
             title="Lowest Assignment Score"
-            value={classLowestScore}
+            value={`${classLowestScore}%`}
             helper="Lowest assignment score recorded"
+            onInfoPress={() => setActiveInfo("lowestScore")}
             icon="arrow-down-bold-circle-outline"
             accent={palette.red}
             softBg={palette.redSoft}
@@ -1344,6 +1787,7 @@ export default function TeacherAnalytics({
 
         <SectionCard
           title="Performance Trend Line Graph"
+          onInfoPress={() => setActiveInfo("trendGraph")}
           subtitle="Average Assignment Scores Across Recent Graded Assignments"
           rightNode={
             <Text
@@ -1389,6 +1833,7 @@ export default function TeacherAnalytics({
 
         <SectionCard
           title="AI-Generated Assignment Insights"
+          onInfoPress={() => setActiveInfo("aiInsights")}
           subtitle="AI-generated insights based on student assignment grades, completion status, and learning progress."
         >
           <View style={styles.aiGrid}>
@@ -1421,6 +1866,7 @@ export default function TeacherAnalytics({
           <SectionCard
             style={responsiveSectionStyle}
             title="Class Overview"
+            onInfoPress={() => setActiveInfo("classOverview")}
             subtitle="Assignment grade distribution and assignment risk levels."
           >
             {riskBuckets.map((item) => (
@@ -1475,6 +1921,7 @@ export default function TeacherAnalytics({
           <SectionCard
             style={responsiveSectionStyle}
             title="Lowest Performing Assignment Topics"
+            onInfoPress={() => setActiveInfo("topics")}
             subtitle="Topics with the lowest average assignment scores"
           >
             {weakTopics.length === 0 ? (
@@ -1500,6 +1947,7 @@ export default function TeacherAnalytics({
           <SectionCard
             style={responsiveSectionStyle}
             title="Top Performing Students"
+            onInfoPress={() => setActiveInfo("topStudents")}
             subtitle="Highest-performing learners by assignment average"
           >
             {topStudents.length === 0 ? (
@@ -1521,6 +1969,7 @@ export default function TeacherAnalytics({
 
         <SectionCard
           title="Student Assignment Percentile Ranking"
+          onInfoPress={() => setActiveInfo("percentile")}
           subtitle="Assignment standing based on overall assignment average within the selected scope"
         >
           {percentileRows.length === 0 ? (
@@ -1544,7 +1993,11 @@ export default function TeacherAnalytics({
                     ]}
                   >
                     <View style={styles.rankBadge}>
-                      <Text style={styles.rankBadgeText}>#{student.rank}</Text>
+                      <Text style={styles.rankBadgeText}>
+                        {student.totalGradedAssignments === 0
+                          ? "–"
+                          : `#${student.rank}`}
+                      </Text>
                     </View>
                     <View style={styles.rankingInfo}>
                       <Text style={styles.rankingName}>
@@ -1571,6 +2024,7 @@ export default function TeacherAnalytics({
                         />
                       </View>
                     </View>
+                    <View style={styles.percentileRight}>
                     <View
                       style={[
                         styles.percentilePill,
@@ -1585,6 +2039,8 @@ export default function TeacherAnalytics({
                           : `P${student.percentileRank}`}
                       </Text>
                     </View>
+                    <InfoButton onPress={() => setActiveInfo("percentile")} />
+                    </View>
                   </View>
                 );
               })}
@@ -1594,6 +2050,7 @@ export default function TeacherAnalytics({
 
         <SectionCard
           title="Assignment Risk Students"
+          onInfoPress={() => setActiveInfo("riskStudents")}
           subtitle="Students identified through low assignment grades, missing assignments, and declining performance trends."
           rightNode={
             <View style={styles.sectionBadge}>
@@ -1681,7 +2138,8 @@ export default function TeacherAnalytics({
                           {student.totalGradedAssignments === 0
                             ? "No Data"
                             : `P${student.percentileRank}`}{" "}
-                          • Pending {student.totalPendingAssignments}
+                          • Pending {student.totalPendingAssignments} • Missing{" "}
+                          {student.totalMissingAssignments}
                         </Text>
                         <Text style={styles.reasonText}>
                           Assignment Risk Reason: {student.riskReason}
@@ -2214,4 +2672,70 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: WEIGHT_EMPHASIS,
   },
+  infoButton: { padding: 2, alignItems: "center", justifyContent: "center" },
+  miniStatTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  percentileRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  infoOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  infoSheet: {
+    width: "100%",
+    maxWidth: 560,
+    maxHeight: "85%",
+    backgroundColor: palette.surface,
+    borderRadius: 22,
+    padding: 18,
+  },
+  infoHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  infoHeaderIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: palette.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoHeaderText: { flex: 1 },
+  infoTitle: { fontFamily: FONT_TITLE, color: palette.textStrong, fontSize: 17, fontWeight: WEIGHT_TITLE },
+  infoSummary: { fontFamily: FONT_BODY, color: palette.textMuted, fontSize: 13, lineHeight: 19, marginTop: 3 },
+  infoScroll: { marginTop: 14 },
+  infoItem: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 16,
+    padding: 14,
+    backgroundColor: "#FBFCFE",
+    marginBottom: 12,
+  },
+  infoItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  infoItemLabel: { fontFamily: FONT_TITLE, color: palette.textStrong, fontSize: 14, fontWeight: WEIGHT_TITLE, flexShrink: 1 },
+  infoLivePill: { backgroundColor: palette.blueSoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  infoLiveText: { fontFamily: FONT_BODY, color: palette.blue, fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
+  infoFieldLabel: { fontFamily: FONT_BODY, color: palette.textMuted, fontSize: 10, letterSpacing: 0.6, fontWeight: WEIGHT_EMPHASIS, marginTop: 12 },
+  infoFormula: { fontFamily: FONT_BODY, color: palette.textStrong, fontSize: 13, lineHeight: 20, marginTop: 4 },
+  infoBody: { fontFamily: FONT_BODY, color: palette.text, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  infoNote: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+    backgroundColor: palette.blueSoft,
+    borderRadius: 12,
+    padding: 10,
+  },
+  infoNoteText: { fontFamily: FONT_BODY, flex: 1, color: palette.text, fontSize: 12, lineHeight: 18 },
 });
