@@ -20498,11 +20498,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       // built to receive and process an arbitrary NUMBER of topicTitles at
       // once (one lesson per title) — we fetch all existing lesson titles for
       // this module up front (one query instead of one-per-topic), then run
-      // all the AI generations for the still-needed topics IN PARALLEL so a
-      // batch of several lessons doesn't take several times as long or risk
-      // timing out. Lesson numbers are assigned deterministically by each
-      // topic's position in the (de-duplicated) request, not by mutating a
-      // shared counter inside the async calls.
+      // the AI generations for the still-needed topics with a small STAGGER
+      // between each one (see STAGGER_MS below) so a batch of several lessons
+      // doesn't take several times as long or risk timing out.
+      //
+      // ⚠️ Previously these were fired with a single unstaggered Promise.all,
+      // which sent every request to Gemini in the same instant. Gemini's
+      // per-minute rate limit (429 / "quota exceeded") would then reject
+      // every request except the first, and generateTopicContent's retry
+      // loop treated "quota"/"rate limit" errors as NON-retryable (it threw
+      // immediately instead of backing off and trying again). Net effect:
+      // selecting N topics silently generated only 1 lesson, with the rest
+      // swallowed into failedTopics. Staggering the requests plus retrying
+      // 429s (see generateTopicContent) fixes this.
+      //
+      // Lesson numbers are assigned deterministically by each topic's
+      // position in the (de-duplicated) request, not by mutating a shared
+      // counter inside the async calls.
       const existingLessonsSnap = await db.collection("courseLessons")
         .where("moduleId", "==", moduleId)
         .get();
@@ -20514,10 +20526,17 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const skippedTopics = requestedTitles.filter(t => existingLessonTitles.has(t.toLowerCase()));
       const topicsToGenerate = requestedTitles.filter(t => !existingLessonTitles.has(t.toLowerCase()));
 
+      // Stagger request *starts* by this many ms per index, so a batch of
+      // e.g. 5 lessons doesn't all hit Gemini in the same second. They still
+      // run concurrently (this isn't a sequential await), just spread out.
+      const STAGGER_MS = 1500;
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
       const failedTopics = [];
       const generationResults = await Promise.all(
         topicsToGenerate.map(async (topicTitle, idx) => {
           const lessonNum = nextLessonNumber + idx;
+          if (idx > 0) await sleep(idx * STAGGER_MS);
           try {
             console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${lessonNum}...`);
             const content = await generateTopicContent(
@@ -20730,8 +20749,32 @@ ${spec.rules}
   ]
   }`;
 
+    // Treats Gemini's per-minute rate-limit responses (HTTP 429 /
+    // "RESOURCE_EXHAUSTED" / "quota" / "rate limit" wording) as RETRYABLE,
+    // same as a 503. Previously these were treated as fatal and thrown
+    // immediately with no backoff — harmless when only one lesson was being
+    // generated, but when several topics are requested at once (see the
+    // staggered Promise.all in /course-syllabus/generate-next-lessons) it
+    // meant every request except the first would die on its first 429
+    // instead of backing off and retrying, so a multi-topic selection would
+    // silently collapse down to just 1 generated lesson.
+    const isRetryableGenError = (error) => {
+      const msg = (error?.message || "").toLowerCase();
+      return (
+        error?.status === 503 ||
+        error?.status === 429 ||
+        msg.includes("503") ||
+        msg.includes("429") ||
+        msg.includes("service unavailable") ||
+        msg.includes("overloaded") ||
+        msg.includes("resource has been exhausted") ||
+        msg.includes("rate limit") ||
+        msg.includes("quota")
+      );
+    };
+
     let result;
-    const maxRetries = 4;
+    const maxRetries = 5;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`Attempt ${attempt}/${maxRetries} generating content for Topic: ${specificTopic}...`);
@@ -20743,11 +20786,13 @@ ${spec.rules}
         }
       } catch (error) {
         console.warn(`Attempt ${attempt} failed:`, error.message);
-        if ((error.status === 503 || error.message.includes("Service Unavailable")) && attempt < maxRetries) {
+        if (isRetryableGenError(error) && attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000;
-          console.warn(`Server busy. Retrying in ${delay}ms...`);
+          console.warn(`Rate-limited or busy. Retrying in ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));
-        } else if (error.message.includes("quota") || error.message.includes("rate limit")) {
+        } else if (isRetryableGenError(error)) {
+          // Ran out of retries and it's still a quota/rate-limit error —
+          // now it's fair to surface this as the specific failure reason.
           throw new Error("AI Quota exceeded. Please try again later.");
         } else if (attempt < maxRetries) {
           await new Promise(r => setTimeout(r, 2000));
