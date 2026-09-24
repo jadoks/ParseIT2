@@ -2635,6 +2635,108 @@ const fetchModules = useCallback(async (silent = false) => {
     );
   }
 
+  // Comments block is rendered once and placed by the layout below:
+  // inside the left column on large screens, under "Your work" on mobile.
+  const gcCommentsBlock = selectedAssignment ? (
+    <>
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Comments</Text>
+                      {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
+                        <View>
+                          {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
+                            const isEditing = editingCommentId === comment.id;
+                            const canManage = canManageComment(comment);
+                            return (
+                              <View
+                                key={comment.id}
+                                style={[
+                                  styles.commentItem,
+                                  comment.isInstructor && styles.instructorComment,
+                                ]}
+                              >
+                                <View style={styles.commentHeader}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-between' }}>
+                                    <Text style={styles.commentAuthor}>{comment.author}</Text>
+                                    {comment.isInstructor && (
+                                      <Text style={styles.teacherBadge}>Instructor</Text>
+                                    )}
+                                  </View>
+                                  {canManage && (
+                                    <View
+                                      ref={(ref: any) => {
+                                        if (ref) buttonRefs[0] = { ...buttonRefs[0], [comment.id]: ref };
+                                      }}
+                                    >
+                                      <TouchableOpacity
+                                        onPress={(e) => handleMenuPress(comment.id, e)}
+                                        style={styles.commentMenuBtn}
+                                      >
+                                        <MaterialCommunityIcons name="dots-vertical" size={20} color="#606060" />
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
+                                </View>
+                                {isEditing ? (
+                                  <View style={styles.editRow}>
+                                    <TextInput
+                                      value={editText}
+                                      onChangeText={setEditText}
+                                      style={styles.editInput}
+                                      placeholderTextColor="#888"
+                                      autoFocus
+                                      multiline
+                                    />
+                                    <View style={styles.editActionsRow}>
+                                      <TouchableOpacity
+                                        onPress={() => { setEditingCommentId(null); setEditText(''); }}
+                                        style={styles.editCancelBtn}
+                                      >
+                                        <Text style={styles.editCancelText}>Cancel</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity
+                                        onPress={() => handleEditComment(comment.id)}
+                                        style={[styles.editSaveBtn, savingEdit && styles.commentPostBtnDisabled]}
+                                        disabled={savingEdit}
+                                      >
+                                        <Text style={styles.editSaveText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  </View>
+                                ) : (
+                                  <Text style={styles.commentContent}>{comment.content}</Text>
+                                )}
+                                <Text style={styles.commentTime}>{comment.timestamp}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <Text style={styles.emptyText}>No comments yet</Text>
+                      )}
+                      <View style={styles.commentInputContainer}>
+                        <TextInput
+                          style={styles.commentInput}
+                          placeholder="Add a comment..."
+                          placeholderTextColor="#999"
+                          value={newComment}
+                          onChangeText={setNewComment}
+                          multiline
+                        />
+                        <TouchableOpacity
+                          style={[
+                            styles.sendButton,
+                            !newComment.trim() && styles.sendButtonDisabled,
+                          ]}
+                          disabled={!newComment.trim()}
+                          onPress={handleAddComment}
+                        >
+                          <Text style={styles.sendButtonText}>Send</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+    </>
+  ) : null;
+
   return (
     <ScrollView
       style={styles.screenScroll}
@@ -3496,190 +3598,142 @@ const fetchModules = useCallback(async (silent = false) => {
       {/* ═══════════════════════════════════════════════════════════════════
           ASSIGNMENT DETAIL MODAL (UPDATED WITH MULTI-FILE LOGIC)
       ═══════════════════════════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          ASSIGNMENT DETAIL — full-screen, Google Classroom style layout.
+          Top bar (close + title) / left column: title, instructions,
+          attachments, related resources, comments / right column: the
+          sticky "Your work" card. Collapses to one column on mobile.
+      ═══════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={!!selectedAssignment}
         animationType="slide"
-        transparent
+        transparent={false}
+        statusBarTranslucent
         onRequestClose={closeAssignmentModal}
       >
-        <View style={styles.modalOverlayBottom}>
-          <View
-            style={[
-              styles.modalWrapper,
-              { width: isLargeScreen ? "72%" : width < 480 ? "92%" : "88%" },
-              !isLargeScreen && styles.modalWrapperMobile,
-            ]}
-          >
+        <View style={styles.gcRoot}>
+          <SafeAreaView style={styles.gcScreen} edges={["top", "bottom"]}>
+            <View style={styles.gcTopBar}>
+              <TouchableOpacity
+                onPress={closeAssignmentModal}
+                style={styles.gcCloseBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Close assignment"
+              >
+                <Ionicons name="close" size={24} color="#5F6368" />
+              </TouchableOpacity>
+              <View style={styles.gcTopIcon}>
+                <MaterialCommunityIcons name="clipboard-text-outline" size={17} color="#FFF" />
+              </View>
+              <Text style={styles.gcTopTitle} numberOfLines={1}>
+                {selectedAssignment?.title ?? "Assignment"}
+              </Text>
+              {isRefreshingOpenedAssignment && (
+                <View style={styles.gcSyncBadge}>
+                  <ActivityIndicator size="small" color="#8B0000" />
+                  <Text style={styles.openRefreshBadgeText}>Syncing latest...</Text>
+                </View>
+              )}
+            </View>
+
             <ScrollView
-              contentContainerStyle={styles.detailContainer}
+              style={{ flex: 1, width: "100%" }}
+              contentContainerStyle={styles.gcScrollContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              scrollEventThrottle={16}
               refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#8B0000']} tintColor="#8B0000" />
+                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#8B0000"]} tintColor="#8B0000" />
               }
             >
               {selectedAssignment && (
-                <>
-                  <View style={styles.detailContent}>
-                    <View style={[styles.infoCard, !isLargeScreen && styles.infoCardMobile]}>
-                      <TouchableOpacity
-                        onPress={closeAssignmentModal}
-                        style={styles.modalCloseFloating}
-                      >
-                        <Ionicons name="close" size={20} color="#666" />
-                      </TouchableOpacity>
-                      {/* ✅ NEW: tiny inline indicator while the just-opened
-                          assignment's comments/content are being refreshed. */}
-                      {isRefreshingOpenedAssignment && (
-                        <View style={styles.openRefreshBadge}>
-                          <ActivityIndicator size="small" color="#8B0000" />
-                          <Text style={styles.openRefreshBadgeText}>Syncing latest...</Text>
-                        </View>
-                      )}
-                      <Text
-                        style={[
-                          styles.assignmentModalTitle,
-                          !isLargeScreen && styles.assignmentModalTitleMobile,
-                        ]}
-                      >
-                        {selectedAssignment.title}
-                      </Text>
-                      {isLargeScreen ? (
-                        <View style={styles.infoMetaGrid}>
-                          <View style={styles.infoMetaCard}>
-                            <Text style={styles.infoMetaCardLabel}>Class</Text>
-                            <Text style={styles.infoMetaCardValue}>{safeCourse.name}</Text>
-                          </View>
-                          <View style={styles.infoMetaCard}>
-                            <Text style={styles.infoMetaCardLabel}>Semester</Text>
-                            <Text style={styles.infoMetaCardValue}>{safeCourse.semester}</Text>
-                          </View>
-                          <View style={styles.infoMetaCard}>
-                            <Text style={styles.infoMetaCardLabel}>School Year</Text>
-                            <Text style={styles.infoMetaCardValue}>{safeCourse.schoolYear}</Text>
-                          </View>
-                          <View style={styles.infoMetaCard}>
-                            <Text style={styles.infoMetaCardLabel}>Instructor</Text>
-                            <Text style={styles.infoMetaCardValue}>{safeCourse.instructor}</Text>
-                          </View>
-                          <View style={styles.infoMetaCard}>
-                            <Text style={styles.infoMetaCardLabel}>Due</Text>
-                            <Text style={[styles.infoMetaCardValue, { color: '#8B0000' }]}>
-                              {formatDueDateForDisplay(selectedAssignment.dueDate)}
-                            </Text>
-                          </View>
-                          {selectedAssignment.maxPoints !== undefined && (
-                            <View style={styles.infoMetaCard}>
-                              <Text style={styles.infoMetaCardLabel}>Points</Text>
-                              <Text style={styles.infoMetaCardValue}>
-                                {selectedAssignment.points}/{selectedAssignment.maxPoints}
-                              </Text>
-                            </View>
-                          )}
-                          {getScorePercent(selectedAssignment) !== null && (
-                            <View style={styles.infoMetaCard}>
-                              <Text style={styles.infoMetaCardLabel}>Score</Text>
-                              <Text style={[styles.infoMetaCardValue, { color: '#1B5E20' }]}>
-                                {getScorePercent(selectedAssignment)}%
-                              </Text>
-                            </View>
-                          )}
-                          {selectedAssignment.assignmentType === "game_based" &&
-                            selectedAssignment.numberOfAttempts && (
-                              <View style={styles.infoMetaCard}>
-                                <Text style={styles.infoMetaCardLabel}>Max Attempts</Text>
-                                <Text style={styles.infoMetaCardValue}>
-                                  {selectedAssignment.numberOfAttempts === "unlimited"
-                                    ? "Unlimited"
-                                    : selectedAssignment.numberOfAttempts}
-                                </Text>
-                              </View>
-                            )}
-                        </View>
-                      ) : (
-                        <View style={styles.infoMetaBlock}>
-                          <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Class</Text>
-                            <Text style={styles.infoMetaValue} numberOfLines={3}>
-                              {safeCourse.name}
-                            </Text>
-                          </View>
-                          <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Semester</Text>
-                            <Text style={styles.infoMetaValue}>{safeCourse.semester}</Text>
-                          </View>
-                          <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>School Year</Text>
-                            <Text style={styles.infoMetaValue}>{safeCourse.schoolYear}</Text>
-                          </View>
-                          <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Instructor</Text>
-                            <Text style={styles.infoMetaValue} numberOfLines={3}>
-                              {safeCourse.instructor}
-                            </Text>
-                          </View>
-                          <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Due</Text>
-                            <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
-                              {formatDueDateForDisplay(selectedAssignment.dueDate)}
-                            </Text>
-                          </View>
-                          {selectedAssignment.maxPoints !== undefined && (
-                            <View style={styles.infoMetaRow}>
-                              <Text style={styles.infoMetaLabel}>Points</Text>
-                              <Text style={styles.infoMetaValue}>
-                                {selectedAssignment.points}/{selectedAssignment.maxPoints}
-                              </Text>
-                            </View>
-                          )}
-                          {getScorePercent(selectedAssignment) !== null && (
-                            <View style={styles.infoMetaRow}>
-                              <Text style={styles.infoMetaLabel}>Score</Text>
-                              <Text style={styles.infoMetaValue}>
-                                {getScorePercent(selectedAssignment)}%
-                              </Text>
-                            </View>
-                          )}
-                          {selectedAssignment.assignmentType === "game_based" &&
-                            selectedAssignment.numberOfAttempts && (
-                              <View style={styles.infoMetaRow}>
-                                <Text style={styles.infoMetaLabel}>Max Attempts</Text>
-                                <Text style={styles.infoMetaValue}>
-                                  {selectedAssignment.numberOfAttempts === "unlimited"
-                                    ? "Unlimited"
-                                    : selectedAssignment.numberOfAttempts}
-                                </Text>
-                              </View>
-                            )}
-                        </View>
-                      )}
-                      <View style={styles.infoInstructionBlock}>
-                        <Text style={styles.infoMetaLabel}>Instruction</Text>
-                        <Text style={styles.infoInstructionText}>
-                          {(selectedAssignment as any).description || "No instruction provided."}
+                <View style={[styles.gcBody, isLargeScreen ? styles.gcBodyLarge : styles.gcBodyMobile]}>
+                  {/* ───────────── LEFT / MAIN COLUMN ───────────── */}
+                  <View style={[styles.gcMainCol, isLargeScreen && styles.gcMainColLarge]}>
+                    <View style={styles.gcHeader}>
+                      <View style={styles.gcHeaderIcon}>
+                        <MaterialCommunityIcons name="clipboard-text-outline" size={isLargeScreen ? 26 : 22} color="#FFF" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.gcTitle, !isLargeScreen && styles.gcTitleMobile]}>
+                          {selectedAssignment.title}
+                        </Text>
+                        <Text style={styles.gcSubtitle} numberOfLines={2}>
+                          {safeCourse.instructor} • {safeCourse.name}
+                        </Text>
+                        <Text style={styles.gcSubtitleMuted}>
+                          {safeCourse.semester} • {safeCourse.schoolYear}
                         </Text>
                       </View>
-                      {getRecommendationLabel(selectedAssignment) && (
-                        <View
-                          style={[
-                            styles.recommendationBadge,
-                            {
-                              backgroundColor: `${getRecommendationColor(selectedAssignment)}18`,
-                              alignSelf: "flex-start",
-                              marginTop: 12,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.recommendationText,
-                              { color: getRecommendationColor(selectedAssignment) },
-                            ]}
-                          >
-                            {getRecommendationLabel(selectedAssignment)}
+                    </View>
+
+                    <View style={styles.gcStatsRow}>
+                      <View>
+                        <Text style={styles.gcStatLabel}>Due</Text>
+                        <Text style={[styles.gcStatValue, { color: "#8B0000" }]}>
+                          {formatDueDateForDisplay(selectedAssignment.dueDate) || "No due date"}
+                        </Text>
+                      </View>
+                      {selectedAssignment.maxPoints !== undefined && (
+                        <View>
+                          <Text style={styles.gcStatLabel}>Points</Text>
+                          <Text style={styles.gcStatValue}>
+                            {typeof selectedAssignment.points === "number"
+                              ? `${selectedAssignment.points}/${selectedAssignment.maxPoints}`
+                              : `${selectedAssignment.maxPoints}`}
+                          </Text>
+                        </View>
+                      )}
+                      {getScorePercent(selectedAssignment) !== null && (
+                        <View>
+                          <Text style={styles.gcStatLabel}>Score</Text>
+                          <Text style={[styles.gcStatValue, { color: "#1B5E20" }]}>
+                            {getScorePercent(selectedAssignment)}%
+                          </Text>
+                        </View>
+                      )}
+                      {selectedAssignment.assignmentType === "game_based" && !!selectedAssignment.numberOfAttempts && (
+                        <View>
+                          <Text style={styles.gcStatLabel}>Max attempts</Text>
+                          <Text style={styles.gcStatValue}>
+                            {selectedAssignment.numberOfAttempts === "unlimited"
+                              ? "Unlimited"
+                              : selectedAssignment.numberOfAttempts}
                           </Text>
                         </View>
                       )}
                     </View>
-                    {/* Assignment File */}
+
+                    <View style={styles.gcDivider} />
+
+                    <Text style={styles.gcInstructionText}>
+                      {(selectedAssignment as any).description || "No instruction provided."}
+                    </Text>
+                    {getRecommendationLabel(selectedAssignment) && (
+                      <View
+                        style={[
+                          styles.recommendationBadge,
+                          {
+                            backgroundColor: `${getRecommendationColor(selectedAssignment)}18`,
+                            alignSelf: "flex-start",
+                            marginTop: 12,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.recommendationText,
+                            { color: getRecommendationColor(selectedAssignment) },
+                          ]}
+                        >
+                          {getRecommendationLabel(selectedAssignment)}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.gcDivider} />
+
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Assignment File</Text>
                       {selectedAssignmentTeacherFiles.length > 0 ? (
@@ -3712,7 +3766,122 @@ const fetchModules = useCallback(async (silent = false) => {
                         <Text style={styles.emptyText}>No assignment file attached.</Text>
                       )}
                     </View>
-                    {/* Game-Based Assignment */}
+
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Related Course Resources</Text>
+                      {selectedAssignmentRelatedMaterials.length > 0 ? (
+                        selectedAssignmentRelatedMaterials.map((material) => (
+                          <TouchableOpacity
+                            key={material.id}
+                            style={styles.relatedMaterialItem}
+                            activeOpacity={0.85}
+                            onPress={() => {
+                              closeAssignmentModal();
+                              setTimeout(() => handleOpenLessonDetail(material), 300);
+                            }}
+                          >
+                            <View style={styles.relatedMaterialRow}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.relatedMaterialTitle}>{material.title}</Text>
+                                <Text style={styles.relatedMaterialMeta}>
+                                  {material.type} • {material.uploadedDate}
+                                </Text>
+                                {!!material.fileName && (
+                                  <Text style={styles.relatedMaterialFileName}>
+                                    {material.fileName}
+                                  </Text>
+                                )}
+                              </View>
+                              <View style={styles.relatedMaterialOpenBadge}>
+                                <Ionicons name="eye-outline" size={13} color="#8B0000" />
+                                <Text style={styles.relatedMaterialOpenText}>View</Text>
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        ))
+                      ) : (
+                        <Text style={styles.emptyText}>No linked materials.</Text>
+                      )}
+                    </View>
+
+                    {getRecommendationType(selectedAssignment) && (
+                      <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
+                        {!canGenerateSelectedActivity && (
+                          <Text style={styles.materialWarningText}>
+                            The teacher must link related materials first. AI will generate this activity from those related materials only.
+                          </Text>
+                        )}
+                        <TouchableOpacity
+                          onPress={() => handleGenerateActivity(selectedAssignment)}
+                          disabled={!canGenerateSelectedActivity || isGeneratingActivity}
+                          style={[
+                            styles.uploadButtonWide,
+                            {
+                              backgroundColor: canGenerateSelectedActivity
+                                ? getRecommendationColor(selectedAssignment)
+                                : "#CCC",
+                              opacity: isGeneratingActivity ? 0.75 : 1,
+                            },
+                          ]}
+                        >
+                          {isGeneratingActivity ? (
+                            <View style={styles.loadingButtonContent}>
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                              <Text style={styles.uploadButtonText}>Generating...</Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.uploadButtonText}>Generate Follow-Up Activity</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {isLargeScreen && gcCommentsBlock}
+                  </View>
+
+                  {/* ───────────── RIGHT COLUMN: YOUR WORK ───────────── */}
+                  <View style={[styles.gcSideCol, isLargeScreen && styles.gcSideColLarge]}>
+                    <View style={styles.gcWorkCard}>
+                      {(() => {
+                        const graded = isAssignmentGraded(selectedAssignment);
+                        const submitted = isAssignmentSubmitted(selectedAssignment);
+                        const display = getDisplayStatus(selectedAssignment);
+                        let label = "Assigned";
+                        let color = "#5F6368";
+                        if (graded) {
+                          label = "Graded";
+                          color = "#2E7D32";
+                        } else if (selectedAssignment.status === "late") {
+                          label = "Turned in late";
+                          color = "#E64A19";
+                        } else if (submitted) {
+                          label = "Turned in";
+                          color = "#188038";
+                        } else if (display === "missing") {
+                          label = "Missing";
+                          color = "#C62828";
+                        }
+                        return (
+                          <>
+                            <View style={styles.gcWorkHeader}>
+                              <Text style={styles.gcWorkTitle}>Your work</Text>
+                              <Text style={[styles.gcWorkStatus, { color }]}>{label}</Text>
+                            </View>
+                            {graded &&
+                              selectedAssignment.maxPoints !== undefined &&
+                              typeof selectedAssignment.points === "number" && (
+                                <View style={styles.gcGradeRow}>
+                                  <Text style={styles.gcGradeLabel}>Grade</Text>
+                                  <Text style={styles.gcGradeValue}>
+                                    {selectedAssignment.points}/{selectedAssignment.maxPoints}
+                                  </Text>
+                                </View>
+                              )}
+                          </>
+                        );
+                      })()}
+
                     {selectedAssignment.assignmentType === "game_based" && (
                       <View style={styles.section}>
                         <View style={styles.sectionTitleRow}>
@@ -3785,78 +3954,8 @@ const fetchModules = useCallback(async (silent = false) => {
                         )}
                       </View>
                     )}
-                    {getRecommendationType(selectedAssignment) && (
-                      <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
-                        {!canGenerateSelectedActivity && (
-                          <Text style={styles.materialWarningText}>
-                            The teacher must link related materials first. AI will generate this activity from those related materials only.
-                          </Text>
-                        )}
-                        <TouchableOpacity
-                          onPress={() => handleGenerateActivity(selectedAssignment)}
-                          disabled={!canGenerateSelectedActivity || isGeneratingActivity}
-                          style={[
-                            styles.uploadButtonWide,
-                            {
-                              backgroundColor: canGenerateSelectedActivity
-                                ? getRecommendationColor(selectedAssignment)
-                                : "#CCC",
-                              opacity: isGeneratingActivity ? 0.75 : 1,
-                            },
-                          ]}
-                        >
-                          {isGeneratingActivity ? (
-                            <View style={styles.loadingButtonContent}>
-                              <ActivityIndicator size="small" color="#FFFFFF" />
-                              <Text style={styles.uploadButtonText}>Generating...</Text>
-                            </View>
-                          ) : (
-                            <Text style={styles.uploadButtonText}>Generate Follow-Up Activity</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    {/* Related Materials */}
+
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>Related Course Resources</Text>
-                      {selectedAssignmentRelatedMaterials.length > 0 ? (
-                        selectedAssignmentRelatedMaterials.map((material) => (
-                          <TouchableOpacity
-                            key={material.id}
-                            style={styles.relatedMaterialItem}
-                            activeOpacity={0.85}
-                            onPress={() => {
-                              closeAssignmentModal();
-                              setTimeout(() => handleOpenLessonDetail(material), 300);
-                            }}
-                          >
-                            <View style={styles.relatedMaterialRow}>
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.relatedMaterialTitle}>{material.title}</Text>
-                                <Text style={styles.relatedMaterialMeta}>
-                                  {material.type} • {material.uploadedDate}
-                                </Text>
-                                {!!material.fileName && (
-                                  <Text style={styles.relatedMaterialFileName}>
-                                    {material.fileName}
-                                  </Text>
-                                )}
-                              </View>
-                              <View style={styles.relatedMaterialOpenBadge}>
-                                <Ionicons name="eye-outline" size={13} color="#8B0000" />
-                                <Text style={styles.relatedMaterialOpenText}>View</Text>
-                              </View>
-                            </View>
-                          </TouchableOpacity>
-                        ))
-                      ) : (
-                        <Text style={styles.emptyText}>No linked materials.</Text>
-                      )}
-                    </View>
-                    {/* ✅ UPDATED: Your Uploads Section with Multi-File/Link Support */}
-                    <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>Your Uploads</Text>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
@@ -4093,108 +4192,15 @@ const fetchModules = useCallback(async (silent = false) => {
                         );
                       })()}
                     </View>
-                    {/* COMMENTS SECTION */}
-                    <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>Comments</Text>
-                      {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
-                        <View>
-                          {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
-                            const isEditing = editingCommentId === comment.id;
-                            const canManage = canManageComment(comment);
-                            return (
-                              <View
-                                key={comment.id}
-                                style={[
-                                  styles.commentItem,
-                                  comment.isInstructor && styles.instructorComment,
-                                ]}
-                              >
-                                <View style={styles.commentHeader}>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-between' }}>
-                                    <Text style={styles.commentAuthor}>{comment.author}</Text>
-                                    {comment.isInstructor && (
-                                      <Text style={styles.teacherBadge}>Instructor</Text>
-                                    )}
-                                  </View>
-                                  {canManage && (
-                                    <View
-                                      ref={(ref: any) => {
-                                        if (ref) buttonRefs[0] = { ...buttonRefs[0], [comment.id]: ref };
-                                      }}
-                                    >
-                                      <TouchableOpacity
-                                        onPress={(e) => handleMenuPress(comment.id, e)}
-                                        style={styles.commentMenuBtn}
-                                      >
-                                        <MaterialCommunityIcons name="dots-vertical" size={20} color="#606060" />
-                                      </TouchableOpacity>
-                                    </View>
-                                  )}
-                                </View>
-                                {isEditing ? (
-                                  <View style={styles.editRow}>
-                                    <TextInput
-                                      value={editText}
-                                      onChangeText={setEditText}
-                                      style={styles.editInput}
-                                      placeholderTextColor="#888"
-                                      autoFocus
-                                      multiline
-                                    />
-                                    <View style={styles.editActionsRow}>
-                                      <TouchableOpacity
-                                        onPress={() => { setEditingCommentId(null); setEditText(''); }}
-                                        style={styles.editCancelBtn}
-                                      >
-                                        <Text style={styles.editCancelText}>Cancel</Text>
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        onPress={() => handleEditComment(comment.id)}
-                                        style={[styles.editSaveBtn, savingEdit && styles.commentPostBtnDisabled]}
-                                        disabled={savingEdit}
-                                      >
-                                        <Text style={styles.editSaveText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
-                                      </TouchableOpacity>
-                                    </View>
-                                  </View>
-                                ) : (
-                                  <Text style={styles.commentContent}>{comment.content}</Text>
-                                )}
-                                <Text style={styles.commentTime}>{comment.timestamp}</Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      ) : (
-                        <Text style={styles.emptyText}>No comments yet</Text>
-                      )}
-                      <View style={styles.commentInputContainer}>
-                        <TextInput
-                          style={styles.commentInput}
-                          placeholder="Add a comment..."
-                          placeholderTextColor="#999"
-                          value={newComment}
-                          onChangeText={setNewComment}
-                          multiline
-                        />
-                        <TouchableOpacity
-                          style={[
-                            styles.sendButton,
-                            !newComment.trim() && styles.sendButtonDisabled,
-                          ]}
-                          disabled={!newComment.trim()}
-                          onPress={handleAddComment}
-                        >
-                          <Text style={styles.sendButtonText}>Send</Text>
-                        </TouchableOpacity>
-                      </View>
                     </View>
                   </View>
-                </>
+
+                  {!isLargeScreen && gcCommentsBlock}
+                </View>
               )}
             </ScrollView>
-          </View>
-        </View>
+          </SafeAreaView>
+
         {/* DROPDOWN MENU FOR COMMENT ACTIONS */}
         {openMenuCommentId && menuPosition && (
           <>
@@ -4237,6 +4243,7 @@ const fetchModules = useCallback(async (silent = false) => {
             </View>
           </>
         )}
+        </View>
       </Modal>
 
       {/* DELETE CONFIRMATION MODAL — kept as a custom confirm modal (not a toast),
@@ -5038,6 +5045,57 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   viewerExternalButtonText: { fontFamily: FONT_BODY, color: "#FFF", fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
+  // ═══════════════════════════════════════════════════════════════════
+  // FULL-SCREEN ASSIGNMENT DETAIL (Google Classroom style layout)
+  // ═══════════════════════════════════════════════════════════════════
+  gcRoot: { flex: 1, backgroundColor: "#FFFFFF" },
+  gcScreen: { flex: 1, backgroundColor: "#FFFFFF" },
+  gcTopBar: {
+    height: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#DADCE0",
+  },
+  gcCloseBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  gcTopIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#8B0000", alignItems: "center", justifyContent: "center" },
+  gcTopTitle: { flex: 1, fontFamily: FONT_TITLE, fontSize: 17, fontWeight: WEIGHT_TITLE, color: "#3C4043" },
+  gcSyncBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "#F8F0F0", marginRight: 8 },
+  gcScrollContent: { flexGrow: 1, paddingBottom: 48 },
+  gcBody: { width: "100%", maxWidth: 1120, alignSelf: "center" },
+  gcBodyLarge: { flexDirection: "row", alignItems: "flex-start", gap: 32, paddingHorizontal: 32, paddingTop: 28 },
+  gcBodyMobile: { paddingHorizontal: 16, paddingTop: 18 },
+  gcMainCol: { minWidth: 0 },
+  gcMainColLarge: { flex: 1 },
+  gcSideCol: { marginTop: 4, marginBottom: 8 },
+  gcSideColLarge: {
+    width: 330,
+    flexShrink: 0,
+    marginTop: 0,
+    ...(Platform.OS === "web" ? ({ position: "sticky", top: 16 } as any) : null),
+  },
+  gcHeader: { flexDirection: "row", alignItems: "flex-start", gap: 16, marginBottom: 14 },
+  gcHeaderIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#8B0000", alignItems: "center", justifyContent: "center" },
+  gcTitle: { fontFamily: FONT_TITLE, fontSize: 30, lineHeight: 38, fontWeight: WEIGHT_TITLE, color: "#8B0000" },
+  gcTitleMobile: { fontSize: 22, lineHeight: 30 },
+  gcSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: "#5F6368", marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
+  gcSubtitleMuted: { fontFamily: FONT_BODY, fontSize: 12, color: "#80868B", marginTop: 2 },
+  gcStatsRow: { flexDirection: "row", flexWrap: "wrap", columnGap: 28, rowGap: 10 },
+  gcStatLabel: { fontFamily: FONT_BODY, fontSize: 11, color: "#80868B", fontWeight: WEIGHT_EMPHASIS, textTransform: "uppercase", letterSpacing: 0.4 },
+  gcStatValue: { fontFamily: FONT_BODY, fontSize: 14, color: "#3C4043", fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
+  gcDivider: { height: 1, backgroundColor: "#DADCE0", marginVertical: 16 },
+  gcInstructionText: { fontFamily: FONT_BODY, fontSize: 14, lineHeight: 22, color: "#3C4043" },
+  gcWorkCard: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#DADCE0", borderRadius: 12, padding: 16, paddingBottom: 0 },
+  gcWorkHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  gcWorkTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: "#3C4043" },
+  gcWorkStatus: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
+  gcGradeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
+  gcGradeLabel: { fontFamily: FONT_BODY, fontSize: 13, color: "#5F6368", fontWeight: WEIGHT_EMPHASIS },
+  gcGradeValue: { fontFamily: FONT_BODY, fontSize: 15, color: "#2E7D32", fontWeight: WEIGHT_EMPHASIS },
+
   modalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.18)" },
   modalOverlayBottom: {
     flex: 1,

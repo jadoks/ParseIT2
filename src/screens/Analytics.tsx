@@ -312,9 +312,11 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
   const [showAllRecentAssignments, setShowAllRecentAssignments] = useState(false);
 
   const subjectBarData = useMemo(() => {
-    const labels = analytics.subjectSummaries.map((subject: SubjectAnalyticsSummary) =>
-      subject.courseCode.length > 8 ? `${subject.courseCode.slice(0, 8)}…` : subject.courseCode
-    );
+    // Show the class name (not the class code) under each bar; long names are shortened to fit.
+    const labels = analytics.subjectSummaries.map((subject: SubjectAnalyticsSummary) => {
+      const name = (subject.courseName || subject.courseCode || 'Course').trim();
+      return name.length > 12 ? `${name.slice(0, 12)}…` : name;
+    });
     const data = analytics.subjectSummaries.map((subject: SubjectAnalyticsSummary) => subject.average);
     return {
       labels,
@@ -363,7 +365,9 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
   const chartInnerWidth = Math.max(chartCardWidth - cardPadding, 240);
 
   const minBarSlot = isTablet ? 72 : 58;
-  const subjectChartWidth = Math.max(analytics.subjectSummaries.length * minBarSlot, chartInnerWidth);
+  // Class names are longer than class codes, so each bar gets a wider slot.
+  const subjectBarSlot = isTablet ? 96 : 80;
+  const subjectChartWidth = Math.max(analytics.subjectSummaries.length * subjectBarSlot, chartInnerWidth);
   const trendChartWidth = Math.max(analytics.assignmentScoreTrend.length * minBarSlot, chartInnerWidth);
   
   const chartHeight = isDesktop ? 300 : isTablet ? 270 : 220;
