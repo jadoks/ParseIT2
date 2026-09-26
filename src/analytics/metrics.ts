@@ -135,6 +135,13 @@ export const getTrendSymbol = (trend: number): string => {
   return '→';
 };
 
+// Due dates are stored as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM". A date-only value
+// means "due at the end of that day" (23:59 local) — the same rule as
+// parseDueDateTime in server.js and the client screens. Plain `new Date('YYYY-MM-DD')`
+// would read it as midnight UTC, flagging work as missing hours before it is
+// actually late in any timezone ahead of UTC.
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 export const parseDateValue = (value: any): Date | null => {
   if (!value) return null;
 
@@ -144,6 +151,23 @@ export const parseDateValue = (value: any): Date | null => {
 
   if (typeof value?._seconds === 'number') {
     return new Date(value._seconds * 1000);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const dateOnly = trimmed.match(DATE_ONLY_PATTERN);
+    if (dateOnly) {
+      return new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3]),
+        23,
+        59
+      );
+    }
+    // "YYYY-MM-DD HH:MM" -> "YYYY-MM-DDTHH:MM" (same as the server; also parses on Hermes)
+    const parsedString = new Date(trimmed.replace(' ', 'T'));
+    return Number.isNaN(parsedString.getTime()) ? null : parsedString;
   }
 
   const parsed = new Date(value);

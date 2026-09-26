@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,6 +16,82 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
+
+// 🆕 AI GRADING: same backend base-url resolution as Game.tsx / quiz-masters.tsx
+// (duplicated rather than imported since these files don't currently share a
+// utils module).
+function getGameAiBaseUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === 'web') {
+    console.warn('EXPO_PUBLIC_API_URL is not set; API calls will fail.');
+  }
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+  const host = possibleHost.split(':')[0];
+  if (host) {
+    return `http://${host}:5000`;
+  }
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getGameAiBaseUrl();
+const apiFetch = (url: string, options: any = {}) => fetch(url, { credentials: 'include', ...options });
+
+function normalizeText(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+// 🆕 AI GRADING: used by Flashcards and Fill-in-the-Blanks — the two
+// free-text question types — so a student who has the right idea but
+// phrases it differently from the accepted answer isn't marked wrong on a
+// graded assignment. An exact/normalized match resolves instantly with no
+// network call; anything else is sent to the backend (Gemini) for a
+// semantic judgement. If that call fails for any reason, we fail safe back
+// to the exact-match behavior rather than blocking assignment submission.
+type GradedAnswer = { isCorrect: boolean; feedback?: string };
+
+async function gradeFreeTextAnswer(
+  question: string,
+  correctAnswer: string,
+  studentAnswer: string
+): Promise<GradedAnswer> {
+  if (normalizeText(studentAnswer) === normalizeText(correctAnswer)) {
+    return { isCorrect: true };
+  }
+  if (!studentAnswer.trim()) {
+    return { isCorrect: false };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/game-ai/grade-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, correctAnswer, studentAnswer }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Grading request failed (${response.status})`);
+    const data = await response.json();
+    return {
+      isCorrect: !!data.isCorrect,
+      feedback: typeof data.feedback === 'string' ? data.feedback : undefined,
+    };
+  } catch (error) {
+    console.warn('AI grading unavailable, falling back to exact match:', error);
+    return { isCorrect: normalizeText(studentAnswer) === normalizeText(correctAnswer) };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export interface GameQuestion {
   id: string;
@@ -196,6 +273,11 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   const [flashcardAnswer, setFlashcardAnswer] = useState('');
   const [isFlipped, setIsFlipped] = useState(false);
   const [flashcardSubmitted, setFlashcardSubmitted] = useState(false);
+  // 🆕 AI GRADING: grading is now an async call for flashcard/fill-in-blanks
+  // free text — track an in-flight state (disable the button / show a
+  // spinner) and any feedback line the grader returned with its verdict.
+  const [isGradingAnswer, setIsGradingAnswer] = useState(false);
+  const [answerFeedback, setAnswerFeedback] = useState<string | null>(null);
 
   // Memory match specific (Two-column matching)
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
@@ -332,10 +414,14 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       setIsFlipped(false);
       setFlashcardSubmitted(false);
       setIsCorrect(null);
+      setIsGradingAnswer(false);
+      setAnswerFeedback(null);
     } else if (gameType === 'fill_in_blanks') {
       setFlashcardAnswer('');
       setHasAnswered(false);
       setIsCorrect(null);
+      setIsGradingAnswer(false);
+      setAnswerFeedback(null);
     }
   };
 
@@ -493,16 +579,27 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     setUserAnswers(prev => ({ ...prev, [currentIndex]: { selected: currentQuestion.options?.[index] ?? '', isCorrect: correct } }));
   };
 
-  const handleFlashcardSubmit = () => {
-    if (!flashcardAnswer.trim()) return;
-    setFlashcardSubmitted(true);
-    setIsFlipped(true);
-    const correct = flashcardAnswer.trim().toLowerCase() === currentQuestion.answer.trim().toLowerCase();
-    setIsCorrect(correct);
-    if (correct) {
-      setScore(prev => prev + 1);
+  const handleFlashcardSubmit = async () => {
+    if (!flashcardAnswer.trim() || isGradingAnswer) return;
+    setIsGradingAnswer(true);
+    setAnswerFeedback(null);
+    try {
+      const { isCorrect: correct, feedback } = await gradeFreeTextAnswer(
+        currentQuestion.question,
+        currentQuestion.answer,
+        flashcardAnswer
+      );
+      setFlashcardSubmitted(true);
+      setIsFlipped(true);
+      setIsCorrect(correct);
+      setAnswerFeedback(feedback || null);
+      if (correct) {
+        setScore(prev => prev + 1);
+      }
+      setUserAnswers(prev => ({ ...prev, [currentIndex]: { selected: flashcardAnswer, isCorrect: correct } }));
+    } finally {
+      setIsGradingAnswer(false);
     }
-    setUserAnswers(prev => ({ ...prev, [currentIndex]: { selected: flashcardAnswer, isCorrect: correct } }));
   };
 
   const handleNext = () => {
@@ -865,13 +962,18 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             value={flashcardAnswer}
             onChangeText={setFlashcardAnswer}
             multiline
+            editable={!isGradingAnswer}
           />
           <TouchableOpacity
-            style={[styles.nextButton, !flashcardAnswer.trim() && styles.nextButtonDisabled]}
+            style={[styles.nextButton, (!flashcardAnswer.trim() || isGradingAnswer) && styles.nextButtonDisabled]}
             onPress={handleFlashcardSubmit}
-            disabled={!flashcardAnswer.trim()}
+            disabled={!flashcardAnswer.trim() || isGradingAnswer}
           >
-            <Text style={styles.nextButtonText}>Submit & Flip Card</Text>
+            {isGradingAnswer ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.nextButtonText}>Submit & Flip Card</Text>
+            )}
           </TouchableOpacity>
         </View>
       ) : (
@@ -884,6 +986,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               Your answer: {flashcardAnswer}
             </Text>
           )}
+          {answerFeedback && (
+            <Text style={styles.feedbackSubtext}>{answerFeedback}</Text>
+          )}
           <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
             <Text style={styles.nextButtonText}>
               {currentIndex < questions.length - 1 ? 'Next Card' : 'Finish Game'}
@@ -893,6 +998,26 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       )}
     </View>
   );
+
+  const handleFillBlankSubmit = async () => {
+    if (!flashcardAnswer.trim() || isGradingAnswer) return;
+    setIsGradingAnswer(true);
+    setAnswerFeedback(null);
+    try {
+      const { isCorrect: correct, feedback } = await gradeFreeTextAnswer(
+        currentQuestion.question,
+        currentQuestion.answer,
+        flashcardAnswer
+      );
+      setHasAnswered(true);
+      setIsCorrect(correct);
+      setAnswerFeedback(feedback || null);
+      if (correct) setScore(prev => prev + 1);
+      setUserAnswers(prev => ({ ...prev, [currentIndex]: { selected: flashcardAnswer, isCorrect: correct } }));
+    } finally {
+      setIsGradingAnswer(false);
+    }
+  };
 
   const renderFillInBlanks = () => (
     <View style={styles.gameContainer}>
@@ -910,19 +1035,18 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             placeholderTextColor="#999"
             value={flashcardAnswer}
             onChangeText={setFlashcardAnswer}
+            editable={!isGradingAnswer}
           />
           <TouchableOpacity
-            style={[styles.nextButton, !flashcardAnswer.trim() && styles.nextButtonDisabled]}
-            onPress={() => {
-              setHasAnswered(true);
-              const correct = flashcardAnswer.trim().toLowerCase() === currentQuestion.answer.trim().toLowerCase();
-              setIsCorrect(correct);
-              if (correct) setScore(prev => prev + 1);
-              setUserAnswers(prev => ({ ...prev, [currentIndex]: { selected: flashcardAnswer, isCorrect: correct } }));
-            }}
-            disabled={!flashcardAnswer.trim()}
+            style={[styles.nextButton, (!flashcardAnswer.trim() || isGradingAnswer) && styles.nextButtonDisabled]}
+            onPress={handleFillBlankSubmit}
+            disabled={!flashcardAnswer.trim() || isGradingAnswer}
           >
-            <Text style={styles.nextButtonText}>Submit Answer</Text>
+            {isGradingAnswer ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.nextButtonText}>Submit Answer</Text>
+            )}
           </TouchableOpacity>
         </View>
       ) : (
@@ -935,6 +1059,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               Correct answer: {currentQuestion.answer}
             </Text>
           )}
+          {answerFeedback && (
+            <Text style={styles.feedbackSubtext}>{answerFeedback}</Text>
+          )}
           <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
             <Text style={styles.nextButtonText}>
               {currentIndex < questions.length - 1 ? 'Next Question' : 'Finish Game'}
@@ -943,6 +1070,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         </View>
       )}
     </View>
+
   );
 
   const renderMemoryMatch = () => {

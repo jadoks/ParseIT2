@@ -192,6 +192,9 @@ type StoredAssignmentScore = {
   gameScore?: number;
   gameTotalQuestions?: number;
   attemptNumber?: number;
+  // Carried from /student-submissions so Analytics can order scores chronologically.
+  gradedAt?: any;
+  submittedAt?: any;
 };
 
 type StoredAssignmentState = {
@@ -1346,7 +1349,9 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       files: sharedAssignmentFiles[assignment.id] || assignment.files || [],
       gameScore: scoreState?.gameScore !== undefined ? scoreState.gameScore : (assignment as any).gameScore,
       gameTotalQuestions: scoreState?.gameTotalQuestions !== undefined ? scoreState.gameTotalQuestions : (assignment as any).gameTotalQuestions,
-      attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber
+      attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber,
+      gradedAt: scoreState?.gradedAt ?? (assignment as any).gradedAt ?? null,
+      submittedAt: scoreState?.submittedAt ?? (assignment as any).submittedAt ?? null
     };
   }) })), [joinedCourses, sharedAssignmentComments, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
 
@@ -1416,7 +1421,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
          // it was late. Only truly un-submitted work falls through to 'pending'.
          const status = submission?.status === 'graded' ? 'graded' : submission?.status === 'submitted' ? 'submitted' : submission?.status === 'late' ? 'late' : 'pending';
          statusesByAssignment[assignmentId] = status;
-         if (status !== 'graded') { scoresByAssignment[assignmentId] = {}; }
+         const submissionTimestamps = {
+           submittedAt: submission?.submittedAt ?? null,
+           gradedAt: submission?.gradedAt ?? null,
+         };
+         if (status !== 'graded') { scoresByAssignment[assignmentId] = { ...submissionTimestamps }; }
          if (status === 'graded') {
            const numericScore = Number(submission?.score ?? submission?.gameScore);
            const numericMaxScore = Number(
@@ -1424,6 +1433,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
              submission?.maxScore ?? submission?.gameTotalQuestions
            );
            scoresByAssignment[assignmentId] = { 
+             ...submissionTimestamps,
              ...(Number.isFinite(numericScore) ? { points: numericScore } : {}), 
              ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0 ? { maxPoints: numericMaxScore } : {}), 
              feedback: submission?.feedback ?? null, 
@@ -1449,6 +1459,23 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   }, [currentStudent?.studentId]);
 
   useEffect(() => { setHasLoadedAssignmentState(false); void loadStudentSubmissionState(); }, [loadStudentSubmissionState]);
+
+  // 🔥 Silent background refresh — same "live" polling pattern used for
+  // announcements/joinedClasses above. loadStudentSubmissionState already
+  // merges new data into existing state on success and simply skips updating
+  // on a failed fetch (see its catch block), so it's safe to re-run silently:
+  // there's no loading flag to toggle and no risk of blanking scores on a
+  // transient error. This is what makes newly-graded work (and its gradedAt/
+  // submittedAt timestamps used by Analytics) show up without the student
+  // needing to leave and reopen the Assignments/Analytics screen. 20s (vs.
+  // the 8s used for announcements/classes) since grades change far less
+  // often and this fetch does more work per call.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadStudentSubmissionState();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [loadStudentSubmissionState]);
 
   useEffect(() => {
     if (!currentStudent?.studentId || !hasLoadedAssignmentState) return;

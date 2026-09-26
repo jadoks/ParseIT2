@@ -441,14 +441,15 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     teacherFullName,
   ]);
 
-  const loadTeacherAnalytics = useCallback(async () => {
+  const loadTeacherAnalytics = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     const teacherId =
       normalizeText(activeProfile?.teacherId) ||
       normalizeText(currentTeacher?.teacherId) ||
       normalizeText(activeProfile?.authUid || '') ||
       normalizeText(activeProfile?.email);
     if (!teacherId) {
-      setAnalyticsStudents([]);
+      if (!silent) setAnalyticsStudents([]);
       return;
     }
     try {
@@ -466,7 +467,9 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       setAnalyticsStudents(Array.isArray(data?.data) ? data.data : []);
     } catch (error) {
       console.log('LOAD TEACHER ANALYTICS ERROR =>', error);
-      setAnalyticsStudents([]);
+      // On a silent background refresh, keep showing the last good data
+      // instead of wiping the analytics screen on a transient network blip.
+      if (!silent) setAnalyticsStudents([]);
     }
   }, [
     currentTeacher?.teacherId,
@@ -735,6 +738,23 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       loadTeacherAnalytics();
     }
   }, [activeScreen, loadTeacherClasses, loadTeacherAnalytics]);
+
+  // 🔥 Silent background refresh — same "live" polling pattern used for
+  // announcements/notifications above. Keeps class averages, risk levels and
+  // per-student rows live while the teacher has the Analytics tab open, so a
+  // grade entered elsewhere (or on another device) shows up without a manual
+  // reload. Only runs while actively on the analytics screen: this endpoint
+  // aggregates every student across every one of the teacher's classes, so
+  // polling it in the background from every other screen would be wasteful.
+  // 20s (vs. 8s elsewhere) because grades change far less often than chat/
+  // notifications, and each tick is a much heavier read.
+  useEffect(() => {
+    if (activeScreen !== 'analytics') return;
+    const interval = setInterval(() => {
+      void loadTeacherAnalytics({ silent: true });
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [activeScreen, loadTeacherAnalytics]);
 
   useEffect(() => {
     loadTeacherAnnouncements();

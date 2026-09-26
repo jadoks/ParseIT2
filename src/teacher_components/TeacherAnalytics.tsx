@@ -14,7 +14,7 @@ import {
 import { LineChart } from "react-native-chart-kit";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
-import { getScorePercent } from "../analytics/metrics";
+import { getScorePercent, normalizeAssignmentStatus } from "../analytics/metrics";
 import { AssignmentCourse } from "../screens/Assignments";
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -545,22 +545,29 @@ export default function TeacherAnalytics({
     [filteredStudents],
   );
 
-  const allAssignments = useMemo(
-    () =>
-      filteredStudents.flatMap((student) =>
-        student.courses.flatMap((course) =>
-          (course.assignments || []).map((assignment: any, index: number) => ({
-            ...assignment,
-            studentId: student.studentId,
-            studentName: student.studentName,
-            courseName: course.name,
-            classLabel: getCourseClassLabel(course),
-            orderIndex: index,
-          })),
-        ),
+  // Normalize each assignment's status the same way buildTeacherAnalytics does
+  // internally (via normalizeAssignments in metrics.ts): a still-"pending"
+  // assignment past its due date becomes "missing" here too. Without this,
+  // topicSummaries.pendingCount (below) counted raw server status directly,
+  // so an overdue assignment could show as "pending" in Topic Difficulty
+  // while the dashboard's own totalMissing/totalPending (from summary,
+  // already normalized) counted that same assignment as missing — two
+  // numbers for the same assignment that disagreed with each other.
+  const allAssignments = useMemo(() => {
+    const now = new Date();
+    return filteredStudents.flatMap((student) =>
+      student.courses.flatMap((course) =>
+        (course.assignments || []).map((assignment: any, index: number) => ({
+          ...normalizeAssignmentStatus(assignment, now),
+          studentId: student.studentId,
+          studentName: student.studentName,
+          courseName: course.name,
+          classLabel: getCourseClassLabel(course),
+          orderIndex: index,
+        })),
       ),
-    [filteredStudents],
-  );
+    );
+  }, [filteredStudents]);
 
   const totalPending = useMemo(
     () =>

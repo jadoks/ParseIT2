@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +14,31 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
+
+// 🆕 AI GRADING: same backend base-url resolution as Game.tsx (duplicated
+// rather than imported since the two files don't currently share a utils
+// module — see the same pattern already used for the storage-key helpers
+// below).
+function getGameAiBaseUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === 'web') {
+    console.warn('EXPO_PUBLIC_API_URL is not set; API calls will fail.');
+  }
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+  const host = possibleHost.split(':')[0];
+  if (host) {
+    return `http://${host}:5000`;
+  }
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getGameAiBaseUrl();
+const apiFetch = (url: string, options: any = {}) => fetch(url, { credentials: 'include', ...options });
 
 export interface QuizQuestion {
   question: string;
@@ -88,6 +116,51 @@ function normalizeText(value: string) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ');
+}
+
+// 🆕 AI GRADING: used by Flashcards and Fill-in-the-Blanks (the two free-text
+// modes) so a student who has the right idea but phrases it differently from
+// the accepted answer isn't marked wrong. An exact/normalized match is
+// checked first with zero network cost; only a non-matching answer is sent
+// to the backend for a semantic judgement. If that call fails for any
+// reason (offline, timeout, server error), we fail safe back to the old
+// exact-match behavior rather than blocking the student from finishing.
+type GradedAnswer = { isCorrect: boolean; feedback?: string };
+
+async function gradeFreeTextAnswer(
+  question: string,
+  correctAnswer: string,
+  studentAnswer: string
+): Promise<GradedAnswer> {
+  if (normalizeText(studentAnswer) === normalizeText(correctAnswer)) {
+    return { isCorrect: true };
+  }
+  if (!studentAnswer.trim()) {
+    return { isCorrect: false };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/game-ai/grade-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, correctAnswer, studentAnswer }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Grading request failed (${response.status})`);
+    const data = await response.json();
+    return {
+      isCorrect: !!data.isCorrect,
+      feedback: typeof data.feedback === 'string' ? data.feedback : undefined,
+    };
+  } catch (error) {
+    console.warn('AI grading unavailable, falling back to exact match:', error);
+    return { isCorrect: normalizeText(studentAnswer) === normalizeText(correctAnswer) };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function sanitizeQuestions(value?: any[] | null): QuizQuestion[] {
@@ -270,6 +343,11 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   const [flashcardInput, setFlashcardInput] = useState('');
   const [flashcardChecked, setFlashcardChecked] = useState(false);
   const [flashcardIsCorrect, setFlashcardIsCorrect] = useState<boolean | null>(null);
+  // 🆕 AI GRADING: grading is now an async call, so track an in-flight state
+  // (to disable the button / show a spinner) and any feedback line the
+  // grader returned back with its verdict.
+  const [isFlashcardGrading, setIsFlashcardGrading] = useState(false);
+  const [flashcardFeedback, setFlashcardFeedback] = useState<string | null>(null);
 
   // Fill Blank State
   const [fillIndex, setFillIndex] = useState(0);
@@ -277,6 +355,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   const [fillScore, setFillScore] = useState(0);
   const [fillChecked, setFillChecked] = useState(false);
   const [fillIsCorrect, setFillIsCorrect] = useState(false);
+  // 🆕 AI GRADING: same in-flight/feedback tracking as the Flashcards state above.
+  const [isFillGrading, setIsFillGrading] = useState(false);
+  const [fillFeedback, setFillFeedback] = useState<string | null>(null);
 
   // Trivia State
   const [triviaIndex, setTriviaIndex] = useState(0);
@@ -513,6 +594,8 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setFlashcardInput('');
     setFlashcardChecked(false);
     setFlashcardIsCorrect(null);
+    setIsFlashcardGrading(false);
+    setFlashcardFeedback(null);
   };
 
   const resetFillBlank = () => {
@@ -521,6 +604,8 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setFillScore(0);
     setFillChecked(false);
     setFillIsCorrect(false);
+    setIsFillGrading(false);
+    setFillFeedback(null);
   };
 
   const resetTrivia = () => {
@@ -652,15 +737,26 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setShowResults(true);
   };
 
-  const handleFlashcardCheck = () => {
-    if (!currentFlashcard) return;
-    const isCorrect = normalizeText(flashcardInput) === normalizeText(currentFlashcard.answer);
-    setFlashcardIsCorrect(isCorrect);
-    setFlashcardChecked(true);
-    recordAnswer(currentFlashcard.question, flashcardInput, currentFlashcard.answer, currentFlashcard.explanation, isCorrect);
+  const handleFlashcardCheck = async () => {
+    if (!currentFlashcard || isFlashcardGrading) return;
+    setIsFlashcardGrading(true);
+    setFlashcardFeedback(null);
+    try {
+      const { isCorrect, feedback } = await gradeFreeTextAnswer(
+        currentFlashcard.question,
+        currentFlashcard.answer,
+        flashcardInput
+      );
+      setFlashcardIsCorrect(isCorrect);
+      setFlashcardChecked(true);
+      setFlashcardFeedback(feedback || null);
+      recordAnswer(currentFlashcard.question, flashcardInput, currentFlashcard.answer, currentFlashcard.explanation, isCorrect);
 
-    if (isCorrect) {
-      setTimeout(() => setIsFlashcardAnswerVisible(true), 600);
+      if (isCorrect) {
+        setTimeout(() => setIsFlashcardAnswerVisible(true), 600);
+      }
+    } finally {
+      setIsFlashcardGrading(false);
     }
   };
 
@@ -674,16 +770,28 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       setFlashcardInput('');
       setFlashcardChecked(false);
       setFlashcardIsCorrect(null);
+      setFlashcardFeedback(null);
     }
   };
 
-  const checkFillAnswer = () => {
-    if (!currentFillItem || fillChecked) return;
-    const isCorrect = normalizeText(fillAnswer) === normalizeText(currentFillItem.answer);
-    setFillIsCorrect(isCorrect);
-    setFillChecked(true);
-    if (isCorrect) setFillScore((prev) => prev + 1);
-    recordAnswer(currentFillItem.question, fillAnswer, currentFillItem.answer, currentFillItem.explanation, isCorrect);
+  const checkFillAnswer = async () => {
+    if (!currentFillItem || fillChecked || isFillGrading) return;
+    setIsFillGrading(true);
+    setFillFeedback(null);
+    try {
+      const { isCorrect, feedback } = await gradeFreeTextAnswer(
+        currentFillItem.question,
+        currentFillItem.answer,
+        fillAnswer
+      );
+      setFillIsCorrect(isCorrect);
+      setFillChecked(true);
+      setFillFeedback(feedback || null);
+      if (isCorrect) setFillScore((prev) => prev + 1);
+      recordAnswer(currentFillItem.question, fillAnswer, currentFillItem.answer, currentFillItem.explanation, isCorrect);
+    } finally {
+      setIsFillGrading(false);
+    }
   };
 
   const nextFillBlank = () => {
@@ -695,6 +803,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       setFillAnswer('');
       setFillChecked(false);
       setFillIsCorrect(false);
+      setFillFeedback(null);
     }
   };
 
@@ -950,11 +1059,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               multiline
             />
             <Pressable
-              style={[styles.nextButton, !flashcardInput.trim() && styles.nextButtonDisabled]}
+              style={[styles.nextButton, (!flashcardInput.trim() || isFlashcardGrading) && styles.nextButtonDisabled]}
               onPress={handleFlashcardCheck}
-              disabled={!flashcardInput.trim()}
+              disabled={!flashcardInput.trim() || isFlashcardGrading}
             >
-              <Text style={styles.nextButtonText}>Check Answer</Text>
+              {isFlashcardGrading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.nextButtonText}>Check Answer</Text>
+              )}
             </Pressable>
           </View>
         ) : (
@@ -962,6 +1075,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             <Text style={[styles.feedbackText, { color: flashcardIsCorrect ? '#2E7D32' : '#C62828' }]}>
               {flashcardIsCorrect ? 'Correct! 🎉' : 'Incorrect ❌'}
             </Text>
+            {flashcardFeedback && (
+              <Text style={styles.feedbackSubtext}>{flashcardFeedback}</Text>
+            )}
             {!flashcardIsCorrect && !isFlashcardAnswerVisible && (
               <Pressable style={styles.nextButton} onPress={() => setIsFlashcardAnswerVisible(true)}>
                 <Text style={styles.nextButtonText}>Tap to See Answer</Text>
@@ -1013,6 +1129,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               {fillIsCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌'}
             </Text>
             {!fillIsCorrect && <Text style={styles.feedbackSubtext}>Correct answer: {currentFillItem.answer}</Text>}
+            {fillFeedback && <Text style={styles.feedbackSubtext}>{fillFeedback}</Text>}
             {currentFillItem.explanation && <Text style={styles.feedbackSubtext}>{currentFillItem.explanation}</Text>}
             <Pressable style={styles.nextButton} onPress={nextFillBlank}>
               <Text style={styles.nextButtonText}>
@@ -1022,11 +1139,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </View>
         ) : (
           <Pressable
-            style={[styles.nextButton, !fillAnswer.trim() && styles.nextButtonDisabled]}
+            style={[styles.nextButton, (!fillAnswer.trim() || isFillGrading) && styles.nextButtonDisabled]}
             onPress={checkFillAnswer}
-            disabled={!fillAnswer.trim()}
+            disabled={!fillAnswer.trim() || isFillGrading}
           >
-            <Text style={styles.nextButtonText}>Check Answer</Text>
+            {isFillGrading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.nextButtonText}>Check Answer</Text>
+            )}
           </Pressable>
         )}
       </View>

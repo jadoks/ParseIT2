@@ -2879,14 +2879,25 @@ useEffect(() => {
     const syllabusMod = findMatchingSyllabusModule(savedModule);
     // Each syllabus "topic" can bundle several subtopics (e.g. "Course
     // Orientation and SQA Fundamentals" -> VMGO, Intro to Testing, Intro to
-    // SQA...). We want the teacher to pick individual SUBTOPICS to generate —
-    // each selected subtopic becomes its own lesson — rather than one lesson
-    // per bundled topic. Topics without explicit subtopics fall back to using
-    // the topic title itself as a single selectable item.
+    // SQA...). We want the teacher to pick individual SUBTOPICS to generate.
+    // Subtopics selected under the SAME topic are merged into one lesson by
+    // the backend (see /course-syllabus/generate-next-lessons); subtopics
+    // from different topics still become separate lessons. Topics without
+    // explicit subtopics fall back to using the topic title itself as a
+    // single selectable item.
     let availableTopics: any[] = [];
     if (syllabusMod && syllabusMod.topics) {
+      // A saved lesson "covers" every subtopic in its `subtopics` array. A
+      // merged lesson (generated from several subtopics under the same
+      // topic) lists them all here; older/single-subtopic lessons don't have
+      // this field, so fall back to the lesson's own title as the one
+      // subtopic it covers — keeps this filter correct either way.
       const existingLessonTitles = new Set(
-        (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
+        (savedModule.lessons || []).flatMap((l: any) =>
+          Array.isArray(l.subtopics) && l.subtopics.length > 0
+            ? l.subtopics.map((s: string) => String(s).toLowerCase().trim())
+            : [String(l.title || '').toLowerCase().trim()]
+        )
       );
       availableTopics = syllabusMod.topics
         .map((topic: any) => {
@@ -3025,6 +3036,11 @@ useEffect(() => {
           discussion: lesson.discussion,
           activity: lesson.activity,
           lessonNumber: currentMax + idx + 1,
+          // Which syllabus subtopic(s) this lesson covers — merged lessons
+          // (generated from several subtopics under the same topic) list
+          // them all, so re-opening "Generate Next Lesson(s)" correctly
+          // hides all of them as already covered, not just the lesson title.
+          subtopics: Array.isArray(lesson.subtopics) && lesson.subtopics.length > 0 ? lesson.subtopics : [lesson.title],
           sasFields: getLessonSasFields(lesson),
           // ─── SAS (Student Activity Sheet) template fields ───
           // The AI already returns these (see generateTopicContent on the
@@ -9657,7 +9673,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>Generate Next Lessons</Text>
                 <Text style={styles.modalSubtitle}>
-                  Select one or more subtopics from "{targetModuleForGen?.title}" to generate content. Each subtopic becomes its own lesson.
+                  Select one or more subtopics from "{targetModuleForGen?.title}" to generate content. Subtopics under the same topic are combined into one lesson; subtopics from different topics become separate lessons.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowNextLessonModal(false)}>

@@ -19,6 +19,7 @@ import PizZip from "pizzip";
   import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
+import analyticsShared from "./analyticsShared.cjs";
 import { createAvatarThumbs } from "./avatarThumbs.js";
 import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster.js";
 
@@ -529,6 +530,52 @@ import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster
     req.user = decoded;
     req.clientIp = getClientIp(req);
     return next();
+  }
+
+  // Use AFTER requireAuth. Admins always pass. Other callers must have one of
+  // `allowedRoles`; if `selfRole` is set, a caller with that role may only
+  // request their own id (`req.params[paramName]`) — matched against their
+  // profile id, studentId/teacherId, email or auth uid.
+  function requireRoleOrSelf({ allowedRoles = [], paramName = null, selfRole = null } = {}) {
+    return async (req, res, next) => {
+      try {
+        const profile = await findUserProfileByAuthUid(req.user?.uid);
+        if (!profile) {
+          return res.status(403).json({ error: "User profile not found." });
+        }
+
+        if (profile.role !== "admin") {
+          if (!allowedRoles.includes(profile.role)) {
+            return res.status(403).json({ error: "You do not have access to this data." });
+          }
+
+          if (paramName && selfRole && profile.role === selfRole) {
+            const requested = String(req.params?.[paramName] || "").trim().toLowerCase();
+            const ownIds = [
+              profile.id,
+              profile.data?.studentId,
+              profile.data?.teacherId,
+              profile.data?.email,
+              profile.data?.authUid,
+              req.user?.uid,
+              req.user?.email,
+            ]
+              .filter(Boolean)
+              .map((value) => String(value).trim().toLowerCase());
+
+            if (!requested || !ownIds.includes(requested)) {
+              return res.status(403).json({ error: "You can only access your own data." });
+            }
+          }
+        }
+
+        req.profile = profile;
+        return next();
+      } catch (error) {
+        console.error("requireRoleOrSelf error:", error);
+        return res.status(500).json({ error: "Failed to verify access." });
+      }
+    };
   }
 
   // Same credential checks as requireAuth, but never rejects: returns the
@@ -1254,16 +1301,20 @@ async function createReadSignedUrlIfExists(storagePath) {
   }
 
 
-  function getPercentFromScore(score, maxPoints) {
-    const numericScore = Number(score);
-    const numericMax = Number(maxPoints || 100);
-
-    if (!Number.isFinite(numericScore) || !Number.isFinite(numericMax) || numericMax <= 0) {
-      return null;
-    }
-
-    return Math.round((numericScore / numericMax) * 100);
-  }
+  // getPercentFromScore, getAdminRiskLevel, getAssignmentMaxPoints and
+  // isMissingSubmission all now live in analyticsShared.cjs — the same file
+  // analyticsService.parity.test.ts imports to check that this server's
+  // admin numbers still agree with the client's Student/Teacher analytics
+  // (analyticsService.ts). Do not redefine these here; change
+  // analyticsShared.cjs (and check metrics.ts / riskEngine.ts on the client
+  // for the same change) instead, or a future edit could silently make the
+  // two disagree again the way the "late" status bug did.
+  const {
+    getPercentFromScore,
+    getAdminRiskLevel,
+    getAssignmentMaxPoints,
+    isMissingSubmission,
+  } = analyticsShared;
 
   function normalizeAnalyticsDateLabel(value, fallbackLabel = "No Date") {
     const date = resolveDate(value);
@@ -1275,14 +1326,6 @@ async function createReadSignedUrlIfExists(storagePath) {
       day: "numeric",
     });
   }
-
-  function getAdminRiskLevel({ average, gradedCount, missingCount, pendingCount }) {
-    if (gradedCount === 0 && missingCount === 0) return "No Data";
-    if (average < 75 || missingCount >= 3) return "High";
-    if (average < 85 || missingCount >= 1 || pendingCount >= 3) return "Moderate";
-    return "Low";
-  }
-
 
   async function uploadBannerToStorage({
     bannerBase64,
@@ -2240,6 +2283,147 @@ async function createReadSignedUrlIfExists(storagePath) {
     if (questions.length < 1) throw new Error("OpenAI generated too few questions.");
     return questions;
   }
+
+  // ==========================================
+  // 3b. FREE-TEXT ANSWER GRADING (Flashcards / Fill in the Blanks)
+  // ==========================================
+  // The client already short-circuits an exact/normalized match before ever
+  // calling this — this only runs when the student's wording doesn't match
+  // the accepted answer verbatim, so we can judge whether the *idea* is
+  // right even when the phrasing isn't.
+  function buildGradingPrompt({ question, correctAnswer, studentAnswer }) {
+    return `You are grading a student's short-answer response in a study app.
+
+Question: ${question || "(no question text provided)"}
+Accepted answer: ${correctAnswer}
+Student's answer: ${studentAnswer}
+
+Mark the student's answer CORRECT if it captures the same core idea or fact as the accepted answer, even if worded differently, abbreviated, or missing minor detail. Mark it INCORRECT if it is blank, off-topic, factually wrong, or missing the key concept entirely. Do not require exact wording or exact phrasing.
+
+Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
+{"isCorrect": true or false, "feedback": "one short, encouraging sentence (max 20 words) explaining the verdict"}`;
+  }
+
+  async function gradeFreeTextAnswerWithGemini({ question, correctAnswer, studentAnswer }) {
+    if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+    const prompt = buildGradingPrompt({ question, correctAnswer, studentAnswer });
+
+    const model = geminiGameAI.getGenerativeModel({
+      model: GEMINI_GAME_MODEL,
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 200,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            isCorrect: { type: SchemaType.BOOLEAN },
+            feedback: { type: SchemaType.STRING },
+          },
+          required: ["isCorrect", "feedback"],
+        },
+      },
+    });
+
+    const modelsToTry = [GEMINI_GAME_MODEL, GEMINI_GAME_FALLBACK_MODEL].filter(Boolean);
+    let lastError;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const attemptModel =
+          modelName === GEMINI_GAME_MODEL
+            ? model
+            : geminiGameAI.getGenerativeModel({
+                model: modelName,
+                generationConfig: {
+                  temperature: 0,
+                  maxOutputTokens: 200,
+                  responseMimeType: "application/json",
+                  responseSchema: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      isCorrect: { type: SchemaType.BOOLEAN },
+                      feedback: { type: SchemaType.STRING },
+                    },
+                    required: ["isCorrect", "feedback"],
+                  },
+                },
+              });
+
+        const result = await attemptModel.generateContent(prompt);
+        const parsed = JSON.parse(result.response.text());
+        return {
+          isCorrect: !!parsed.isCorrect,
+          feedback: typeof parsed.feedback === "string" ? parsed.feedback.slice(0, 200) : "",
+        };
+      } catch (error) {
+        lastError = error;
+        console.log(`Gemini grading failed on ${modelName}:`, error.message);
+      }
+    }
+    throw lastError || new Error("Gemini grading failed.");
+  }
+
+  // Keyword-overlap fallback, used ONLY if Gemini is unreachable, misconfigured,
+  // or errors on every model — never the primary grading path. Far cruder
+  // than the AI judgement, but keeps the game playable during an outage.
+  function gradeFreeTextAnswerLocally({ correctAnswer, studentAnswer }) {
+    const norm = (s) =>
+      String(s || "").trim().toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ");
+    const a = norm(correctAnswer);
+    const b = norm(studentAnswer);
+
+    if (!b) return { isCorrect: false, feedback: "No answer given." };
+    if (a === b) return { isCorrect: true, feedback: "Matches the accepted answer." };
+
+    const STOP_WORDS = new Set([
+      "a", "an", "the", "is", "are", "was", "were", "of", "to", "in", "on",
+      "for", "and", "or", "that", "this", "it", "its", "be", "by", "as", "at",
+    ]);
+    const wordsOf = (s) => s.split(" ").filter((w) => w && !STOP_WORDS.has(w));
+    const aWords = new Set(wordsOf(a));
+    const bWords = new Set(wordsOf(b));
+
+    if (aWords.size === 0) return { isCorrect: false, feedback: "Could not verify this answer right now." };
+
+    let overlap = 0;
+    aWords.forEach((w) => { if (bWords.has(w)) overlap++; });
+    const ratio = overlap / aWords.size;
+
+    return {
+      isCorrect: ratio >= 0.6,
+      feedback: ratio >= 0.6 ? "Close enough to the key idea." : "Missing the key idea — check the correct answer.",
+    };
+  }
+
+  app.post("/game-ai/grade-answer", requireAuth, async (req, res) => {
+    try {
+      const question = String(req.body?.question || "").trim();
+      const correctAnswer = String(req.body?.correctAnswer || "").trim();
+      const studentAnswer = String(req.body?.studentAnswer || "").trim();
+
+      if (!correctAnswer) {
+        return res.status(400).json({ error: "correctAnswer is required." });
+      }
+      // Should rarely reach here — the client already checks this — but
+      // stay correct if it does.
+      if (!studentAnswer) {
+        return res.json({ isCorrect: false, feedback: "No answer given.", provider: "none" });
+      }
+
+      try {
+        const result = await gradeFreeTextAnswerWithGemini({ question, correctAnswer, studentAnswer });
+        return res.json({ ...result, provider: "gemini" });
+      } catch (aiError) {
+        console.warn("AI grading failed, using local fallback:", aiError.message);
+        const result = gradeFreeTextAnswerLocally({ correctAnswer, studentAnswer });
+        return res.json({ ...result, provider: "local" });
+      }
+    } catch (error) {
+      console.error("grade-answer error:", error);
+      return res.status(500).json({ error: error.message || "Failed to grade answer." });
+    }
+  });
 
   // ==========================================
   // 4. LOCAL FALLBACK
@@ -7638,7 +7822,7 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
-  app.get("/teacher-analytics/:teacherId", async (req, res) => {
+  app.get("/teacher-analytics/:teacherId", requireAuth, requireRoleOrSelf({ allowedRoles: ["teacher"], paramName: "teacherId", selfRole: "teacher" }), async (req, res) => {
     try {
       const teacherId = normalizeOptionalText(req.params.teacherId);
 
@@ -7722,7 +7906,7 @@ app.post("/create-admin", async (req, res) => {
               `${studentId}_${assignmentDoc.id}`
             );
 
-            const maxPoints = Number(assignment.totalScore || 100) || 100;
+            const maxPoints = getAssignmentMaxPoints(assignment);
             const rawScore = Number(submission?.score);
             const isGraded =
               submission?.status === "graded" && Number.isFinite(rawScore);
@@ -7844,7 +8028,7 @@ app.post("/create-admin", async (req, res) => {
               `${studentId}_${assignmentDoc.id}`
             );
 
-            const maxPoints = Number(assignment.totalScore || 100) || 100;
+            const maxPoints = getAssignmentMaxPoints(assignment);
             const score = Number(submission?.score);
 
             if (submission?.status === "graded" && Number.isFinite(score)) {
@@ -7853,8 +8037,7 @@ app.post("/create-admin", async (req, res) => {
               return;
             }
 
-            const dueDate = resolveDate(assignment.dueDate);
-            if (!submission && dueDate && dueDate.getTime() < Date.now()) {
+            if (isMissingSubmission(submission, assignment)) {
               missingCount += 1;
             }
           });
@@ -7887,7 +8070,7 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
-  app.get("/admin-analytics", async (req, res) => {
+  app.get("/admin-analytics", requireAuth, requireRoleOrSelf({ allowedRoles: [] }), async (req, res) => {
     try {
       const filterSchoolYear = normalizeOptionalText(req.query.schoolYear);
       const filterSemester = normalizeOptionalText(req.query.semester);
@@ -8041,7 +8224,7 @@ app.post("/create-admin", async (req, res) => {
             const submission = submissionsByStudentAssignment.get(
               `${studentId}_${assignmentId}`
             );
-            const maxPoints = Number(assignment.totalScore || 100) || 100;
+            const maxPoints = getAssignmentMaxPoints(assignment);
 
             if (submission?.status === "graded") {
               const percent = getPercentFromScore(submission.score, maxPoints);
@@ -8054,8 +8237,8 @@ app.post("/create-admin", async (req, res) => {
                 totalGradedCount += 1;
 
                 const subjectKey =
-                  normalizeOptionalText(assignment.header) ||
                   normalizeOptionalText(classData.name) ||
+                  normalizeOptionalText(classData.courseCode) ||
                   "Uncategorized";
                 const subjectCurrent = subjectMap.get(subjectKey) || {
                   subject: subjectKey,
@@ -8094,22 +8277,22 @@ app.post("/create-admin", async (req, res) => {
               continue;
             }
 
-            if (submission?.status === "submitted") {
+            // "late" = turned in after the deadline; still submitted, NOT missing.
+            if (submission?.status === "submitted" || submission?.status === "late") {
               studentSubmittedCount += 1;
               classSubmittedCount += 1;
               totalSubmittedAssignments += 1;
               continue;
             }
 
-            const dueDate = resolveDate(assignment.dueDate);
-            if (dueDate && dueDate.getTime() < Date.now()) {
+            if (isMissingSubmission(submission, assignment)) {
               studentMissingCount += 1;
               classMissingCount += 1;
               totalMissingAssignments += 1;
 
               const subjectKey =
-                normalizeOptionalText(assignment.header) ||
                 normalizeOptionalText(classData.name) ||
+                normalizeOptionalText(classData.courseCode) ||
                 "Uncategorized";
               const subjectCurrent = subjectMap.get(subjectKey) || {
                 subject: subjectKey,
@@ -8128,8 +8311,8 @@ app.post("/create-admin", async (req, res) => {
               totalPendingAssignments += 1;
 
               const subjectKey =
-                normalizeOptionalText(assignment.header) ||
                 normalizeOptionalText(classData.name) ||
+                normalizeOptionalText(classData.courseCode) ||
                 "Uncategorized";
               const subjectCurrent = subjectMap.get(subjectKey) || {
                 subject: subjectKey,
@@ -9539,7 +9722,7 @@ app.post("/create-admin", async (req, res) => {
 //    (that data was being thrown away by the frontend anyway — see note
 //    below), no comments query (moved to /student-class-comments below).
 // ---------------------------------------------------------------------
-app.get("/student-joined-classes/:studentId", async (req, res) => {
+app.get("/student-joined-classes/:studentId", requireAuth, requireRoleOrSelf({ allowedRoles: ["student", "teacher"], paramName: "studentId", selfRole: "student" }), async (req, res) => {
   try {
     const { studentId } = req.params;
 
@@ -9662,10 +9845,7 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
             dueDate: assignment.dueDate || "",
             status: "pending",
             points: 0,
-            maxPoints:
-              typeof assignment.totalScore === "number"
-                ? assignment.totalScore
-                : Number(assignment.totalScore) || 0,
+            maxPoints: getAssignmentMaxPoints(assignment),
             topic: assignment.header || "",
             materialIds: Array.isArray(assignment.materialIds)
               ? assignment.materialIds
@@ -11561,7 +11741,7 @@ app.get(
   }
 });
 
-  app.get("/student-submissions/:studentId", async (req, res) => {
+  app.get("/student-submissions/:studentId", requireAuth, requireRoleOrSelf({ allowedRoles: ["student", "teacher"], paramName: "studentId", selfRole: "student" }), async (req, res) => {
     try {
       const { studentId } = req.params;
 
@@ -19000,11 +19180,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
   // Builds the section list / formatting rules / JSON shape for a prompt so the
   // AI is only asked for the header fields + the sections the teacher picked.
-  function buildSasPromptSpec(fields, topic, customSections = []) {
+  function buildSasPromptSpec(fields, topic, customSections = [], subtopics = []) {
     const selected = normalizeSasFields(fields, []);
     const customTitles = normalizeCustomSectionTitles(customSections);
+    // When a lesson bundles several related subtopics together (teacher
+    // selected multiple subtopics under the same syllabus topic), every
+    // section must address ALL of them as one cohesive lesson rather than
+    // just the first — mirrors the CTU SAS template, where e.g. "JS Basics:
+    // Objects, Arrays, and Functions" covers all three inside one document.
+    const mergedSubtopics = Array.isArray(subtopics) ? subtopics.filter(Boolean) : [];
+    const isMerged = mergedSubtopics.length > 1;
     const items = [
-      `objectives — 3 to 5 Intended Learning Outcomes specific to "${topic}" (each a short "you should be able to..." statement).`,
+      ...(isMerged
+        ? [
+            `IMPORTANT: this single lesson bundles ${mergedSubtopics.length} related subtopics together — ${mergedSubtopics.map((s) => `"${s}"`).join(", ")}. Every section below must address ALL of them as one cohesive lesson, not just the first one. In particular, the Concept Notes ("discussion") section MUST have one clearly labeled numbered section per subtopic, in this exact order (${mergedSubtopics.join(" → ")}), each with its own explanation and example(s)/code where relevant — do not skip or shortchange any of them.`,
+          ]
+        : []),
+      `objectives — 3 to 5 Intended Learning Outcomes specific to "${topic}" (each a short "you should be able to..." statement)${isMerged ? `, drawing from across ALL of the bundled subtopics (${mergedSubtopics.join(", ")}), not just one` : ""}.`,
       `materials — list of materials/tools needed (e.g. Computer, Smartphone, Student Activity Sheet, and anything else relevant to the subject).`,
       `references — 1 to 3 short reference citations (book, official docs, or reputable site) relevant to "${topic}".`,
       ...selected.map((k) => SAS_FIELD_PROMPTS[k].describe(topic)),
@@ -20518,15 +20710,74 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const existingLessonsSnap = await db.collection("courseLessons")
         .where("moduleId", "==", moduleId)
         .get();
-      const existingLessonTitles = new Set(
-        existingLessonsSnap.docs.map(doc => String(doc.data().title || "").toLowerCase().trim())
-      );
+      // A lesson "covers" every subtopic listed in its `subtopics` array; for
+      // older lessons that predate this field (or single-subtopic lessons),
+      // fall back to treating the lesson's own title as the one subtopic it
+      // covers. This lets dedup work correctly even after subtopics start
+      // being bundled into merged lessons (whose title is the parent topic's
+      // bundle title, not any one subtopic's name).
+      const existingCoveredSubtopics = new Set();
+      existingLessonsSnap.docs.forEach((doc) => {
+        const d = doc.data() || {};
+        const subs = Array.isArray(d.subtopics) && d.subtopics.length > 0 ? d.subtopics : [d.title];
+        subs.forEach((s) => existingCoveredSubtopics.add(String(s || "").toLowerCase().trim()));
+      });
 
       const requestedTitles = [...new Set(topicTitles.map(t => String(t).trim()).filter(Boolean))];
-      const skippedTopics = requestedTitles.filter(t => existingLessonTitles.has(t.toLowerCase()));
-      const topicsToGenerate = requestedTitles.filter(t => !existingLessonTitles.has(t.toLowerCase()));
 
-      // Generate ONE AT A TIME (sequential, not Promise.all). This is
+      // 3a. Group the requested (flat) subtopic titles by their parent
+      // syllabus topic. Subtopics selected under the SAME topic are bundled
+      // into ONE generated lesson — titled with the topic's own bundle title
+      // (e.g. "JS Basics: Objects, Arrays, and Functions") — the same way the
+      // CTU SAS template covers several related subtopics inside a single
+      // Student Activity Sheet, instead of one lesson per subtopic.
+      const requestedSet = new Set(requestedTitles.map((t) => t.toLowerCase()));
+      const consumed = new Set();
+      const topicGroups = [];
+      (targetSyllabusModule.topics || []).forEach((topic) => {
+        const rawSubtopics = Array.isArray(topic.subtopics) && topic.subtopics.length > 0
+          ? topic.subtopics
+          : [topic.title];
+        const matchedSubtopics = rawSubtopics.filter(
+          (s) => requestedSet.has(String(s).trim().toLowerCase())
+        );
+        if (matchedSubtopics.length > 0) {
+          matchedSubtopics.forEach((s) => consumed.add(String(s).trim().toLowerCase()));
+          topicGroups.push({ topicTitle: topic.title, subtopics: matchedSubtopics });
+        }
+      });
+      // Safety net: a requested title that didn't match any syllabus
+      // subtopic (e.g. the syllabus changed since the picker loaded) still
+      // gets generated, as its own single-subtopic lesson.
+      requestedTitles
+        .filter((t) => !consumed.has(t.toLowerCase()))
+        .forEach((t) => topicGroups.push({ topicTitle: t, subtopics: [t] }));
+
+      // 3b. Within each group, drop subtopics already covered by an existing
+      // lesson; skip the whole group only if EVERY subtopic in it is already
+      // covered. Partial overlap (e.g. "Objects" already has a lesson but
+      // "Arrays"/"Functions" don't) still generates a merged lesson for just
+      // the remaining subtopics.
+      const skippedTopics = [];
+      const groupsToGenerate = [];
+      topicGroups.forEach((group) => {
+        const newSubtopics = group.subtopics.filter(
+          (s) => !existingCoveredSubtopics.has(String(s).toLowerCase().trim())
+        );
+        if (newSubtopics.length === 0) {
+          skippedTopics.push(group.subtopics.length > 1 ? group.topicTitle : group.subtopics[0]);
+          return;
+        }
+        groupsToGenerate.push({
+          // Merged lessons (2+ subtopics) are titled with the parent topic's
+          // own bundle title; a single remaining subtopic keeps its own name
+          // — identical to the pre-merge, one-lesson-per-subtopic behavior.
+          lessonTitle: newSubtopics.length > 1 ? group.topicTitle : newSubtopics[0],
+          subtopics: newSubtopics,
+        });
+      });
+
+      // Generate ONE GROUP AT A TIME (sequential, not Promise.all). This is
       // intentionally slower than firing everything in parallel — a batch of
       // 5 lessons now takes ~5x as long as 1 — but it guarantees no two
       // requests ever hit Gemini in the same moment, so there's no per-minute
@@ -20538,31 +20789,36 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       // 503/429s (see generateTopicContent).
       const failedTopics = [];
       const generationResults = [];
-      for (let idx = 0; idx < topicsToGenerate.length; idx++) {
-        const topicTitle = topicsToGenerate[idx];
+      for (let idx = 0; idx < groupsToGenerate.length; idx++) {
+        const group = groupsToGenerate[idx];
         const lessonNum = nextLessonNumber + idx;
         try {
-          console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${lessonNum}...`);
+          console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${group.lessonTitle}" (subtopics: ${group.subtopics.join(", ")}), Lesson #: ${lessonNum}...`);
           const content = await generateTopicContent(
             targetSyllabusModule,
             moduleNumber,
-            topicTitle,
+            group.subtopics,
             lessonNum,
             sasFields,
-            customSectionTitles
+            customSectionTitles,
+            group.lessonTitle
           );
           const generatedLesson = content?.modules?.[0]?.lessons?.[0];
           if (!generatedLesson) {
-            failedTopics.push(topicTitle);
+            failedTopics.push(group.lessonTitle);
             generationResults.push(null);
             continue;
           }
           generatedLesson.lessonNumber = lessonNum;
           generatedLesson.id = `preview-${moduleId}-${lessonNum}`;
+          // Records which subtopics this lesson covers — used both for
+          // dedup on future generations and to persist on save (see
+          // /course-lessons/create-manual).
+          generatedLesson.subtopics = group.subtopics;
           generationResults.push(generatedLesson);
         } catch (genError) {
-          console.error(`Failed to generate content for ${topicTitle}:`, genError);
-          failedTopics.push(topicTitle);
+          console.error(`Failed to generate content for ${group.lessonTitle}:`, genError);
+          failedTopics.push(group.lessonTitle);
           generationResults.push(null);
         }
       }
@@ -20693,7 +20949,14 @@ ${spec.rules}
   // `fields` = the optional SAS sections the teacher picked. Callers that don't
   // pass it (first-module generation from the syllabus) keep the old behavior:
   // every section is generated.
-  async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic, startLessonNumber = 1, fields = SAS_OPTIONAL_FIELD_KEYS, customSections = []) {
+  // `topicOrSubtopics` accepts either a single topic string (legacy callers)
+  // or an array of one-or-more subtopic strings that should be bundled into
+  // ONE lesson (teacher selected multiple subtopics under the same syllabus
+  // topic — see /course-syllabus/generate-next-lessons). `lessonTitleOverride`
+  // lets the caller set the saved lesson's title to the parent topic's own
+  // bundle title (e.g. "JS Basics: Objects, Arrays, and Functions") instead
+  // of a raw join of the subtopic names.
+  async function generateTopicContent(syllabusModule, targetModuleNum, topicOrSubtopics, startLessonNumber = 1, fields = SAS_OPTIONAL_FIELD_KEYS, customSections = [], lessonTitleOverride = null) {
     if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
     
     let modelName = GEMINI_GAME_MODEL || "gemini-3.5-flash";
@@ -20712,21 +20975,33 @@ ${spec.rules}
       ? syllabusModule.topics.map(t => t.title || t).join(", ")
       : moduleName;
 
+    const subtopicsList = (Array.isArray(topicOrSubtopics) ? topicOrSubtopics : [topicOrSubtopics])
+      .map((s) => String(s || "").trim())
+      .filter(Boolean);
+    if (subtopicsList.length === 0) throw new Error("No topic/subtopic provided to generate.");
+    const isMerged = subtopicsList.length > 1;
+    // The lesson's title/id: the caller's override (usually the parent
+    // syllabus topic's own bundle title) when merging several subtopics,
+    // otherwise just the single subtopic/topic string — identical to the
+    // pre-merge behavior.
+    const specificTopic = lessonTitleOverride || (isMerged ? subtopicsList.join(", ") : subtopicsList[0]);
+
     // Prompt focuses strictly on the specificTopic within the context of the module.
     // Follows the CTU "Student Activity Sheet" (SAS) template. The letterhead
     // fields (ILOs, Materials, References) are always generated; every other
     // section is generated ONLY if the teacher selected it (see SAS_FIELD_PROMPTS).
     const sasFields = normalizeSasFields(fields, []);
-    const spec = buildSasPromptSpec(sasFields, specificTopic, customSections);
+    const spec = buildSasPromptSpec(sasFields, specificTopic, customSections, subtopicsList);
     const prompt = `You are an expert curriculum designer and university instructor from Cebu Technological University (CTU).
-  Generate a Student Activity Sheet (SAS) for ONE SPECIFIC LESSON/TOPIC ONLY.
+  Generate a Student Activity Sheet (SAS) for ONE SPECIFIC LESSON${isMerged ? " covering several bundled subtopics" : "/TOPIC ONLY"}.
   MODULE CONTEXT:
   - Week/Module: ${syllabusModule.weeklySchedule || ""} (${moduleName})
   - All Topics in this Week: ${topicList}
   CURRENT LESSON TO GENERATE:
   - Topic: "${specificTopic}"
+  ${isMerged ? `- This ONE lesson bundles these subtopics together, in this order: ${subtopicsList.join(", ")}` : ""}
   INSTRUCTIONS:
-  Create a comprehensive Student Activity Sheet specifically for "${specificTopic}", following the exact section structure below. Do NOT cover other topics in this week unless necessary for context. Include ONLY the sections listed below — the teacher chose them for this course. EVERY listed section is REQUIRED — do not omit or leave any blank.
+  Create a comprehensive Student Activity Sheet specifically for "${specificTopic}"${isMerged ? `, covering ALL of these bundled subtopics together within this SINGLE lesson: ${subtopicsList.join(", ")} — give each one real, substantive coverage, not just a passing mention` : ""}, following the exact section structure below. Do NOT cover other topics in this week unless necessary for context. Include ONLY the sections listed below — the teacher chose them for this course. EVERY listed section is REQUIRED — do not omit or leave any blank.
   REQUIRED SAS SECTIONS:
 ${spec.sections}
   CRITICAL FORMATTING RULES:
@@ -21045,7 +21320,7 @@ ${spec.rules}
       console.log(`Generating content for Module ${targetModuleNum}, Topic: "${specificTopic}", Starting Lesson #: ${nextLessonNumber}`);
 
       // ✅ STEP 2: Pass nextLessonNumber to the generator
-      const generatedContent = await generateTopicContent(syllabusModule, targetModuleNum, specificTopic, nextLessonNumber);
+      const generatedContent = await generateTopicContent(syllabusModule, targetModuleNum, [specificTopic], nextLessonNumber);
 
       res.json({
         success: true,
@@ -21185,6 +21460,12 @@ ${spec.rules}
         sasFields,         // string[] — optional SAS sections the teacher chose (see SAS_OPTIONAL_FIELD_KEYS)
         customSections,    // [{ title, content }] — teacher-added "Add new section" entries
         sectionOrder,      // string[] — display order of sections (built-in keys + "custom:<title>")
+        // Which syllabus subtopic(s) this lesson covers. A merged lesson
+        // (teacher selected 2+ subtopics under the same syllabus topic) will
+        // have several entries here; defaults to [title] so dedup logic
+        // (see /course-syllabus/generate-next-lessons) still works for
+        // ordinary single-subtopic and manually-created lessons.
+        subtopics,
         // "text" or "file" — sent by the Manual Lesson form (matches
         // lessonMode). Not sent by the AI "Generate Next Lesson" save flow,
         // so its absence is what tells a real manually-typed lesson apart
@@ -21331,6 +21612,9 @@ ${spec.rules}
         sectionOrder: fileBase64
           ? null
           : normalizeSectionOrder(sectionOrder, normalizeCustomSections(customSections).map((c) => c.title)),
+        subtopics: fileBase64
+          ? null
+          : (Array.isArray(subtopics) && subtopics.length > 0 ? subtopics.filter(Boolean) : [title]),
         // ─── Tag appropriately ───
         // A file upload is always "manual_file". Otherwise, trust the
         // Manual Lesson form's explicit type: "text" -> teacher-typed

@@ -254,7 +254,11 @@ export const buildStudentAnalytics = (
       status: a.status,
     }))
     .sort((a, b) => {
-      // Match Assignment.tsx sorting logic: descending by ID
+      // Most recently graded first. Firestore document IDs are random, so
+      // sorting by ID does not reflect recency. Fall back to ID only to keep
+      // the order stable when two items have the same (or no) timestamp.
+      const timeDiff = toSafeTime(b.gradedAt) - toSafeTime(a.gradedAt);
+      if (timeDiff !== 0) return timeDiff;
       if (a.id > b.id) return -1;
       if (a.id < b.id) return 1;
       return 0;
@@ -265,10 +269,10 @@ export const buildStudentAnalytics = (
     .map((a) => ({
       title: a.title,
       score: (a.points! / a.maxPoints!) * 100,
-      date:
-        toSafeISOString(a.gradedAt) ||
-        toSafeISOString(a.submittedAt) ||
-        new Date().toISOString(),
+      // No timestamp -> '' (sorts first, keeps original order). The old
+      // `new Date()` fallback stamped every undated point with "now", which made
+      // the whole trend series look like it happened at the same instant.
+      date: toSafeISOString(a.gradedAt) || toSafeISOString(a.submittedAt),
     }))
     .sort((a, b) => toSafeTime(a.date) - toSafeTime(b.date));
 
