@@ -338,7 +338,7 @@ const MyJourney = ({
             disabled={!hasValidStartYear}
             activeOpacity={0.85}
           >
-            <Text style={styles.showBtnText}>Generate Record</Text>
+            <Text style={styles.showBtnText}>View Record</Text>
           </TouchableOpacity>
         </View>
       </View>
