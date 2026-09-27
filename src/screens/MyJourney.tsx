@@ -262,7 +262,7 @@ const MyJourney = ({
           <Text style={styles.pageEyebrow}>Academic Record</Text>
           <Text style={styles.pageTitle}>My Journey</Text>
           <Text style={styles.pageSubtitle}>
-            Generate your official academic record from your uploaded grade file.
+            View your official academic record from your uploaded grade file.
           </Text>
         </View>
       </View>
