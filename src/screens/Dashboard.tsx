@@ -697,7 +697,13 @@ const Dashboard = ({
               Generate Activity is available only for graded assignments below 75% that already have related Module Lessons selected by the teacher and have not been completed yet.
        </Text >
 
-            <View style={styles.recommendationList}>
+            <View
+              style={[
+                styles.recommendationList,
+                isTablet && styles.recommendationListTablet,
+                isLargeScreen && styles.recommendationListLarge,
+              ]}
+            >
               {recommendedAssignments.length === 0 ? (
                 <Text style={styles.emptyStateText}>
                   No recommendations available yet.
@@ -715,6 +721,7 @@ const Dashboard = ({
                           padding: isMobile ? 12 : 14,
                           borderLeftColor: color,
                           borderLeftWidth: 4,
+                          width: isMobile ? '100%' : isLargeScreen ? '32%' : '48.5%',
                         },
                       ]}
                     >
@@ -1301,6 +1308,18 @@ const styles = StyleSheet.create({
   },
   recommendationList: {
     gap: 10,
+  },
+  recommendationListTablet: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  recommendationListLarge: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   recommendationItem: {
     backgroundColor: '#FFFFFF',
