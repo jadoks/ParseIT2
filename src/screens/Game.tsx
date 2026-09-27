@@ -382,16 +382,13 @@ const Game = ({
 
   const generateFromMaterials = async () => {
     if (!gameType) return showToast('Please select a game type first.', 'error');
-    if (!selectedClassId || selectedMaterialIds.length === 0) return showToast('Please select a class and at least one material.', 'error');
+    if (!selectedClassId || selectedMaterialIds.length === 0) return showToast('Select a class and a material.', 'error');
     if (selectedMaterialIds.length > MAX_MODULE_LESSONS) return showToast(`${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`, 'error');
     if (!studentId) return showToast('Not logged in: Student ID missing.', 'error');
     if (isInvalidCount) return showToast(`Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
     // 🌟 NEW: Enforce daily AI generation limit
     if (hasReachedDailyLimit) {
-      return showToast(
-        `Daily limit reached: You've used all ${MAX_GENERATIONS_PER_DAY} AI generations for today. Please try again tomorrow.`,
-        'error'
-      );
+      return showToast(`Daily limit reached (${MAX_GENERATIONS_PER_DAY}). Try again tomorrow.`, 'error');
     }
 
     setIsGenerating(true);

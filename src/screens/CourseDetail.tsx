@@ -1462,6 +1462,16 @@ const CourseDetail = ({
     setToast({ visible: true, message, type });
   };
 
+  // Backend error messages can run long and verbose — the toast only has
+  // room for ~2 short lines, so trim anything past that instead of letting
+  // it get visually cut off mid-sentence with no indication there's more.
+  const MAX_TOAST_MESSAGE_LENGTH = 90;
+  const shortenForToast = (message?: string | null, fallback = 'Something went wrong.') => {
+    const text = (message || fallback).trim() || fallback;
+    if (text.length <= MAX_TOAST_MESSAGE_LENGTH) return text;
+    return `${text.slice(0, MAX_TOAST_MESSAGE_LENGTH - 1).trimEnd()}…`;
+  };
+
   const hideToast = () => {
     setToast((prev) => ({ ...prev, visible: false }));
   };
@@ -1469,8 +1479,12 @@ const CourseDetail = ({
   // Thin wrapper matching SignIn.tsx's showFeedback signature, so every
   // existing "Alert.alert(title, message)" call site below can be swapped
   // to "showFeedback(type, title, message)" with minimal changes.
-  const showFeedback = (type: ToastType, title: string, message: string) => {
-    showToast(`${title}: ${message}`, type);
+  // ✅ UPDATED: no longer glues "Title: message" together — that was making
+  // nearly every toast in this file run long. The toast only has room for
+  // ~2 short lines, so just show the message (shortened if needed), and
+  // only fall back to the title if no message was given at all.
+  const showFeedback = (type: ToastType, title: string, message?: string) => {
+    showToast(shortenForToast(message, title), type);
   };
 
   const insets = useSafeAreaInsets();
@@ -1910,7 +1924,7 @@ const fetchModules = useCallback(async (silent = false) => {
       }
     } catch (err) {
       console.error("Native download failed:", err);
-      showFeedback('error', 'Download Failed', 'Unable to download this file. Opening it instead.');
+      showFeedback('error', 'Download Failed', 'Opening file instead of downloading.');
       try {
         await Linking.openURL(downloadUrl);
       } catch {
@@ -1925,7 +1939,7 @@ const fetchModules = useCallback(async (silent = false) => {
     const resolvedStoragePath = storagePath || resolveStoragePathFromUrl(firebaseUrl);
 
     if (!resolvedStoragePath && !firebaseUrl) {
-      showFeedback('error', 'No file', 'This material has no file to download.');
+      showFeedback('error', 'No file', 'No file to download.');
       return;
     }
 
@@ -2011,12 +2025,12 @@ const fetchModules = useCallback(async (silent = false) => {
       if (!silent) {
         const score = getScorePercent(assignment);
         if (score !== null && score >= 75) {
-          showFeedback('error', 'Not available', 'Generate Activity is only available for graded assignments below 75%.');
+          showFeedback('error', 'Not available', 'Only available for scores below 75%.');
         } else if (hasMasteredGeneratedActivity(assignment)) {
           const activityScore = getCompletedActivityScore(assignment);
-          showFeedback('info', 'Already mastered', `You already scored ${activityScore?.scorePercent ?? 75}% or above on the generated follow-up activity for this assignment.`);
+          showFeedback('info', 'Already mastered', `You already scored ${activityScore?.scorePercent ?? 75}%+ on this.`);
         } else {
-          showFeedback('error', 'Not available', 'This assignment needs at least one teacher-selected related material.');
+          showFeedback('error', 'Not available', 'Needs at least one related material.');
         }
       }
       return;
@@ -2029,7 +2043,7 @@ const fetchModules = useCallback(async (silent = false) => {
       materialIds: relatedMaterials.map((m) => m.id),
     } as any);
     if (!silent) {
-      showFeedback('success', 'Activity Generated', 'The activity will be generated from the related materials selected by the teacher.');
+      showFeedback('success', 'Activity Generated', 'Generating from the related materials.');
     }
   };
 
@@ -2251,7 +2265,7 @@ const fetchModules = useCallback(async (silent = false) => {
   const handleEditComment = async (commentId: string) => {
     if (!selectedAssignment || !editText.trim() || savingEdit) return;
     if (!onEditComment) {
-      showFeedback('error', 'Not Available', 'Edit functionality is not available.');
+      showFeedback('error', 'Not Available', 'Editing is not available.');
       return;
     }
     try {
@@ -2269,7 +2283,7 @@ const fetchModules = useCallback(async (silent = false) => {
   const handleDeleteComment = (commentId: string) => {
     if (!selectedAssignment) return;
     if (!onDeleteComment) {
-      showFeedback('error', 'Not Available', 'Delete functionality is not available.');
+      showFeedback('error', 'Not Available', 'Deleting is not available.');
       return;
     }
     setCommentToDeleteId(commentId);
@@ -2294,7 +2308,7 @@ const fetchModules = useCallback(async (silent = false) => {
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!course?.id) {
-      showFeedback('error', 'No class', 'This assignment is not connected to a class.');
+      showFeedback('error', 'No class', 'Assignment not connected to a class.');
       return;
     }
     try {
@@ -2351,7 +2365,7 @@ const fetchModules = useCallback(async (silent = false) => {
     if (!selectedAssignment) return;
     const linkUrl = normalizeSubmissionLink(submissionLink);
     if (!linkUrl) {
-      showFeedback('error', 'Missing link', 'Please paste a submission link first.');
+      showFeedback('error', 'Missing link', 'Paste a submission link first.');
       return;
     }
     onAddFile(selectedAssignment.id, {
@@ -2485,15 +2499,11 @@ const fetchModules = useCallback(async (silent = false) => {
     if (!selectedAssignment || !course?.id) return;
     if (isAssignmentSubmitted(selectedAssignment)) return;
     if (isSubmissionLocked(selectedAssignment)) {
-      showFeedback(
-        'error',
-        'Submission Closed',
-        'The due date for this assignment has passed and your teacher has turned off late submissions. This assignment can no longer accept work.'
-      );
+      showFeedback('error', 'Submission Closed', 'Submissions are closed.');
       return;
     }
     if (!currentStudent?.studentId) {
-      showFeedback('error', 'Missing student', 'Student account information is missing. Please sign in again.');
+      showFeedback('error', 'Missing student', 'Please sign in again.');
       return;
     }
     // ✅ FIX (mirrors Assignments.tsx): Only ever submit the student's OWN
@@ -2507,7 +2517,7 @@ const fetchModules = useCallback(async (silent = false) => {
     // since teacher files are also stamped with a `teacher-file-...` id.
     const files = getSubmittedFiles(selectedAssignment);
     if (files.length === 0) {
-      showFeedback('error', 'No files', 'Please upload at least one file or link before submitting.');
+      showFeedback('error', 'No files', 'Upload a file or link first.');
       return;
     }
     try {
@@ -2572,11 +2582,11 @@ const fetchModules = useCallback(async (silent = false) => {
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment || !course?.id) return;
     if (selectedAssignment.status === "graded") {
-      showFeedback('error', 'Already graded', 'This assignment has already been graded and cannot be unsubmitted.');
+      showFeedback('error', 'Already graded', 'Already graded, cannot unsubmit.');
       return;
     }
     if (!currentStudent?.studentId) {
-      showFeedback('error', 'Missing student', 'Student account information is missing. Please sign in again.');
+      showFeedback('error', 'Missing student', 'Please sign in again.');
       return;
     }
     try {
@@ -2656,11 +2666,11 @@ const fetchModules = useCallback(async (silent = false) => {
   const handlePlayGameWithAttemptCheck = (assignment: AssignmentItem) => {
     const blockedReason = getPlayGameBlockedReason(assignment);
     if (blockedReason === 'past_due') {
-      showFeedback('error', 'Assignment Past Due', 'This game-based assignment is past its due date and can no longer be played.');
+      showFeedback('error', 'Assignment Past Due', 'This assignment is past due.');
       return;
     }
     if (blockedReason === 'no_attempts') {
-      showFeedback('error', 'No Attempts Remaining', 'You have used all your attempts for this game-based assignment.');
+      showFeedback('error', 'No Attempts Remaining', "You're out of attempts.");
       return;
     }
     onPlayGame?.(assignment);
@@ -2696,7 +2706,7 @@ const fetchModules = useCallback(async (silent = false) => {
   // which already behaves like an in-app download/share.
   const handleDownloadSyllabus = async () => {
     if (!currentSyllabus?.id) {
-      showFeedback('error', 'No file', 'This course has no syllabus to download.');
+      showFeedback('error', 'No file', 'No syllabus to download.');
       return;
     }
 
@@ -2783,7 +2793,7 @@ const fetchModules = useCallback(async (silent = false) => {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
-        showFeedback('error', 'Download failed', data?.error || 'Could not prepare the download. Please try again.');
+        showFeedback('error', 'Download failed', data?.error || 'Download failed. Try again.');
         return;
       }
       await openDownloadUrl(data.url);
@@ -2795,7 +2805,7 @@ const fetchModules = useCallback(async (silent = false) => {
       }
     } catch (err) {
       console.warn('Lesson download failed:', err);
-      showFeedback('error', 'Download failed', 'Could not prepare the download. Please try again.');
+      showFeedback('error', 'Download failed', 'Download failed. Try again.');
     } finally {
       setDownloadingLessonsModuleId(null);
     }

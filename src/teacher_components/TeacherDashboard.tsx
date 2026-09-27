@@ -740,8 +740,8 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
 
       const asset = result.assets?.[0];
       if (!asset?.uri) { showToast('No file was selected.', 'error'); return null; }
-      if (!isAllowedBannerAsset(asset.mimeType, asset.name)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return null; }
-      if (asset.size && asset.size > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return null; }
+      if (!isAllowedBannerAsset(asset.mimeType, asset.name)) { showToast('Only JPG, PNG, or WEBP allowed.', 'error'); return null; }
+      if (asset.size && asset.size > 5 * 1024 * 1024) { showToast('Banner must be under 5MB.', 'error'); return null; }
 
       return {
         uri: asset.uri,
@@ -750,7 +750,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       };
     } catch (error) {
       console.error('Banner pick error:', error);
-      showToast('Unable to open file picker.', 'error');
+      showToast('Failed to open file picker.', 'error');
       return null;
     }
   };
@@ -802,12 +802,12 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
   const handleCreateClass = async () => {
     if (isCreatingClass) return;
     const activeYear = selectedYear; const activeSemester = selectedSemester;
-    if (!activeYear) { showToast('Please select a year.', 'error'); return; }
-    if (!activeSemester) { showToast('Please select a semester.', 'error'); return; }
-    if (!selectedSection) { showToast('Please select a section.', 'error'); return; }
-    if (!courseNameInput.trim()) { showToast('Please enter a course name.', 'error'); return; }
-    if (!startYear.trim() || !endYear) { showToast('Please enter a valid start year.', 'error'); return; }
-    if (!classBanner) { showToast('Please upload a class banner.', 'error'); return; }
+    if (!activeYear) { showToast('Select a year.', 'error'); return; }
+    if (!activeSemester) { showToast('Select a semester.', 'error'); return; }
+    if (!selectedSection) { showToast('Select a section.', 'error'); return; }
+    if (!courseNameInput.trim()) { showToast('Enter a course name.', 'error'); return; }
+    if (!startYear.trim() || !endYear) { showToast('Enter a valid start year.', 'error'); return; }
+    if (!classBanner) { showToast('Upload a class banner.', 'error'); return; }
     const scheduleError = validateScheduleBlocks(scheduleBlocks);
     if (scheduleError) { showToast(scheduleError, 'error'); return; }
     const internalOverlapError = validateNoInternalScheduleOverlap(scheduleBlocks);
@@ -897,12 +897,12 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
   const handleSaveEdit = async () => {
     if (!editingCourse || isSavingEdit) return;
     const activeEditYear = editSelectedYear; const activeEditSemester = editSelectedSemester;
-    if (!activeEditYear) { showToast('Please select a year.', 'error'); return; }
-    if (!activeEditSemester) { showToast('Please select a semester.', 'error'); return; }
-    if (!editSelectedSection) { showToast('Please select a section.', 'error'); return; }
-    if (!editCourseNameInput.trim()) { showToast('Please enter a course name.', 'error'); return; }
-    if (!editStartYear.trim() || !editEndYear) { showToast('Please enter a valid start year.', 'error'); return; }
-    if (!editClassBanner) { showToast('Please upload a class banner.', 'error'); return; }
+    if (!activeEditYear) { showToast('Select a year.', 'error'); return; }
+    if (!activeEditSemester) { showToast('Select a semester.', 'error'); return; }
+    if (!editSelectedSection) { showToast('Select a section.', 'error'); return; }
+    if (!editCourseNameInput.trim()) { showToast('Enter a course name.', 'error'); return; }
+    if (!editStartYear.trim() || !editEndYear) { showToast('Enter a valid start year.', 'error'); return; }
+    if (!editClassBanner) { showToast('Upload a class banner.', 'error'); return; }
     const editScheduleError = validateScheduleBlocks(editScheduleBlocks);
     if (editScheduleError) { showToast(editScheduleError, 'error'); return; }
     const editInternalOverlapError = validateNoInternalScheduleOverlap(editScheduleBlocks);

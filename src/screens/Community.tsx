@@ -488,7 +488,7 @@ const Community: React.FC<CommunityProps> = ({
   const handleCreatePost = (query: string) => {
   const trimmed = query.trim();
   if (!trimmed) {
-    showToast('Please write a question or post first.', 'error');
+    showToast('Write a question first.', 'error');
     return;
   }
   onCreatePost?.(trimmed);
@@ -582,7 +582,7 @@ const Community: React.FC<CommunityProps> = ({
     } catch {
       // Not saved -> bring the post back so the UI matches the server.
       setHiddenPosts((prev) => prev.filter((id) => id !== postId));
-      showToast("Couldn't hide the post. Please try again.", 'error');
+      showToast("Couldn't hide the post.", 'error');
     }
   };
 

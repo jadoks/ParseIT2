@@ -129,7 +129,7 @@ const refreshUserImageUrl = async (
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data?.error || 'Unable to refresh user image.');
+      throw new Error(data?.error || 'Failed to refresh user image.');
     }
     if (data?.url) {
       setCachedUserImageUrl(`${entityId}:thumb`, storagePath, data.url);
@@ -458,7 +458,7 @@ const TeacherDrawerMenu = ({
 
   const sendChangeEmailPin = async () => {
     if (!userEmail) {
-      showToast('Your account has no email on file. Contact support.', 'error');
+      showToast('No email on file. Contact support.', 'error');
       return;
     }
 
@@ -488,7 +488,7 @@ const TeacherDrawerMenu = ({
     const pin = changeEmailPin.join('');
 
     if (pin.length !== 4) {
-      showToast('Please enter the 4-digit code.', 'error');
+      showToast('Enter the 4-digit code.', 'error');
       return;
     }
 
@@ -518,12 +518,12 @@ const TeacherDrawerMenu = ({
     const trimmedEmail = newEmail.trim();
 
     if (!trimmedEmail) {
-      showToast('Please enter your new email address.', 'error');
+      showToast('Enter your new email address.', 'error');
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      showToast('Please enter a valid email address.', 'error');
+      showToast('Enter a valid email address.', 'error');
       return;
     }
 
@@ -587,7 +587,7 @@ const TeacherDrawerMenu = ({
 
   const sendChangePasswordPin = async () => {
     if (!userEmail) {
-      showToast('Your account has no email on file. Contact support.', 'error');
+      showToast('No email on file. Contact support.', 'error');
       return;
     }
 
@@ -617,7 +617,7 @@ const TeacherDrawerMenu = ({
     const pin = changePasswordPin.join('');
 
     if (pin.length !== 4) {
-      showToast('Please enter the 4-digit code.', 'error');
+      showToast('Enter the 4-digit code.', 'error');
       return;
     }
 

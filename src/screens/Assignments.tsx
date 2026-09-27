@@ -5,7 +5,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Modal,
@@ -448,6 +447,7 @@ function InlineMaterialViewer({
   storagePath,
   bucketPath,
   classId,
+  onError,
 }: {
   fileUrl: string;
   height: number;
@@ -456,6 +456,9 @@ function InlineMaterialViewer({
   storagePath?: string | null;
   bucketPath?: string | null;
   classId?: string;
+  // Reports a short, user-facing error message up to the parent's toast
+  // instead of popping a native Alert from inside this sub-component.
+  onError?: (message: string) => void;
 }) {
   const [resolvedUrl, setResolvedUrl] = useState(fileUrl);
   const [hasError, setHasError] = useState(false);
@@ -689,7 +692,7 @@ function InlineMaterialViewer({
               if (!supported) throw new Error('Unsupported URL.');
               await Linking.openURL(resolvedUrl);
             } catch {
-              Alert.alert('Open Failed', 'Unable to open this file externally.');
+              onError?.('Unable to open this file.');
             }
           }}
           style={{ marginTop: 10, padding: 8, backgroundColor: '#EFEFEF', borderRadius: 4 }}
@@ -787,14 +790,18 @@ const Assignments = ({
     setToast({ visible: true, message, type });
   };
 
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
+  // Backend error messages can run long and verbose — the toast only has
+  // room for ~2 short lines, so trim anything past that instead of letting
+  // it get visually cut off mid-sentence with no indication there's more.
+  const MAX_TOAST_MESSAGE_LENGTH = 90;
+  const shortenForToast = (message?: string | null, fallback = 'Something went wrong.') => {
+    const text = (message || fallback).trim() || fallback;
+    if (text.length <= MAX_TOAST_MESSAGE_LENGTH) return text;
+    return `${text.slice(0, MAX_TOAST_MESSAGE_LENGTH - 1).trimEnd()}…`;
   };
 
-  // Thin wrapper matching Register.tsx/CourseDetail.tsx so a title can be
-  // passed alongside the message — the toast just folds them into one line.
-  const showFeedback = (type: ToastType, title: string, message: string) => {
-    showToast(`${title}: ${message}`, type);
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
   };
 
   // ✅ NEW: Refresh state — drives pull-to-refresh UI on the list + detail
@@ -991,7 +998,7 @@ const Assignments = ({
     if (onOpenRelatedMaterial) {
       const course = courses.find((c) => c.id === selectedAssignment.courseId);
       if (!course) {
-        Alert.alert('Unable to open', 'Could not find the class for this material.');
+        showToast("Couldn't find that class.", 'error');
         return;
       }
       onOpenRelatedMaterial(course, material);
@@ -1001,7 +1008,7 @@ const Assignments = ({
 
     const url = material.fileUrl || material.fileUri || null;
     if (!url && !material.storagePath && !material.bucketPath) {
-      Alert.alert('No File', 'This material has no attached file yet.');
+      showToast('No file attached yet.', 'error');
       return;
     }
     setPreviewFile({
@@ -1021,10 +1028,7 @@ const Assignments = ({
     if (isGeneratingActivity) return;
     const relatedMaterials = getRelatedMaterials(assignment);
     if (!relatedMaterials.length) {
-      Alert.alert(
-        'Related materials required',
-        'The teacher must select related materials first. The AI follow-up activity is generated from those related materials, not from the assignment title.'
-      );
+      showToast('Teacher must add related materials.', 'error');
       return;
     }
     const course = courses.find((c) => c.id === assignment.courseId);
@@ -1175,7 +1179,7 @@ const Assignments = ({
   const handleEditComment = async (commentId: string) => {
     if (!selectedAssignment || !editText.trim() || savingEdit) return;
     if (!onEditComment) {
-      Alert.alert('Not Available', 'Edit functionality is not available.');
+      showToast('Editing is not available.', 'error');
       return;
     }
     
@@ -1185,7 +1189,7 @@ const Assignments = ({
       setEditingCommentId(null);
       setEditText('');
     } catch (error: any) {
-      Alert.alert('Edit Failed', error?.message || 'Unable to update comment.');
+      showToast(shortenForToast(error?.message, 'Unable to update comment.'), 'error');
     } finally {
       setSavingEdit(false);
     }
@@ -1194,7 +1198,7 @@ const Assignments = ({
   const handleDeleteComment = (commentId: string) => {
     if (!selectedAssignment) return;
     if (!onDeleteComment) {
-      Alert.alert('Not Available', 'Delete functionality is not available.');
+      showToast('Deleting is not available.', 'error');
       return;
     }
 
@@ -1209,7 +1213,7 @@ const Assignments = ({
       setIsDeletingComment(true);
       await onDeleteComment(selectedAssignment.id, commentToDeleteId);
     } catch (error: any) {
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+      showToast(shortenForToast(error?.message, 'Unable to delete comment.'), 'error');
     } finally {
       setIsDeletingComment(false);
       setDeleteModalVisible(false);
@@ -1249,7 +1253,7 @@ const Assignments = ({
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!selectedAssignment.courseId) {
-      Alert.alert('No class', 'This assignment is not connected to a class.');
+      showToast('Not connected to a class.', 'error');
       return;
     }
     try {
@@ -1298,7 +1302,7 @@ const Assignments = ({
       }
     } catch (err: any) {
       console.warn('DocumentPicker/upload error', err);
-      Alert.alert('Upload failed', err?.message || 'Could not upload the selected file.');
+      showToast(shortenForToast(err?.message, 'Could not upload the file.'), 'error');
     } finally {
       setIsUploadingFile(false);
     }
@@ -1314,7 +1318,7 @@ const Assignments = ({
   if (!selectedAssignment) return;
   const linkUrl = normalizeSubmissionLink(submissionLink);
   if (!linkUrl) {
-    Alert.alert('Missing link', 'Please paste a submission link first.');
+    showToast('Paste a submission link first.', 'error');
     return;
   }
   onAddFile(selectedAssignment.id, {
@@ -1426,7 +1430,7 @@ const Assignments = ({
     if (file.fileType === 'text/uri-list' || !!file.linkUrl) {
       const url = file.linkUrl?.trim();
       if (!url) {
-        Alert.alert('Invalid Link', 'No URL found for this submission.');
+        showToast('No URL found for this submission.', 'error');
         return;
       }
       try {
@@ -1434,7 +1438,7 @@ const Assignments = ({
         if (!supported && Platform.OS !== 'web') throw new Error('Unsupported URL.');
         await Linking.openURL(url);
       } catch {
-        Alert.alert('Open Failed', 'Unable to open this link.');
+        showToast('Unable to open this link.', 'error');
       }
       return;
     }
@@ -1445,7 +1449,7 @@ const Assignments = ({
     // fetch (or refresh) a working URL itself. We only block if there's
     // truly nothing to go on.
     if (!file.fileUrl && !file.storagePath && !file.bucketPath) {
-      Alert.alert('No File', emptyMessage);
+      showToast(emptyMessage, 'error');
       return;
     }
 
@@ -1463,14 +1467,11 @@ const Assignments = ({
     if (!selectedAssignment) return;
     if (isAssignmentSubmitted(selectedAssignment)) return;
     if (isSubmissionLocked(selectedAssignment)) {
-      Alert.alert(
-        'Submission Closed',
-        'The due date for this assignment has passed and your teacher has turned off late submissions. This assignment can no longer accept work.'
-      );
+      showToast('Submissions are closed.', 'error');
       return;
     }
     if (!currentStudent?.studentId) {
-      Alert.alert('Missing student', 'Student account information is missing.');
+      showToast('Please sign in again.', 'error');
       return;
     }
 
@@ -1485,7 +1486,7 @@ const Assignments = ({
     // teacher files are also stamped with a `teacher-file-...` id.
     const files = getSubmittedFiles(selectedAssignment);
     if (files.length === 0) {
-      Alert.alert('No files', 'Please upload at least one file or link before submitting.');
+      showToast('Add a file or link first.', 'error');
       return;
     }
 
@@ -1551,10 +1552,10 @@ const Assignments = ({
       await onRefreshSubmissions?.();
       
       const totalItems = submissionItems.length + linkItems.length;
-      Alert.alert('Success', `Submitted ${totalItems} item(s) successfully.`);
+      showToast(`Submitted ${totalItems} item(s).`, 'success');
     } catch (error: any) {
       console.error('[SUBMIT ERROR]', error);
-      Alert.alert('Submit Failed', error?.message || 'Unable to submit assignment.');
+      showToast(shortenForToast(error?.message, 'Unable to submit assignment.'), 'error');
     } finally {
       setIsSubmittingAssignment(false);
     }
@@ -1563,11 +1564,11 @@ const Assignments = ({
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment) return;
     if (selectedAssignment.status === 'graded') {
-      Alert.alert('Already graded', 'This assignment has been graded and cannot be unsubmitted.');
+      showToast('Already graded, cannot unsubmit.', 'error');
       return;
     }
     if (!currentStudent?.studentId) {
-      Alert.alert('Missing student', 'Please sign in again.');
+      showToast('Please sign in again.', 'error');
       return;
     }
 
@@ -1590,9 +1591,9 @@ const Assignments = ({
       syncSelectedAssignmentStatus('pending');
       await onRefreshSubmissions?.();
 
-      Alert.alert('Unsubmitted', 'You can now edit your files and resubmit.');
+      showToast('Unsubmitted. You can edit and resubmit.', 'success');
     } catch (error: any) {
-      Alert.alert('Unsubmit Failed', error?.message || 'Unable to unsubmit.');
+      showToast(shortenForToast(error?.message, 'Unable to unsubmit.'), 'error');
     } finally {
       setIsSubmittingAssignment(false);
     }
@@ -1636,19 +1637,11 @@ const Assignments = ({
   const handlePlayGameWithAttemptCheck = async (assignment: AssignmentItem) => {
     const blockedReason = getPlayGameBlockedReason(assignment);
     if (blockedReason === 'past_due') {
-      showFeedback(
-        'error',
-        'Assignment Past Due',
-        'This game-based assignment is past its due date and can no longer be played.'
-      );
+      showToast('This assignment is past due.', 'error');
       return;
     }
     if (blockedReason === 'no_attempts') {
-      showFeedback(
-        'error',
-        'No Attempts Remaining',
-        'You have used all your attempts for this game-based assignment.'
-      );
+      showToast("You're out of attempts.", 'error');
       return;
     }
     if (onPlayGame) {
@@ -2894,6 +2887,7 @@ const Assignments = ({
               storagePath={previewFile.storagePath}
               bucketPath={previewFile.bucketPath}
               classId={selectedAssignment?.courseId}
+              onError={(message) => showToast(message, 'error')}
             />
           )}
         </SafeAreaView>

@@ -1398,7 +1398,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
             </View>
             <Text style={styles.confirmTitle}>Unable to Remove Member</Text>
             <Text style={styles.confirmSubtitle}>
-              {removeMemberErrorMessage || "An error occurred while trying to remove the member."}
+              {removeMemberErrorMessage || "Failed to remove member."}
             </Text>
             <View style={styles.confirmActions}>
               <TouchableOpacity 

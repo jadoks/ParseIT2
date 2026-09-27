@@ -1,13 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useEffect, useRef } from "react";
 import {
-    Animated,
-    Dimensions,
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type ToastType = "success" | "error" | "info";
@@ -16,8 +16,20 @@ export type ToastConfig = {
   visible: boolean;
   message: string;
   type?: ToastType;
-  duration?: number; // ms, default 3000
+  // ms; if omitted, defaults by type — errors stay up longer (5500ms) so
+  // there's time to actually read them, success/info dismiss sooner (4000ms).
+  duration?: number;
   onHide: () => void;
+};
+
+// Default on-screen time per toast type, used whenever a call site doesn't
+// pass an explicit `duration`. Errors get more time since people need a
+// moment to read and process what went wrong; success/info are quick
+// confirmations that don't need to linger as long.
+const DEFAULT_DURATION_BY_TYPE: Record<ToastType, number> = {
+  success: 4000,
+  error: 5500,
+  info: 4000,
 };
 
 const TOAST_STYLES: Record<
@@ -33,9 +45,10 @@ export default function Toast({
   visible,
   message,
   type = "success",
-  duration = 3000,
+  duration,
   onHide,
 }: ToastConfig) {
+  const resolvedDuration = duration ?? DEFAULT_DURATION_BY_TYPE[type];
   const translateY = useRef(new Animated.Value(-80)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -60,7 +73,7 @@ export default function Toast({
 
       timerRef.current = setTimeout(() => {
         hide();
-      }, duration);
+      }, resolvedDuration);
     }
 
     return () => {

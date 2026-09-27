@@ -233,7 +233,7 @@ export default function Settings({
 
   const sendChangeEmailPin = async () => {
     if (!currentAdmin?.email) {
-      showToast("Your account has no email on file. Contact support.", "error");
+      showToast("No email on file. Contact support.", "error");
       return;
     }
 
@@ -293,7 +293,7 @@ export default function Settings({
     const trimmedEmail = newEmail.trim();
 
     if (!trimmedEmail) {
-      showToast("Please enter your new email address.", "error");
+      showToast("Enter your new email address.", "error");
       return;
     }
 
@@ -341,7 +341,7 @@ export default function Settings({
 
   const sendChangePasswordPin = async () => {
     if (!currentAdmin?.email) {
-      showToast("Your account has no email on file. Contact support.", "error");
+      showToast("No email on file. Contact support.", "error");
       return;
     }
 

@@ -637,7 +637,7 @@ const Profile: React.FC<ProfileProps> = ({
       setCropModal({ uri: normalized.uri, type });
     } catch (error) {
       
-      showToast('Unable to prepare the selected image.', 'error');
+      showToast('Failed to prepare image.', 'error');
       if (type === 'profile') {
         onChangeProfileImage({ uri });
       } else {
@@ -670,7 +670,7 @@ const Profile: React.FC<ProfileProps> = ({
           ALLOWED_IMAGE_EXTENSIONS
         )
       ) {
-        showToast('Only PNG, JPG/JPEG, and WEBP images are allowed.', 'error');
+        showToast('Only PNG, JPG, or WEBP allowed.', 'error');
         return;
       }
       if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
@@ -680,7 +680,7 @@ const Profile: React.FC<ProfileProps> = ({
       await openCropModal(selected.uri, type);
     } catch (error) {
       
-      showToast('Unable to pick an image.', 'error');
+      showToast('Failed to pick image.', 'error');
     } finally {
       setTimeout(() => {
         setIsPickingImage(false);
@@ -763,7 +763,7 @@ const Profile: React.FC<ProfileProps> = ({
       resetCropState();
     } catch (error) {
       
-      showToast('Failed to update the image. Please try again.', 'error');
+      showToast('Failed to update image.', 'error');
     } finally {
       setIsCroppingImage(false);
     }
@@ -794,7 +794,7 @@ const Profile: React.FC<ProfileProps> = ({
   const handleCreatePost = (query: string) => {
   const trimmed = query.trim();
   if (!trimmed) {
-    showToast('Please write a question or post first.', 'error');
+    showToast('Write a question first.', 'error');
     return;
   }
   onCreatePost?.(trimmed);
@@ -805,7 +805,7 @@ const Profile: React.FC<ProfileProps> = ({
   const handlePostAnswer = () => {
   const trimmed = answerText.trim();
   if (!trimmed || !selectedPostId) {
-    if (!trimmed) showToast('Please write an answer first.', 'error');
+    if (!trimmed) showToast('Write an answer first.', 'error');
     return;
   }
   onAddAnswer?.(selectedPostId, trimmed);

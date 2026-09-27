@@ -645,7 +645,7 @@ const DrawerMenu = ({
 
   const sendChangeEmailPin = async () => {
     if (!userEmail) {
-      showToast('Your account has no email on file. Contact support.', 'error');
+      showToast('No email on file. Contact support.', 'error');
       return;
     }
 
@@ -701,7 +701,7 @@ const DrawerMenu = ({
     const trimmedEmail = newEmail.trim();
 
     if (!trimmedEmail) {
-      showToast('Please enter your new email address.', 'error');
+      showToast('Enter your new email address.', 'error');
       return;
     }
 
@@ -751,7 +751,7 @@ const DrawerMenu = ({
 
   const sendChangePasswordPin = async () => {
     if (!userEmail) {
-      showToast('Your account has no email on file. Contact support.', 'error');
+      showToast('No email on file. Contact support.', 'error');
       return;
     }
 
@@ -892,12 +892,12 @@ const DrawerMenu = ({
       // user can still choose "All files" and pick something outside the
       // allowed formats. Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.
       if (!isAllowedGradeFileAsset(asset.mimeType, asset.name)) {
-        showToast('Unsupported file type. Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.', 'error');
+        showToast('Unsupported file type.', 'error');
         return;
       }
 
       if (asset.size && asset.size > 10 * 1024 * 1024) {
-        showToast('File too large. Please select a file smaller than 10MB.', 'error');
+        showToast('File must be under 10MB.', 'error');
         return;
       }
 

@@ -723,7 +723,7 @@ export default function AddClassModal({
           ALLOWED_BANNER_EXTENSIONS
         )
       ) {
-        showToast("Only JPG, PNG, and WEBP images are allowed.", "error");
+        showToast("Only JPG, PNG, or WEBP allowed.", "error");
         return;
       }
 

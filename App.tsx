@@ -227,8 +227,18 @@ export default function App() {
     };
   }, [refreshAuthToken, verifySessionInBackground]);
 
-  const handleLogin = async (user: SignedInUser) => {
-    const token = await refreshAuthToken(true); // force-fresh right after login
+  const handleLogin = async (user: SignedInUser, freshIdToken?: string) => {
+    // SignIn already had to force-refresh the token to open the backend
+    // session, and now hands it to us here — reuse it instead of paying for
+    // a second forced round-trip to Firebase right before the dashboard
+    // renders. Only fall back to refreshing ourselves if it wasn't passed.
+    let token: string | null = freshIdToken ?? null;
+    if (token) {
+      setIdToken(token);
+      await AsyncStorage.setItem(CACHED_TOKEN_KEY, token);
+    } else {
+      token = await refreshAuthToken(true);
+    }
     if (token) {
       hasCachedSessionRef.current = true;
       setCurrentUser(user);

@@ -2,7 +2,6 @@ import Constants from "expo-constants";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   Modal,
   Platform,
@@ -24,6 +23,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { FONT_BODY, FONT_TITLE } from '../theme/typography';
+// ✅ Reuses the same Toast component used across the app (Admin/Teacher screens)
+// instead of native Alert dialogs.
+import Toast from '../Final_Admin_Components/Toast';
+
+type ToastType = 'success' | 'error' | 'info';
 
 // ✅ NEW: Optional WebView import (mirrors CourseDetail.tsx pattern)
 let WebView: any = null;
@@ -276,6 +280,19 @@ const TeacherSubmissionsSection = ({
   const pagePadding = isSmallPhone ? 12 : isMobile ? 14 : isTablet ? 20 : 24;
   const mobileTopSpace = isMobile ? insets.top : 0;
   const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
+
+  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   // Add this state at the component level
   const [freshUrlsCache, setFreshUrlsCache] = useState<Record<string, { url: string; timestamp: number }>>({});
@@ -896,7 +913,7 @@ const downloadFileToDevice = async (
       const perm = await MediaLibrary.requestPermissionsAsync();
       if (perm.granted) {
         await MediaLibrary.saveToLibraryAsync(localUri);
-        Alert.alert("Saved", "Image saved to your Photos!");
+        showToast('Image saved to your Photos!', 'success');
         return;
       }
     }
@@ -908,7 +925,7 @@ const downloadFileToDevice = async (
         dialogTitle: `Save ${resolvedName}`,
       });
     } else {
-      Alert.alert("Saved", `File cached at:\n${localUri}`);
+      showToast('File cached at your local storage.', 'success');
     }
     return;
   }
@@ -924,14 +941,14 @@ const downloadFileToDevice = async (
     const destUri = await FileSystem.StorageAccessFramework.createFileAsync(perms.directoryUri, resolvedName, resolvedMime);
     const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
     await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-    Alert.alert("Saved", "File saved to your selected folder!");
+    showToast('File saved to your selected folder!', 'success');
   } catch (error) {
     console.error("Android SAF error:", error);
     const canShare = await Sharing.isAvailableAsync();
     if (canShare) {
       await Sharing.shareAsync(localUri, { mimeType: resolvedMime, dialogTitle: `Save ${resolvedName}` });
     } else {
-      Alert.alert("Error", "Unable to save file. Please try again.");
+      showToast('Failed to save file.', 'error');
     }
   }
 };
@@ -947,7 +964,7 @@ const handleDownloadPreview = async () => {
       previewItem.storagePath
     );
   } catch (error: any) {
-    Alert.alert('Download Failed', error?.message || 'Unable to download file.');
+    showToast(error?.message || 'Failed to download file.', 'error');
   } finally {
     setIsDownloading(false);
   }
@@ -955,7 +972,7 @@ const handleDownloadPreview = async () => {
 
   const handlePreviewItem = async (item: SubmissionPreviewSource) => {
   if (!item.url) {
-    Alert.alert("No file", "This submission has no URL to open.");
+    showToast('No URL to open for this submission.', 'error');
     return;
   }
 
@@ -966,12 +983,12 @@ const handleDownloadPreview = async () => {
     try {
       const supported = await Linking.canOpenURL(item.url);
       if (!supported) {
-        Alert.alert("Cannot open", "This URL is not supported on this device.");
+        showToast('URL not supported on this device.', 'error');
         return;
       }
       await Linking.openURL(item.url);
     } catch {
-      Alert.alert("Open failed", "Unable to open the link.");
+      showToast('Failed to open the link.', 'error');
     }
     return;
   }
@@ -1014,10 +1031,7 @@ const handleDownloadPreview = async () => {
     setPreviewViewerUrl(viewerUrl);
   } catch (error) {
     console.error("Preview error:", error);
-    Alert.alert(
-      "Preview failed",
-      "Unable to load a preview for this item. The file may no longer be available."
-    );
+    showToast('Preview unavailable. The file may no longer exist.', 'error');
     setPreviewVisible(false);
   } finally {
     setPreviewLoading(false);
@@ -1038,7 +1052,7 @@ const handleDownloadPreview = async () => {
     const assignmentFileUrl = attachment.fileUrl;
 
     if (!assignmentFileUrl || !attachment.fileName) {
-      Alert.alert("No file", "This assignment has no attachment to preview.");
+      showToast('No attachment to preview.', 'error');
       return;
     }
 
@@ -1075,10 +1089,7 @@ const handleDownloadPreview = async () => {
       setPreviewViewerUrl(viewerUrl);
     } catch (error) {
       console.error("Assignment attachment preview error:", error);
-      Alert.alert(
-        "Preview failed",
-        "Unable to load a preview for this attachment. It may no longer be available."
-      );
+      showToast('Preview unavailable. The file may no longer exist.', 'error');
       setPreviewVisible(false);
     } finally {
       setPreviewLoading(false);
@@ -1097,12 +1108,12 @@ const handleDownloadPreview = async () => {
     try {
       const supported = await Linking.canOpenURL(previewItem.url);
       if (!supported) {
-        Alert.alert("Cannot open", "This URL is not supported on this device.");
+        showToast('URL not supported on this device.', 'error');
         return;
       }
       await Linking.openURL(previewItem.url);
     } catch {
-      Alert.alert("Open failed", `Unable to open the ${previewItem.isLink ? "link" : "file"}.`);
+      showToast(`Failed to open the ${previewItem.isLink ? "link" : "file"}.`, 'error');
     }
   };
 
@@ -1127,10 +1138,10 @@ const handleDownloadPreview = async () => {
         setStudentCommentDrafts((prev) => ({ ...prev, [studentId]: "" }));
         await fetchComments();
       } else {
-        Alert.alert("Error", data?.error || "Failed to post comment.");
+        showToast(data?.error || 'Failed to post comment.', 'error');
       }
     } catch (error: any) {
-      Alert.alert("Error", error?.message || "Failed to post comment.");
+      showToast(error?.message || 'Failed to post comment.', 'error');
     } finally {
       setIsPostingComment(false);
     }
@@ -1160,10 +1171,10 @@ const handleDownloadPreview = async () => {
         cancelEdit();
         await fetchComments();
       } else {
-        Alert.alert("Error", data?.error || "Failed to update comment.");
+        showToast(data?.error || 'Failed to update comment.', 'error');
       }
     } catch (error: any) {
-      Alert.alert("Error", error?.message || "Failed to update comment.");
+      showToast(error?.message || 'Failed to update comment.', 'error');
     } finally {
       setSavingEdit(false);
     }
@@ -1187,10 +1198,10 @@ const handleDownloadPreview = async () => {
         setCommentToDeleteId(null);
         await fetchComments();
       } else {
-        Alert.alert("Error", data?.error || "Failed to delete comment.");
+        showToast(data?.error || 'Failed to delete comment.', 'error');
       }
     } catch (error: any) {
-      Alert.alert("Error", error?.message || "Failed to delete comment.");
+      showToast(error?.message || 'Failed to delete comment.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -1274,28 +1285,28 @@ const handleDownloadPreview = async () => {
     const rawScore = scoreDrafts[studentId] ?? String(subToGrade.score ?? "");
     const score = Number(rawScore);
     if (!Number.isFinite(score)) {
-      Alert.alert("Invalid score", "Please enter a valid numeric score.");
+      showToast('Enter a valid numeric score.', 'error');
       return;
     }
     if (score < 0) {
-      Alert.alert("Invalid score", "Score cannot be lower than 0.");
+      showToast('Score cannot be lower than 0.', 'error');
       return;
     }
     if (totalScoreValue > 0 && score > totalScoreValue) {
-      Alert.alert("Invalid score", `Score cannot be higher than ${totalScoreValue}.`);
+      showToast(`Score cannot be higher than ${totalScoreValue}.`, 'error');
       return;
     }
     if (!onGradeSubmission) {
-      Alert.alert("Grading action missing", "Pass onGradeSubmission from TeacherCourseDetail2 to save this score.");
+      showToast('Grading action is not available.', 'error');
       return;
     }
 
     try {
       setSavingSubmissionId(studentId);
       await onGradeSubmission(subToGrade.id, score, "");
-      Alert.alert("Saved", "Score saved successfully.");
+      showToast('Score saved successfully.', 'success');
     } catch (error: any) {
-      Alert.alert("Save failed", error?.message || "Unable to save score.");
+      showToast(error?.message || 'Failed to save score.', 'error');
     } finally {
       setSavingSubmissionId(null);
     }
@@ -2199,6 +2210,24 @@ const handleDownloadPreview = async () => {
           </View>
         </View>
       </Modal>
+
+      {/* Toast — portal-based so it renders above all other Modals */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -2684,4 +2713,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF",
   },
   previewLoadingText: { fontFamily: FONT_BODY, color: "#666", fontSize: 14, fontWeight: "600" },
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
 });

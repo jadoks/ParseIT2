@@ -562,7 +562,7 @@ useEffect(() => {
       setCropModal({ uri: normalized.uri, type });
     } catch (error) {
       console.log('Image prep error:', error);
-      showToast('Unable to prepare the selected image.', 'error');
+      showToast('Failed to prepare image.', 'error');
       if (type === 'profile') {
         onChangeProfileImage({ uri });
       } else {
@@ -595,7 +595,7 @@ useEffect(() => {
           ALLOWED_IMAGE_EXTENSIONS
         )
       ) {
-        showToast('Only PNG, JPG/JPEG, and WEBP images are allowed.', 'error');
+        showToast('Only PNG, JPG, or WEBP allowed.', 'error');
         return;
       }
       if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
@@ -688,7 +688,7 @@ useEffect(() => {
       resetCropState();
     } catch (error) {
       console.log('Crop error:', error);
-      showToast('Failed to update the image. Please try again.', 'error');
+      showToast('Failed to update image.', 'error');
     } finally {
       setIsCroppingImage(false);
     }
@@ -719,7 +719,7 @@ useEffect(() => {
   const handleCreatePost = (query: string) => {
   const trimmed = query.trim();
   if (!trimmed) {
-    showToast('Please write a question or post first.', 'error');
+    showToast('Write a question first.', 'error');
     return;
   }
 

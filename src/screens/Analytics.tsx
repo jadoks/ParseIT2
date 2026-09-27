@@ -860,7 +860,29 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
 
             {/* Recent Assignment Grades */}
       <View style={styles.sectionCard}>
-        <SectionTitle title="Recent Assignment Grades" onInfoPress={() => openInfo('recentGrades')} />
+        <View style={styles.sectionHeaderRow}>
+          <SectionTitle title="Recent Assignment Grades" onInfoPress={() => openInfo('recentGrades')} />
+          {!showAllRecentAssignments && analytics.recentGradedAssignments.length >= 5 && (
+            <TouchableOpacity
+              style={styles.seeAllButton}
+              activeOpacity={0.85}
+              onPress={() => setShowAllRecentAssignments((prev) => !prev)}
+            >
+              <Text style={styles.seeAllButtonText}>
+                See All ({analytics.recentGradedAssignments.length})
+              </Text>
+            </TouchableOpacity>
+          )}
+          {showAllRecentAssignments && (
+            <TouchableOpacity
+              style={styles.seeAllButton}
+              activeOpacity={0.85}
+              onPress={() => setShowAllRecentAssignments(false)}
+            >
+              <Text style={styles.seeAllButtonText}>Show Less</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.sectionCaption}>Your latest graded assignments</Text>
         {analytics.recentGradedAssignments.length === 0 ? (
           <View style={styles.emptyStateCard}>
@@ -895,36 +917,35 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                   </View>
                 );
               })}
-            
-            {/* Replace the existing TouchableOpacity block with this */}
-            {!showAllRecentAssignments && analytics.recentGradedAssignments.length >= 5 && (
-              <TouchableOpacity
-                style={styles.seeAllButton}
-                activeOpacity={0.85}
-                onPress={() => setShowAllRecentAssignments((prev) => !prev)}
-              >
-                <Text style={styles.seeAllButtonText}>
-                  See All ({analytics.recentGradedAssignments.length})
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {showAllRecentAssignments && (
-              <TouchableOpacity
-                style={styles.seeAllButton}
-                activeOpacity={0.85}
-                onPress={() => setShowAllRecentAssignments(false)}
-              >
-                <Text style={styles.seeAllButtonText}>Show Less</Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
       </View>
 
       {/* Missing Work */}
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Missing Work</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Missing Work</Text>
+          {!showAllMissingWork && analytics.missingAssignments.length > 5 && (
+            <TouchableOpacity
+              style={styles.seeAllButton}
+              activeOpacity={0.85}
+              onPress={() => setShowAllMissingWork(true)}
+            >
+              <Text style={styles.seeAllButtonText}>
+                See All ({analytics.missingAssignments.length})
+              </Text>
+            </TouchableOpacity>
+          )}
+          {showAllMissingWork && analytics.missingAssignments.length > 5 && (
+            <TouchableOpacity
+              style={styles.seeAllButton}
+              activeOpacity={0.85}
+              onPress={() => setShowAllMissingWork(false)}
+            >
+              <Text style={styles.seeAllButtonText}>Show Less</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.sectionCaption}>Assignments that passed the due date and were not submitted</Text>
         {analytics.missingAssignments.length === 0 ? (
           <View style={styles.emptyStateCard}>
@@ -950,29 +971,6 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                   </View>
                 </View>
               ))}
-            
-            {/* See All / Show Less Button */}
-            {!showAllMissingWork && analytics.missingAssignments.length > 5 && (
-              <TouchableOpacity
-                style={styles.seeAllButton}
-                activeOpacity={0.85}
-                onPress={() => setShowAllMissingWork(true)}
-              >
-                <Text style={styles.seeAllButtonText}>
-                  See All ({analytics.missingAssignments.length})
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {showAllMissingWork && analytics.missingAssignments.length > 5 && (
-              <TouchableOpacity
-                style={styles.seeAllButton}
-                activeOpacity={0.85}
-                onPress={() => setShowAllMissingWork(false)}
-              >
-                <Text style={styles.seeAllButtonText}>Show Less</Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
       </View>
@@ -1147,6 +1145,10 @@ const styles = StyleSheet.create({
   infoButton: { padding: 2, alignItems: 'center', justifyContent: 'center' },
   metricTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  // ✅ NEW: pairs a section title with a See All / Show Less button on the
+  // same row (title/info on the left, button pinned to the right) — same
+  // row-based layout as subjectSectionHeaderRow in Per-Subject Details.
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 },
   infoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   infoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   infoSheet: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: COLORS.surface, borderRadius: 22, padding: 18 },

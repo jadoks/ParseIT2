@@ -2726,7 +2726,7 @@ useEffect(() => {
 
   const handleGenerateLessonContent = async () => {
     if (!selectedGenModule || !selectedGenTopic) {
-      toast.show('error', 'Error', 'Please select a Module and Topic.');
+      toast.show('error', 'Error', 'Select a Module and Topic.');
       return;
     }
     if (hasImageGenerationRequest(selectedGenTopic?.title, selectedGenSubtopic, genCustomSections)) {
@@ -2807,7 +2807,7 @@ useEffect(() => {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
-        toast.show('error', 'Download failed', data?.error || 'Could not prepare the download. Please try again.');
+        toast.show('error', 'Download failed', data?.error || 'Download failed. Try again.');
         return;
       }
       await openDownloadUrl(data.url);
@@ -2819,7 +2819,7 @@ useEffect(() => {
       }
     } catch (err) {
       console.warn('Lesson download failed:', err);
-      toast.show('error', 'Download failed', 'Could not prepare the download. Please try again.');
+      toast.show('error', 'Download failed', 'Download failed. Try again.');
     } finally {
       setDownloadingLessonsModuleId(null);
     }
@@ -2932,7 +2932,7 @@ useEffect(() => {
 
   const handleGenerateNextLessons = async () => {
     if (!targetModuleForGen || selectedTopicsForGen.length === 0 || !course?.id) {
-      toast.show('error', 'Error', 'Please select at least one topic.');
+      toast.show('error', 'Error', 'Select at least one topic.');
       return;
     }
     if (hasImageGenerationRequest(selectedTopicsForGen, genCustomSections)) {
@@ -3128,7 +3128,7 @@ useEffect(() => {
       return;
     }
     if (isDuplicateModuleTitle) {
-      toast.show('error', 'Duplicate Title', 'A module with this title already exists (generated or manual). Please use a different title.');
+      toast.show('error', 'Duplicate Title', 'A module with this title already exists.');
       return;
     }
     if (isNaN(num) || num < 1) {
@@ -3200,7 +3200,7 @@ useEffect(() => {
       return;
     }
     if (isDuplicateModuleDisplayTitle) {
-      toast.show('error', 'Duplicate Title', 'Another module already uses this title. Please use a different title.');
+      toast.show('error', 'Duplicate Title', 'Another module already uses this title.');
       return;
     }
     setIsSavingModuleTitle(true);
@@ -3284,11 +3284,11 @@ useEffect(() => {
 
   const handleCreateManualLesson = async () => {
     if (!newLessonTitle.trim() || !selectedModuleForLesson?.id || !course?.id) {
-      toast.show('error', 'Error', 'Please enter a title and select a module.');
+      toast.show('error', 'Error', 'Enter a title and select a module.');
       return;
     }
     if (isDuplicateLessonTitle) {
-      toast.show('error', 'Duplicate Title', 'A lesson with this title already exists in this module (generated or manual). Please use a different title.');
+      toast.show('error', 'Duplicate Title', 'A lesson with this title already exists.');
       return;
     }
     // ─── Text-mode lessons: the letterhead fields are always required; each optional
@@ -3421,7 +3421,7 @@ useEffect(() => {
       await loadCourseContent();
     } catch (e: any) {
       console.error(e);
-      toast.show('error', 'Error', e.message || 'An unexpected error occurred.');
+      toast.show('error', 'Error', e.message || 'Something went wrong.');
     } finally {
       setIsSaving(false);
     }
@@ -3513,7 +3513,7 @@ useEffect(() => {
       }
       const asset = result.assets[0];
       if (asset.size && asset.size > MAX_SYLLABUS_FILE_SIZE_BYTES) {
-        toast.show('error', 'File Too Large', `File exceeds maximum size of ${formatFileSizeMB(MAX_SYLLABUS_FILE_SIZE_BYTES)}.`);
+        toast.show('error', 'File Too Large', `Max file size is ${formatFileSizeMB(MAX_SYLLABUS_FILE_SIZE_BYTES)}.`);
         setIsEditingSyllabus(false);
         return;
       }
@@ -3528,7 +3528,7 @@ useEffect(() => {
         ? ALLOWED_SYLLABUS_FILE_EXTENSIONS.includes(ext)
         : !!asset.mimeType && ALLOWED_SYLLABUS_FILE_MIME_TYPES.includes(asset.mimeType);
       if (!formatAllowed) {
-        toast.show('error', 'Unsupported File', `Please upload a supported file type (${ALLOWED_SYLLABUS_FILE_LABEL}).`);
+        toast.show('error', 'Unsupported File', `Unsupported file type (${ALLOWED_SYLLABUS_FILE_LABEL}).`);
         setIsEditingSyllabus(false);
         return;
       }
@@ -3589,7 +3589,7 @@ useEffect(() => {
           toast.show(
             'error',
             'Invalid Syllabus',
-            data.error || 'This file doesn\'t look like a valid syllabus — no "Week No." or weekly schedule was found. Please upload the actual course syllabus.'
+            data.error || 'Invalid syllabus — no weekly schedule found.'
           );
           return;
         }
@@ -3735,7 +3735,7 @@ useEffect(() => {
   // "Add Lesson (Manual)".
   const handleGenerateSelectedModules = async () => {
     if (selectedModulesForGen.length === 0 || !course?.id) {
-      toast.show('error', 'Error', 'Please select at least one module.');
+      toast.show('error', 'Error', 'Select at least one module.');
       return;
     }
     setIsGeneratingModules(true);
@@ -4027,13 +4027,13 @@ useEffect(() => {
 
   const handleDownloadMaterial = async () => {
     if (!viewerMaterial) {
-      toast.show('error', 'No File', 'This material has no downloadable file.');
+      toast.show('error', 'No File', 'No downloadable file.');
       return;
     }
     const storagePath = viewerMaterial.storagePath;
     const firebaseUrl = getMaterialFileUrl(viewerMaterial);
     if (!storagePath && !firebaseUrl) {
-      toast.show('error', 'No File', 'This material has no file to download.');
+      toast.show('error', 'No File', 'No file to download.');
       return;
     }
     const fileName = viewerMaterial.fileName || viewerMaterial.title || 'material';
@@ -4045,12 +4045,12 @@ useEffect(() => {
         if (storagePath && course?.id) {
           downloadUrl = `${API_BASE_URL}/course-material-download/${course.id}?storagePath=${encodeURIComponent(storagePath)}`;
         } else {
-          toast.show('error', 'Download Unavailable', 'This file cannot be downloaded directly.');
+          toast.show('error', 'Download Unavailable', "Can't download this file directly.");
           return;
         }
       } else {
         if (!firebaseUrl) {
-          toast.show('error', 'No File', 'This material has no file to download.');
+          toast.show('error', 'No File', 'No file to download.');
           return;
         }
         downloadUrl = firebaseUrl;
@@ -4574,7 +4574,7 @@ useEffect(() => {
     try {
       await Linking.openURL(fileUri);
     } catch {
-      toast.show('error', 'Error', 'Unable to open the file.');
+      toast.show('error', 'Error', 'Failed to open file.');
     }
   };
 
@@ -4911,7 +4911,7 @@ useEffect(() => {
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      toast.show('error', 'Required', 'Please complete the highlighted assignment fields.');
+      toast.show('error', 'Required', 'Complete the highlighted fields.');
       return false;
     }
     return true;
@@ -4919,15 +4919,15 @@ useEffect(() => {
 
   const handleGenerateQuestions = async () => {
     if (!gameType) {
-      toast.show('error', 'Error', 'Please select a game type first.');
+      toast.show('error', 'Error', 'Select a game type first.');
       return;
     }
     if (selectedMaterialIds.length === 0) {
-      toast.show('error', 'Error', 'Please select at least one learning material.');
+      toast.show('error', 'Error', 'Select at least one material.');
       return;
     }
     if (selectedMaterialIds.length > MAX_MODULE_LESSONS) {
-      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`);
+      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Deselect some to continue.`);
       return;
     }
     const parsedCount = parseInt(numberOfQuestions, 10) || 0;
@@ -5095,11 +5095,11 @@ useEffect(() => {
 
   const handleGenerateMoreQuestions = async () => {
     if (selectedMaterialIds.length === 0) {
-      toast.show('error', 'Error', 'Please select at least one learning material.');
+      toast.show('error', 'Error', 'Select at least one material.');
       return;
     }
     if (selectedMaterialIds.length > MAX_MODULE_LESSONS) {
-      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`);
+      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Deselect some to continue.`);
       return;
     }
     const parsedCount = parseInt(extraQuestionsCount, 10) || 0;
@@ -5189,7 +5189,7 @@ useEffect(() => {
         toast.show(
           'error',
           'No New Questions',
-          'The AI only returned duplicates of what you already have. Try again or add one manually.'
+          'AI returned only duplicates. Add one manually.'
         );
         return;
       }
@@ -5221,7 +5221,7 @@ useEffect(() => {
     }
     if (activeTab === 'materials') {
       if (!formTitle.trim() || !formPointsOnTime.trim()) {
-        toast.show('error', 'Required', 'Please enter the title and week.');
+        toast.show('error', 'Required', 'Enter the title and week.');
         return;
       }
       setIsSaving(true);
@@ -5550,7 +5550,7 @@ useEffect(() => {
         placeholder="Lesson Title"
       />
       {isDuplicateLessonTitle &&
-        renderInputError('A lesson with this title already exists in this module (generated or manual). Please use a different title.')}
+        renderInputError('A lesson with this title already exists.')}
       <Text style={styles.sectionLabel}>Description</Text>
       <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
       {lessonMode === 'text' ? (
@@ -7486,7 +7486,7 @@ the button looked completely dead.
             <TouchableOpacity
               onPress={() => {
                 if (generatedQuestions.length === 0) {
-                  toast.show('error', 'Invalid Questions', 'You must have at least one question.');
+                  toast.show('error', 'Invalid Questions', 'Add at least one question.');
                   return;
                 }
                 let hasInvalid = false;
@@ -8631,7 +8631,7 @@ GENERATED QUESTIONS PREVIEW MODAL
             <TouchableOpacity
               onPress={() => {
                 if (generatedQuestions.length === 0) {
-                  toast.show('error', 'Invalid Questions', 'You must have at least one question.');
+                  toast.show('error', 'Invalid Questions', 'Add at least one question.');
                   return;
                 }
                 let hasInvalid = false;
@@ -9314,7 +9314,7 @@ MANUAL MODULE CREATION MODAL
                 placeholderTextColor="#999"
               />
               {isDuplicateModuleTitle &&
-                renderInputError('A module with this title already exists (generated or manual). Please use a different title.')}
+                renderInputError('A module with this title already exists.')}
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
@@ -9379,7 +9379,7 @@ the underlying `title` used by Lesson Generation is never touched)
                 placeholderTextColor="#999"
               />
               {isDuplicateModuleDisplayTitle &&
-                renderInputError('Another module already uses this title. Please use a different title.')}
+                renderInputError('Another module already uses this title.')}
               <Text style={{ fontSize: 11, color: '#999', marginTop: 8, lineHeight: 15 }}>
                 This changes how the module's title is displayed here and to students only. It won't affect
                 what's stored for Lesson Generation.
@@ -10239,7 +10239,7 @@ DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
               onLinksChange={setSasDocLinks}
               onUnavailable={() => {
                 setDraftPreviewIndex(null);
-                toast.show('error', 'Preview unavailable', 'Could not build the document preview. You can still edit and save the lesson.');
+                toast.show('error', 'Preview unavailable', 'Preview unavailable. You can still save.');
               }}
             />
           ) : null}

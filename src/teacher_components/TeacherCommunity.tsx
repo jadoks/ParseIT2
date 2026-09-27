@@ -482,7 +482,7 @@ useEffect(() => {
   const handleCreatePost = (query: string) => {
   const trimmed = query.trim();
   if (!trimmed) {
-    showToast('Please write a question or post first.', 'error');
+    showToast('Write a question first.', 'error');
     return;
   }
   // Don't add our own optimistic post — TeacherApp refetches and passes
@@ -496,7 +496,7 @@ useEffect(() => {
   const handlePostAnswer = () => {
   const trimmed = answerText.trim();
   if (!trimmed || !selectedPostId) {
-    if (!trimmed) showToast('Please write an answer first.', 'error');
+    if (!trimmed) showToast('Write an answer first.', 'error');
     return;
   }
   // Same reasoning as handleCreatePost.
@@ -580,7 +580,7 @@ useEffect(() => {
     } catch {
       // Not saved -> bring the post back so the UI matches the server.
       setHiddenPosts((prev) => prev.filter((id) => id !== postId));
-      showToast("Couldn't hide the post. Please try again.", 'error');
+      showToast("Couldn't hide the post.", 'error');
     }
   };
 

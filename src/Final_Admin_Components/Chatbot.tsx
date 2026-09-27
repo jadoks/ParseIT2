@@ -319,7 +319,7 @@ export default function Chatbot({
       // extracts its content and has AI generate the response(s) and
       // triggers automatically.
       if (!selectedFile) {
-        showToast("Please upload a file to train the chatbot from.", "error");
+        showToast("Upload a file to train the chatbot.", "error");
         return;
       }
     }

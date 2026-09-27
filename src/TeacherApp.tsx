@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   BackHandler,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,6 +12,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+// ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
+import Toast from './Final_Admin_Components/Toast';
+
+type ToastType = 'success' | 'error' | 'info';
 
 // 🔥 UPDATED: use the shared, auto-refreshing apiFetch instead of a local createSecureFetch
 import { API_BASE_URL, apiFetch } from './services/api'; // adjust path if your folder layout differs
@@ -170,6 +174,19 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
 const PROFILE_IMAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // every 5 min
 
 export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: Props) {
+  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
@@ -883,10 +900,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     } catch (error: any) {
       setCurrentUserAvatar(previousAvatar);
       console.log('SAVE TEACHER PROFILE IMAGE ERROR =>', error);
-      Alert.alert(
-        'Save Failed',
-        error?.message || 'Unable to save profile image.'
-      );
+      showToast(error?.message || 'Failed to save profile image.', 'error');
     }
   };
 
@@ -918,10 +932,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     } catch (error: any) {
       setCurrentUserBanner(previousBanner);
       console.log('SAVE TEACHER BANNER IMAGE ERROR =>', error);
-      Alert.alert(
-        'Save Failed',
-        error?.message || 'Unable to save banner image.'
-      );
+      showToast(error?.message || 'Failed to save banner image.', 'error');
     }
   };
 
@@ -950,7 +961,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       await loadCommunityPosts();
       await loadTeacherNotifications();
     } catch (error: any) {
-      Alert.alert('Post Failed', error?.message || 'Unable to create post.');
+      showToast(error?.message || 'Failed to create post.', 'error');
     }
   };
 
@@ -978,7 +989,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       await loadCommunityPosts();
       await loadTeacherNotifications();
     } catch (error: any) {
-      Alert.alert('Answer Failed', error?.message || 'Unable to post answer.');
+      showToast(error?.message || 'Failed to post answer.', 'error');
     }
   };
 
@@ -999,7 +1010,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       await loadCommunityPosts();
       await loadTeacherNotifications();
     } catch (error: any) {
-      Alert.alert('Update Failed', error?.message || 'Unable to update post.');
+      showToast(error?.message || 'Failed to update post.', 'error');
     }
   };
 
@@ -1016,7 +1027,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       await loadCommunityPosts();
       await loadTeacherNotifications();
     } catch (error: any) {
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete post.');
+      showToast(error?.message || 'Failed to delete post.', 'error');
     }
   };
 
@@ -1044,7 +1055,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       await loadCommunityPosts();
       await loadTeacherNotifications();
     } catch (error: any) {
-      Alert.alert('Update Failed', error?.message || 'Unable to update answer.');
+      showToast(error?.message || 'Failed to update answer.', 'error');
     }
   };
 
@@ -1064,7 +1075,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       await loadCommunityPosts();
       await loadTeacherNotifications();
     } catch (error: any) {
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete answer.');
+      showToast(error?.message || 'Failed to delete answer.', 'error');
     }
   };
 
@@ -1089,10 +1100,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
         throw new Error(data?.error || 'Failed to update answer visibility.');
       }
     } catch (error: any) {
-      Alert.alert(
-        hidden ? 'Hide Failed' : 'Unhide Failed',
-        error?.message || 'Unable to update answer visibility.'
-      );
+      showToast(error?.message || 'Failed to update answer visibility.', 'error');
     } finally {
       await loadCommunityPosts();
     }
@@ -1164,10 +1172,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
           : undefined;
 
         if (!course) {
-          Alert.alert(
-            'Class not found',
-            'This class is no longer available.'
-          );
+          showToast('This class is no longer available.', 'error');
           return;
         }
 
@@ -1185,10 +1190,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
           : undefined;
 
         if (!course) {
-          Alert.alert(
-            'Class not found',
-            'This class is no longer available.'
-          );
+          showToast('This class is no longer available.', 'error');
           return;
         }
 
@@ -1207,10 +1209,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
           : undefined;
 
         if (!course) {
-          Alert.alert(
-            'Class not found',
-            'This class is no longer available.'
-          );
+          showToast('This class is no longer available.', 'error');
           return;
         }
 
@@ -1549,6 +1548,24 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
           </View>
         </View>
       )}
+
+      {/* Toast — portal-based so it renders above all other screens/modals */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1623,5 +1640,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#555',
     fontWeight: '500',
+  },
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });

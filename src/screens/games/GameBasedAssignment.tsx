@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +16,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
+// ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
+import Toast from '../../Final_Admin_Components/Toast';
+
+type ToastType = 'success' | 'error' | 'info';
 
 // 🆕 AI GRADING: same backend base-url resolution as Game.tsx / quiz-masters.tsx
 // (duplicated rather than imported since these files don't currently share a
@@ -263,6 +267,19 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(r), [r]);
 
+  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -344,12 +361,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     // Force switch to Summary/Review screen
     setGameFinished(true);
 
-    // Show alert over the summary screen — score is NOT submitted yet.
-    Alert.alert(
-      "Time's Up!",
-      'Your time limit has expired. Review your answers below, then tap Done to submit your score.',
-      [{ text: 'OK', onPress: () => {} }]
-    );
+    // Show toast over the summary screen — score is NOT submitted yet.
+    showToast("Time's up! Review your answers, then tap Done.", 'info');
   };
 
   // Global Countdown Effect
@@ -1228,6 +1241,24 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           <View style={styles.centeredContent}>{renderGame()}</View>
         </ScrollView>
       )}
+
+      {/* Toast — portal-based so it renders above the game/summary screens */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1634,6 +1665,10 @@ const createStyles = (r: ResponsiveInfo) => {
       color: '#4CAF50',
       fontWeight: WEIGHT_EMPHASIS,
       flexWrap: 'wrap',
+    },
+    // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+    toastPortal: {
+      ...StyleSheet.absoluteFillObject,
     },
   });
 };

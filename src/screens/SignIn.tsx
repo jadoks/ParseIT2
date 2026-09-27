@@ -47,7 +47,7 @@ interface SignedInUser {
 }
 
 interface SignInProps {
-  onLogIn?: (user: SignedInUser) => void;
+  onLogIn?: OnLogIn;
   onGoToLanding?: () => void;
   onGoToRegister?: () => void;
   // ✅ NEW: let App.tsx know when a first-login (temp password) flow starts
@@ -56,6 +56,12 @@ interface SignInProps {
   onFirstLoginPending?: () => void;
   onFirstLoginResolved?: () => void;
 }
+
+// The token returned to onLogIn is the freshly force-refreshed token that
+// completeLogin already had to obtain to open the backend session — passing
+// it along lets App.tsx reuse it instead of paying for a second forced
+// refresh round-trip to Firebase right before the dashboard renders.
+type OnLogIn = (user: SignedInUser, freshIdToken?: string) => void;
 
 type LookupUserResponse = {
   success: boolean;
@@ -378,15 +384,7 @@ const SignIn = ({
     return data;
   };
 
-  const createBackendSession = async () => {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      throw new Error('Firebase user session is missing.');
-    }
-
-    const idToken = await currentUser.getIdToken(true);
-
+  const createBackendSession = async (idToken: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/session-login`, {
       method: 'POST',
       credentials: 'include',
@@ -408,12 +406,19 @@ const SignIn = ({
 
   const fetchSignedInUserProfile = async (
     userId: string,
-    role: UserRole
+    role: UserRole,
+    idToken: string
   ): Promise<SignedInUser> => {
     const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
       method: 'POST',
+      // Send the token as a Bearer header (not just credentials: 'include')
+      // so this can run in parallel with session-login instead of having to
+      // wait for the cookie that call sets.
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
       body: JSON.stringify({
         id: userId,
         role,
@@ -434,9 +439,21 @@ const SignIn = ({
   };
 
   const completeLogin = async (userId: string, role: UserRole) => {
-    await createBackendSession();
-    const signedInUser = await fetchSignedInUserProfile(userId, role);
-    onLogIn?.(signedInUser);
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('Firebase user session is missing.');
+    }
+
+    // One forced refresh, shared by both calls below AND handed back to
+    // App.tsx via onLogIn so it never needs to force a second one.
+    const idToken = await currentUser.getIdToken(true);
+
+    const [, signedInUser] = await Promise.all([
+      createBackendSession(idToken),
+      fetchSignedInUserProfile(userId, role, idToken),
+    ]);
+
+    onLogIn?.(signedInUser, idToken);
   };
 
   const sendForgotPasswordPin = async (
@@ -607,7 +624,7 @@ const SignIn = ({
 
   const handlePinVerification = async () => {
     if (!otpValue) {
-      showFeedback('error', 'PIN Required', 'Please enter the 4-digit verification code.');
+      showFeedback('error', 'PIN Required', 'Enter the 4-digit code.');
       return;
     }
 
@@ -617,7 +634,7 @@ const SignIn = ({
     }
 
     if (!forgotPasswordVerifiedEmail) {
-      showFeedback('error', 'Missing Email', 'Please restart the forgot password flow.');
+      showFeedback('error', 'Missing Email', 'Restart the forgot password flow.');
       return;
     }
 
@@ -635,12 +652,12 @@ const SignIn = ({
 
   const handlePasswordReset = async () => {
     if (!forgotPasswordVerifiedEmail) {
-      showFeedback('error', 'Missing Email', 'Please restart the forgot password flow.');
+      showFeedback('error', 'Missing Email', 'Restart the forgot password flow.');
       return;
     }
 
     if (!newPassword.trim() || !confirmNewPassword.trim()) {
-      showFeedback('error', 'Missing Fields', 'Please fill in both password fields.');
+      showFeedback('error', 'Missing Fields', 'Fill in both password fields.');
       return;
     }
 
@@ -648,7 +665,7 @@ const SignIn = ({
       showFeedback(
         'error',
         'Weak Password',
-        'Your new password must be at least 8 characters long.'
+        'Password must be at least 8 characters.'
       );
       return;
     }
@@ -657,7 +674,7 @@ const SignIn = ({
       showFeedback(
         'error',
         'Password Mismatch',
-        'New password and confirmation password do not match.'
+        'Passwords do not match.'
       );
       return;
     }
@@ -684,7 +701,7 @@ const SignIn = ({
     }
 
     if (!newPassword.trim() || !confirmNewPassword.trim()) {
-      showFeedback('error', 'Missing Fields', 'Please fill in both password fields.');
+      showFeedback('error', 'Missing Fields', 'Fill in both password fields.');
       return;
     }
 
@@ -692,7 +709,7 @@ const SignIn = ({
       showFeedback(
         'error',
         'Weak Password',
-        'Your new password must be at least 8 characters long.'
+        'Password must be at least 8 characters.'
       );
       return;
     }
@@ -701,7 +718,7 @@ const SignIn = ({
       showFeedback(
         'error',
         'Password Mismatch',
-        'New password and confirmation password do not match.'
+        'Passwords do not match.'
       );
       return;
     }

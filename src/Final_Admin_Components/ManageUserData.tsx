@@ -2,16 +2,16 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import * as DocumentPicker from "expo-document-picker";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    AppState,
-    Modal,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  AppState,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Toast from "./Toast";
 
@@ -507,7 +507,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
         await Promise.all([loadList("students"), loadList("teachers")]);
       } catch (error: any) {
         if (!cancelled) {
-          showToast(error?.message || "Could not load user data. Check your connection.", "error");
+          showToast(error?.message || "Failed to load user data.", "error");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -598,7 +598,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
         copyToCacheDirectory: true,
       });
     } catch {
-      showToast("Could not open the file picker. Please try again.", "error");
+      showToast("Failed to open file picker.", "error");
       return;
     }
 
@@ -668,7 +668,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
           body?.error ||
             (response.status === 413
               ? `That file is too large. The limit is ${formatBytes(config.maxFileSizeBytes)}.`
-              : "Upload failed. Please try again.")
+              : "Upload failed.")
         );
       }
 
@@ -683,7 +683,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
         body.skipped > 0 ? "info" : "success"
       );
     } catch (error: any) {
-      showToast(error?.message || "Upload failed. Please try again.", "error");
+      showToast(error?.message || "Upload failed.", "error");
     } finally {
       busyRef.current = false;
       mutationVersion.current += 1;

@@ -548,12 +548,12 @@ export default function AddTeacherModal({
 
   const handleSubmit = async () => {
     if (!isValidName(firstName)) {
-      showToast("First name can only contain letters and spaces (no numbers or special characters).", "error");
+      showToast("First name can only contain letters and spaces.", "error");
       return;
     }
 
     if (!isValidName(lastName)) {
-      showToast("Last name can only contain letters and spaces (no numbers or special characters).", "error");
+      showToast("Last name can only contain letters and spaces.", "error");
       return;
     }
 
@@ -564,7 +564,7 @@ export default function AddTeacherModal({
     }
 
     if (!isValidGmail(email)) {
-      showToast("Please enter a valid email address ending in @gmail.com.", "error");
+      showToast("Enter a valid @gmail.com address.", "error");
       return;
     }
 

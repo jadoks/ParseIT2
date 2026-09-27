@@ -669,7 +669,7 @@ const Messenger = ({
         ) {
           setSelected(null);
           onConversationActiveChange?.(false);
-          showToast('You were removed from that discussion room.', 'error');
+          showToast('Removed from the room.', 'error');
         }
 
         // ── Merge into existing list (preserve object identity when unchanged) ──
@@ -1179,7 +1179,7 @@ const Messenger = ({
       });
     } catch (error) {
       console.error('Pick file error:', error);
-      showToast('Failed to select file. Please try again.', 'error');
+      showToast('Failed to select file.', 'error');
     }
   };
 
@@ -1212,7 +1212,7 @@ const Messenger = ({
           ALLOWED_IMAGE_EXTENSIONS
         )
       ) {
-        showToast('Only PNG, JPG/JPEG, and WEBP images are allowed.', 'error');
+        showToast('Only PNG, JPG, or WEBP allowed.', 'error');
         return;
       }
 
@@ -1418,7 +1418,7 @@ const Messenger = ({
         }));
       } catch (error) {
         console.error('File upload error:', error);
-        showToast('Failed to send file. Please try again.', 'error');
+        showToast('Failed to send file.', 'error');
       }
     }
 
@@ -1566,7 +1566,7 @@ const Messenger = ({
           if (canShare) {
             await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', UTI: 'public.image', dialogTitle: `Save ${fileName}` });
           } else {
-            showToast('Permission denied and sharing is unavailable.', 'error');
+            showToast('Permission denied.', 'error');
           }
           return;
         }
@@ -1608,7 +1608,7 @@ const Messenger = ({
       }
     } catch (err: any) {
       console.error('Download image error:', err);
-      showToast('Failed to download image. Please try again.', 'error');
+      showToast('Failed to download image.', 'error');
     }
   };
 
@@ -1628,7 +1628,7 @@ const Messenger = ({
           ),
         }));
       } else {
-        showToast('Failed to get file URL. It may have expired.', 'error');
+        showToast('File URL expired.', 'error');
         return;
       }
     }
@@ -1709,7 +1709,7 @@ const Messenger = ({
       }
     } catch (err: any) {
       console.error('Download file error:', err);
-      showToast('Failed to download file. Please try again.', 'error');
+      showToast('Failed to download file.', 'error');
     }
   };
 

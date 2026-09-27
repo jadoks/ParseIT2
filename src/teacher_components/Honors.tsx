@@ -744,7 +744,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     const parsedStartYear = Number(normalizedStartYear);
 
     if (!Number.isInteger(parsedStartYear) || normalizedStartYear.length !== 4) {
-      showFeedback('error', 'Invalid Start Year', 'Please enter a valid 4-digit start year. Example: 2025');
+      showFeedback('error', 'Invalid Start Year', 'Enter a valid 4-digit year.');
       return;
     }
 
@@ -822,7 +822,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         showFeedback('info', 'No Results', `No Deans List students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
       }
     } catch (error: any) {
-      showFeedback('error', 'Load Failed', error?.message || 'Unable to load the Deans List.');
+      showFeedback('error', 'Load Failed', error?.message || 'Failed to load.');
     } finally {
       setIsGenerating(false);
     }
@@ -1134,7 +1134,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   // returned .docx binary. Replaces the old HTML-in-a-.doc approach.
   const downloadDeansListForm = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
+      showFeedback('error', 'No Deans List', 'Generate the Deans List first.');
       return;
     }
 
@@ -1240,7 +1240,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       showFeedback('success', 'Downloaded', `Deans List form saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', error?.message || 'Unable to save the Deans List form.');
+      showFeedback('error', 'Download Failed', error?.message || 'Failed to save.');
     } finally {
       setIsExportingForm(false);
     }
@@ -1490,7 +1490,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const downloadHonorPdf = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
+      showFeedback('error', 'No Deans List', 'Generate the Deans List first.');
       return;
     }
 
@@ -1545,13 +1545,13 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       showFeedback('success', 'Downloaded', `Deans List PDF saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', error?.message || 'Unable to save the PDF file.');
+      showFeedback('error', 'Download Failed', error?.message || 'Failed to save PDF.');
     }
   };
 
   const downloadHonorExcel = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
+      showFeedback('error', 'No Deans List', 'Generate the Deans List first.');
       return;
     }
 
@@ -1771,7 +1771,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       showFeedback('success', 'Downloaded', `Deans List Excel file saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', error?.message || 'Unable to save the Excel file.');
+      showFeedback('error', 'Download Failed', error?.message || 'Failed to save Excel.');
     } finally {
       setIsExportingExcel(false);
     }

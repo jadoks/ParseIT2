@@ -647,21 +647,27 @@ import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster
       { role: "admin", collection: "admins" },
     ];
 
+    // ✅ OPTIMIZATION: run all three role lookups concurrently instead of
+    // sequentially. This function is called on nearly every authenticated
+    // request (session-login, session-me, user-profile, requireClassAccess,
+    // requireRoleOrSelf, ...), so a 3x-sequential Firestore round trip here
+    // was adding up fast, especially right in the middle of the login flow.
+    const snapshots = await Promise.all(
+      roles.map((item) =>
+        db.collection(item.collection).where("authUid", "==", authUid).limit(1).get()
+      )
+    );
+
     let result = null;
 
-    for (const item of roles) {
-      const snapshot = await db
-        .collection(item.collection)
-        .where("authUid", "==", authUid)
-        .limit(1)
-        .get();
-
+    for (let i = 0; i < roles.length; i++) {
+      const snapshot = snapshots[i];
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
         result = {
           id: doc.id,
-          role: item.role,
-          collection: item.collection,
+          role: roles[i].role,
+          collection: roles[i].collection,
           ref: doc.ref,
           data: doc.data() || {},
         };
@@ -2739,21 +2745,25 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
       { role: "admin", collection: "admins" },
     ];
 
+    // ✅ OPTIMIZATION: same idea as findUserProfileByAuthUid — check all
+    // three collections concurrently. This runs on every /auth/lookup-user
+    // call, which is the very first network request the login flow makes.
+    const docs = await Promise.all(
+      roles.map((item) => db.collection(item.collection).doc(normalizedId).get())
+    );
+
     const matches = [];
-
-    for (const item of roles) {
-      const doc = await db.collection(item.collection).doc(normalizedId).get();
-
+    docs.forEach((doc, i) => {
       if (doc.exists) {
         matches.push({
-          role: item.role,
-          collection: item.collection,
+          role: roles[i].role,
+          collection: roles[i].collection,
           ref: doc.ref,
           data: doc.data(),
           id: doc.id,
         });
       }
-    }
+    });
 
     if (matches.length > 0) {
       usersByIdCache.set(normalizedId, matches);

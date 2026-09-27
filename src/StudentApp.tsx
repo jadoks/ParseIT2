@@ -6,7 +6,6 @@ import * as NavigationBar from 'expo-navigation-bar';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   Modal,
@@ -1006,7 +1005,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     } catch (error: any) { 
       setCurrentUserAvatar(previousAvatar); 
       console.log('SAVE PROFILE IMAGE ERROR =>', error); 
-      Alert.alert('Save Failed', error?.message || 'Unable to save profile image.'); 
+      showToast(error?.message || 'Failed to save profile image.', 'error');
     }
   };
 
@@ -1031,7 +1030,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     } catch (error: any) { 
       setCurrentUserBanner(previousBanner); 
       console.log('SAVE BANNER IMAGE ERROR =>', error); 
-      Alert.alert('Save Failed', error?.message || 'Unable to save banner image.'); 
+      showToast(error?.message || 'Failed to save banner image.', 'error');
     }
   };
 
@@ -1530,7 +1529,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         ...prev,
         [assignmentId]: (prev[assignmentId] || []).filter(c => c.id !== tempId)
       }));
-      Alert.alert('Comment Failed', error?.message || 'Unable to post comment.');
+      showToast(error?.message || 'Failed to post comment.', 'error');
     }
   };
 
@@ -1569,7 +1568,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         }))
       );
     } catch (error: any) {
-      Alert.alert('Update Failed', error?.message || 'Unable to update comment.');
+      showToast(error?.message || 'Failed to update comment.', 'error');
     }
   };
 
@@ -1602,7 +1601,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         }))
       );
     } catch (error: any) {
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+      showToast(error?.message || 'Failed to delete comment.', 'error');
     }
   };
 
@@ -1656,7 +1655,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       ...prev,
       [assignmentId]: [...(prev[assignmentId] || []), target],
     }));
-    Alert.alert('Remove Failed', 'Unable to remove this item. Please try again.');
+    showToast('Failed to remove item.', 'error');
   }
 };
 
@@ -1716,7 +1715,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to update comment.');
     } catch (error: any) {
-      Alert.alert('Update Failed', error?.message || 'Unable to update comment.');
+      showToast(error?.message || 'Failed to update comment.', 'error');
     }
   };
 
@@ -1728,7 +1727,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to delete comment.');
     } catch (error: any) {
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+      showToast(error?.message || 'Failed to delete comment.', 'error');
     }
   };
 
@@ -1790,7 +1789,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       }
     } catch (error: any) {
       setCommunityPosts((prev) => prev.filter((post) => post.id !== tempId));
-      Alert.alert('Post Failed', error?.message || 'Unable to create post.');
+      showToast(error?.message || 'Failed to create post.', 'error');
     }
   };
 
@@ -1848,7 +1847,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             : post
         )
       );
-      Alert.alert('Answer Failed', error?.message || 'Unable to post answer.');
+      showToast(error?.message || 'Failed to post answer.', 'error');
     }
   };
 
@@ -1874,7 +1873,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       setCommunityPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, content: previousContent } : post))
       );
-      Alert.alert('Update Failed', error?.message || 'Unable to update post.');
+      showToast(error?.message || 'Failed to update post.', 'error');
     }
   };
 
@@ -1898,7 +1897,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           return next;
         });
       }
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete post.');
+      showToast(error?.message || 'Failed to delete post.', 'error');
     }
   };
 
@@ -1940,7 +1939,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             : post
         )
       );
-      Alert.alert('Update Failed', error?.message || 'Unable to update answer.');
+      showToast(error?.message || 'Failed to update answer.', 'error');
     }
   };
 
@@ -1970,7 +1969,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           })
         );
       }
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete answer.');
+      showToast(error?.message || 'Failed to delete answer.', 'error');
     }
   };
 
@@ -2001,7 +2000,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       if (!response.ok) throw new Error(data?.error || 'Failed to update answer visibility.');
     } catch (error: any) {
       applyHidden(!hidden);
-      Alert.alert(hidden ? 'Hide Failed' : 'Unhide Failed', error?.message || 'Unable to update answer visibility.');
+      showToast(error?.message || 'Failed to update answer visibility.', 'error');
     }
   };
 
@@ -2115,7 +2114,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   const handleGeneratedActivityCompleted = async (activity: GenerateActivityData) => {
     await Promise.all([loadStudentNotifications(), loadCompletedActivityScores()]);
-    Alert.alert('Activity Completed', `${activity.assignmentTitle} has been marked as done.`);
+    showToast(`${activity.assignmentTitle} marked as done.`, 'success');
   };
 
   const visibleStudentNotifications = useMemo(() => {
@@ -2269,7 +2268,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       await loadCompletedActivityScores();
     } catch (err) {
       console.error('Save quiz score error', err);
-      Alert.alert('Error', 'Could not save your quiz score.');
+      showToast('Failed to save your quiz score.', 'error');
     }
   };
 
@@ -2535,7 +2534,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       }
       case 'support-activity': {
         if (targetId && completedActivityScores[targetId]?.completed) {
-          Alert.alert('Already Completed', 'You have already completed this support activity.', [{ text: 'OK' }]);
+          showToast('You already completed this activity.', 'info');
           return;
         }
         const assignment = course?.assignments.find(a => a.id === targetId);
@@ -2605,16 +2604,16 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     const score = getScorePercent(assignment);
     // Validation checks
     if (score === null) {
-      Alert.alert('Not available', 'Generate Activity is only available after the assignment has been graded.');
+      showToast('Available only after grading.', 'info');
       return;
     }
     if (score >= 75) {
-      Alert.alert('Not available', 'Generate Activity is only available for graded assignments below 75%.');
+      showToast('Available only for scores below 75%.', 'info');
       return;
     }
     const completedSupportActivity = completedActivityScores[assignment.id];
     if (completedSupportActivity?.completed && completedSupportActivity.scorePercent !== null && completedSupportActivity.scorePercent >= 75) {
-      Alert.alert('Already mastered', `You already scored ${completedSupportActivity.scorePercent}% on the generated follow-up activity for this assignment.`);
+      showToast(`You already scored ${completedSupportActivity.scorePercent}% on this follow-up.`, 'info');
       return;
     }
     // ✅ UPDATED LOGIC: Support both Material IDs and Module Lessons
@@ -2626,7 +2625,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       relatedMaterials = normalizedCourse.materials || [];
       // If still empty, use assignment title/topic as a last resort
       if (!relatedMaterials.length) {
-        Alert.alert('No Content Found', 'There are no module lessons or related materials available for this assignment. Please ask your instructor to add learning content first.');
+        showToast('No learning materials available.', 'error');
         return;
       }
       // Clear materialIds so backend knows we're sending generic lesson content
@@ -2673,7 +2672,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       setActiveScreen('generateactivity');
     } catch (error: any) {
       
-      Alert.alert('Generate Activity Failed', error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.');
+      showToast(error?.message || 'Failed to scan material. Try again.', 'error');
     } finally {
       setIsGeneratingActivity(false);
     }
@@ -2705,7 +2704,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       setLastScreen(activeScreen); 
       setActiveScreen('gamebasedassignment');
     } catch (error: any) { 
-      Alert.alert('Game Error', error?.message || 'Unable to start the game.'); 
+      showToast(error?.message || 'Failed to start the game.', 'error');
     } finally { 
       setIsFetchingGame(false); 
     }
@@ -2733,7 +2732,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       if (!response.ok) throw new Error(data?.error || 'Failed to load your attempts.');
       const attempts: GameAttemptSummary[] = data.attempts || [];
       if (attempts.length === 0) {
-        Alert.alert('No Attempts Yet', 'Play this game-based assignment at least once before selecting a final score.');
+        showToast('Play this assignment at least once first.', 'info');
         return;
       }
       setGameAttemptSelectionData({
@@ -2747,7 +2746,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       setLastScreen(activeScreen);
       setActiveScreen('gameattemptselection');
     } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Unable to load your attempts.');
+      showToast(error?.message || 'Failed to load your attempts.', 'error');
     } finally {
       setIsFetchingGameAttempts(false);
     }
@@ -2765,12 +2764,12 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to submit your final score.');
-      Alert.alert('Final Score Submitted', `Your score of ${data.score}/${data.maxPoints} has been submitted.`);
+      showToast(`Score submitted: ${data.score}/${data.maxPoints}.`, 'success');
       await loadStudentSubmissionState();
       setGameAttemptSelectionData(null);
       setActiveScreen(lastScreen);
     } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Unable to submit your final score.');
+      showToast(error?.message || 'Failed to submit your final score.', 'error');
     }
   };
 
@@ -2886,7 +2885,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         // 4. Set the lesson ID to trigger the auto-open effect in CourseDetail
         setAutoOpenLessonId(material.id);
       } else {
-        Alert.alert('Error', 'Could not find the course details.');
+        showToast('Failed to find the course details.', 'error');
       }
     },
     [joinedCourses, activeScreen]

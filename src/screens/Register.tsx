@@ -1202,7 +1202,7 @@ export default function Register({
       showFeedback(
         'error',
         'Invalid Name',
-        'First and last name can only contain letters and spaces (no numbers or special characters).'
+        'Name can only contain letters and spaces.'
       );
       return;
     }
@@ -1215,7 +1215,7 @@ export default function Register({
     }
 
     if (!isValidEmail(email)) {
-      showFeedback('error', 'Invalid Email', 'Please enter a valid @gmail.com email address.');
+      showFeedback('error', 'Invalid Email', 'Enter a valid @gmail.com address.');
       return;
     }
 
@@ -1277,9 +1277,9 @@ export default function Register({
         // record, so the server refused to create the account.
         showFeedback('error', 'Not in School Records', errorMessage);
       } else if (/id already exists/i.test(errorMessage)) {
-        showFeedback('error', 'ID Already Exists', 'This User ID is already registered. Please use a different one.');
+        showFeedback('error', 'ID Already Exists', 'This User ID is already registered.');
       } else if (/email already exists/i.test(errorMessage)) {
-        showFeedback('error', 'Email Already Exists', 'This email is already registered. Please use a different one.');
+        showFeedback('error', 'Email Already Exists', 'This email is already registered.');
       } else {
         showFeedback('error', 'Registration Failed', errorMessage);
       }

@@ -3,7 +3,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -18,6 +17,10 @@ import {
 } from 'react-native';
 import * as XLSX from 'xlsx';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS } from '../theme/typography';
+// ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
+import Toast from '../Final_Admin_Components/Toast';
+
+type ToastType = 'success' | 'error' | 'info';
 
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
 const FooterImage = require('../../assets/images/footer.png');
@@ -315,6 +318,19 @@ type GradesProps = {
 };
 
 const Grades = ({ apiBaseUrl }: GradesProps) => {
+  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const { width } = useWindowDimensions();
 
   const isPhone = width < 768;
@@ -436,17 +452,14 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
     const parsedStartYear = Number(normalizedStartYear);
 
     if (!trimmedQuery) {
-      Alert.alert(
-        'Missing Student ID / Last Name',
-        "Please enter the student's ID or last name."
-      );
+      showToast("Enter the student's ID or last name.", 'error');
       resetResults();
       setNotFound(false);
       return;
     }
 
     if (!Number.isInteger(parsedStartYear) || normalizedStartYear.length !== 4) {
-      Alert.alert('Invalid Start Year', 'Please enter a valid 4-digit academic start year. Example: 2025');
+      showToast('Enter a valid 4-digit year.', 'error');
       resetResults();
       setNotFound(false);
       return;
@@ -543,7 +556,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       setNotFound(false);
       setShowGrades(true);
     } catch (error: any) {
-      Alert.alert('Load Failed', error?.message || 'Unable to load student grades.');
+      showToast(error?.message || 'Failed to load student grades.', 'error');
       resetResults();
       setNotFound(false);
     } finally {
@@ -819,7 +832,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
 
   const exportRecordsToExcel = async (exportRecords: StudentRecord[]) => {
     if (!exportRecords.length) {
-      Alert.alert('No Report', 'Please select at least one student to export.');
+      showToast('Select at least one student to export.', 'error');
       return;
     }
 
@@ -916,7 +929,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
         if (!permissions.granted) {
-          Alert.alert('Cancelled', 'No folder selected.');
+          showToast('No folder selected.', 'info');
           return;
         }
 
@@ -930,7 +943,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        Alert.alert('Downloaded', 'Grade report Excel file saved successfully.');
+        showToast('Grade report saved successfully.', 'success');
         return;
       }
 
@@ -940,9 +953,9 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      Alert.alert('Downloaded', `Grade report Excel file saved successfully.\n${savedUri}`);
+      showToast('Grade report saved successfully.', 'success');
     } catch (error: any) {
-      Alert.alert('Download Failed', error?.message || 'Unable to save the Excel file.');
+      showToast(error?.message || 'Failed to save Excel file.', 'error');
     } finally {
       setIsExporting(false);
     }
@@ -952,7 +965,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   // pick which students go into the workbook first.
   const handleDownloadPress = () => {
     if (!records.length) {
-      Alert.alert('No Report', 'Please view a grade report first.');
+      showToast('View a grade report first.', 'error');
       return;
     }
     if (!hasMultipleRecords) {
@@ -980,7 +993,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const confirmExportSelection = async () => {
     const chosen = records.filter((record) => selectedExportIds.includes(record.studentId));
     if (!chosen.length) {
-      Alert.alert('Nothing Selected', 'Select at least one student to include in the Excel file.');
+      showToast('Select at least one student to include.', 'error');
       return;
     }
     setShowExportPicker(false);
@@ -1595,6 +1608,24 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
               </View>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Toast — portal-based so it renders above all other Modals */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -2606,6 +2637,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.25,
     textTransform: 'uppercase',
     fontFamily,
+  },
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

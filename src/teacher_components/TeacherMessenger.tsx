@@ -676,7 +676,7 @@ const Messenger = ({
         ) {
           setSelected(null);
           onConversationActiveChange?.(false);
-          showToast('You were removed from that discussion room.', 'error');
+          showToast('Removed from the room.', 'error');
         }
 
         setConversations((prev) => {
@@ -1180,7 +1180,7 @@ const Messenger = ({
           ALLOWED_IMAGE_EXTENSIONS
         )
       ) {
-        showToast('Only PNG, JPG/JPEG, and WEBP images are allowed.', 'error');
+        showToast('Only PNG, JPG, or WEBP allowed.', 'error');
         return;
       }
 
@@ -1338,7 +1338,7 @@ const Messenger = ({
       });
     } catch (error) {
       console.error('Pick file error:', error);
-      showToast('Failed to select file. Please try again.', 'error');
+      showToast('Failed to select file.', 'error');
     }
   };
 
@@ -1428,7 +1428,7 @@ const Messenger = ({
         }));
       } catch (error) {
         console.error('File upload error:', error);
-        showToast('Failed to send file. Please try again.', 'error');
+        showToast('Failed to send file.', 'error');
       }
     }
 
@@ -1531,7 +1531,7 @@ const Messenger = ({
     try {
       if (Platform.OS === 'web') {
         if (!imagePreviewStoragePath) {
-          showToast('Cannot download: file path missing.', 'error');
+          showToast('File path missing.', 'error');
           return;
         }
         const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
@@ -1556,7 +1556,7 @@ const Messenger = ({
         if (fresh) downloadUrl = fresh;
       }
       if (!downloadUrl) { 
-        showToast('Cannot download: URL missing.', 'error'); 
+        showToast('URL missing.', 'error'); 
         return; 
       }
 
@@ -1575,7 +1575,7 @@ const Messenger = ({
               dialogTitle: `Save ${fileName}`,
             });
           } else {
-            showToast('Permission denied and sharing is unavailable.', 'error');
+            showToast('Permission denied.', 'error');
           }
           return;
         }
@@ -1615,7 +1615,7 @@ const Messenger = ({
       }
     } catch (err: any) {
       console.error('Download image error:', err);
-      showToast('Failed to download image. Please try again.', 'error');
+      showToast('Failed to download image.', 'error');
     }
   };
 
@@ -1634,7 +1634,7 @@ const Messenger = ({
           ),
         }));
       } else {
-        showToast('Failed to get file URL. It may have expired.', 'error');
+        showToast('File URL expired.', 'error');
         return;
       }
     }
@@ -1651,7 +1651,7 @@ const Messenger = ({
     try {
       if (Platform.OS === 'web') {
         if (!item.storagePath) { 
-          showToast('Cannot download: file path missing.', 'error'); 
+          showToast('File path missing.', 'error'); 
           return; 
         }
         const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
@@ -1710,7 +1710,7 @@ const Messenger = ({
       }
     } catch (err: any) {
       console.error('Download file error:', err);
-      showToast('Failed to download file. Please try again.', 'error');
+      showToast('Failed to download file.', 'error');
     }
   };
 
@@ -1930,7 +1930,7 @@ const Messenger = ({
       });
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result?.error || 'Failed to leave the room.');
+        throw new Error(result?.error || 'Failed to leave room.');
       }
 
       leftRoomsRef.current.set(roomId, Date.now());
@@ -1942,7 +1942,7 @@ const Messenger = ({
     } catch (error: any) {
       console.error('Leave room error:', error);
       setShowLeaveConfirm(false);
-      showToast(error?.message || 'Failed to leave the room.', 'error');
+      showToast(error?.message || 'Failed to leave room.', 'error');
     } finally {
       setIsLeavingRoom(false);
     }
