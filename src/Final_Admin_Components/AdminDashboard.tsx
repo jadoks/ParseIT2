@@ -364,7 +364,7 @@ export default function AdminDashboard({
     } catch (error) {
       console.error("Error saving class:", error);
       showToast(
-        error instanceof Error ? error.message : "Something went wrong. Please try again.",
+        error instanceof Error ? error.message : "Something went wrong. Try again.",
         "error"
       );
       // Re-throw — see handleAddSharedTeacher for why this matters.

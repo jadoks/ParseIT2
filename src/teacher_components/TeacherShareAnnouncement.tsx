@@ -969,7 +969,7 @@ export default function ShareAnnouncement({
 
     if (!trimmedHeader || !trimmedDesc || !editExpiryDate || !editExpiryTime) {
       showToast(
-        'Please complete header, description, expiry date, and expiry time.',
+        'Complete header, description, expiry date, and time.',
         'error'
       );
       return;
@@ -978,7 +978,7 @@ export default function ShareAnnouncement({
     const expiresAt = buildExpiryIso(editExpiryDate, editExpiryTime);
 
     if (!expiresAt) {
-      showToast('Please enter a valid expiry date and time.', 'error');
+      showToast('Enter a valid expiry date and time.', 'error');
       return;
     }
 
@@ -987,7 +987,7 @@ export default function ShareAnnouncement({
       : editSelectedClassIds;
 
     if (!targetClassIds.length) {
-      showToast('Please select at least one class, or choose All Classes.', 'error');
+      showToast('Select at least one class, or choose All Classes.', 'error');
       return;
     }
 
@@ -1087,7 +1087,7 @@ export default function ShareAnnouncement({
 
     if (!trimmedHeader || !trimmedDesc || !expiryDate || !expiryTime) {
       showToast(
-        'Please complete header, description, expiry date, and expiry time.',
+        'Complete header, description, expiry date, and time.',
         'error'
       );
       return;
@@ -1096,17 +1096,17 @@ export default function ShareAnnouncement({
     const expiresAt = buildExpiryIso(expiryDate, expiryTime);
 
     if (!expiresAt) {
-      showToast('Please enter a valid expiry date and time.', 'error');
+      showToast('Enter a valid expiry date and time.', 'error');
       return;
     }
 
     if (new Date(expiresAt).getTime() <= Date.now()) {
-      showToast('Please choose a future date and time.', 'error');
+      showToast('Choose a future date and time.', 'error');
       return;
     }
 
     if (!availableClasses.length) {
-      showToast('There are no created classes available yet.', 'error');
+      showToast('No classes available yet.', 'error');
       return;
     }
 
@@ -1141,7 +1141,7 @@ export default function ShareAnnouncement({
       const expiresAt = buildExpiryIso(expiryDate, expiryTime);
 
       if (!expiresAt) {
-        showToast('Please enter a valid expiry date and time.', 'error');
+        showToast('Enter a valid expiry date and time.', 'error');
         return;
       }
 
@@ -1150,7 +1150,7 @@ export default function ShareAnnouncement({
         : selectedClassIds;
 
       if (!targetClassIds.length) {
-        showToast('Please select a class or choose All Classes.', 'error');
+        showToast('Select a class or choose All Classes.', 'error');
         return;
       }
 
@@ -1791,7 +1791,7 @@ export default function ShareAnnouncement({
                 activeOpacity={0.8}
                 onPress={() => {
                   if (!editSelectAllClasses && !editSelectedClassIds.length) {
-                    showToast('Please select a class or choose All Classes.', 'error');
+                    showToast('Select a class or choose All Classes.', 'error');
                     return;
                   }
                   setShowEditAudienceModal(false);

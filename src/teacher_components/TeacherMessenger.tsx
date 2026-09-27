@@ -2055,7 +2055,7 @@ const Messenger = ({
       // Re-open the modal so the teacher knows it didn't go through and can retry.
       setShowCreateRoomModal(true);
       const message =
-        error?.message || 'Please check your connection and try again.';
+        error?.message || 'Check your connection and try again.';
       showToast(message, 'error');
       if (message.toLowerCase().includes('already exists')) {
         setRoomNameError(message);

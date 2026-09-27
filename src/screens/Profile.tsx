@@ -735,7 +735,7 @@ useEffect(() => {
   const handlePostAnswer = () => {
   const trimmed = answerText.trim();
   if (!trimmed || !selectedPostId) {
-    if (!trimmed) showToast('Please write an answer first.', 'error');
+    if (!trimmed) showToast('Write an answer first.', 'error');
     return;
   }
   // Same reasoning as handleCreatePost — let StudentApp's optimistic

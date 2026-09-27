@@ -114,7 +114,7 @@ const ClassesScreen = ({
     const trimmedCode = classCode.trim().toUpperCase();
 
     if (!trimmedCode) {
-      showToast('Please enter a class code.', 'error');
+      showToast('Enter a class code.', 'error');
       return;
     }
 
@@ -132,7 +132,7 @@ const ClassesScreen = ({
         throw new Error(
           result.error ||
             result.message ||
-            'Failed to join class. Please check the class code.'
+            'Failed to join class. Check the class code.'
         );
       }
 
@@ -141,7 +141,7 @@ const ClassesScreen = ({
       showToast(result?.message || 'Class joined successfully.', 'success');
     } catch (error: any) {
       showToast(
-        error?.message || 'Failed to join class. Please check the class code.',
+        error?.message || 'Failed to join class. Check the class code.',
         'error'
       );
     } finally {

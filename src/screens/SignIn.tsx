@@ -530,7 +530,7 @@ const SignIn = ({
 
   const handleLogIn = async () => {
     if (!id.trim() || !password.trim()) {
-      showFeedback('error', 'Missing Fields', 'Please enter your ID and password.');
+      showFeedback('error', 'Missing Fields', 'Enter your ID and password.');
       return;
     }
 
@@ -588,12 +588,12 @@ const SignIn = ({
 
   const handleEmailVerification = async () => {
     if (!recoveryEmail.trim()) {
-      showFeedback('error', 'Email Required', 'Please enter your email address.');
+      showFeedback('error', 'Email Required', 'Enter your email address.');
       return;
     }
 
     if (!isValidEmail(recoveryEmail)) {
-      showFeedback('error', 'Invalid Email', 'Please enter a valid email address.');
+      showFeedback('error', 'Invalid Email', 'Enter a valid email address.');
       return;
     }
 

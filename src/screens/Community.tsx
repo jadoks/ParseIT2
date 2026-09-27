@@ -499,7 +499,7 @@ const Community: React.FC<CommunityProps> = ({
   const handlePostAnswer = () => {
   const trimmed = answerText.trim();
   if (!trimmed || !selectedPostId) {
-    if (!trimmed) showToast('Please write an answer first.', 'error');
+    if (!trimmed) showToast('Write an answer first.', 'error');
     return;
   }
   onAddAnswer?.(selectedPostId, trimmed);

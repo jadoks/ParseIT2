@@ -355,10 +355,10 @@ const createEmptyScheduleBlock = (): ClassScheduleFormBlock => ({
 // Returns an error message for the first invalid block, or null if all blocks are valid.
 const validateScheduleBlocks = (blocks: ClassScheduleFormBlock[]): string | null => {
   for (const block of blocks) {
-    if (block.days.length === 0) return 'Select at least one day for each schedule block.';
-    if (!TIME_24H_REGEX.test(block.startTime.trim())) return 'Enter a valid start time (e.g., 08:00) for each schedule block.';
-    if (!TIME_24H_REGEX.test(block.endTime.trim())) return 'Enter a valid end time (e.g., 09:30) for each schedule block.';
-    if (block.startTime.trim() >= block.endTime.trim()) return 'End time must be after start time for each schedule block.';
+    if (block.days.length === 0) return 'Select at least one day per schedule block.';
+    if (!TIME_24H_REGEX.test(block.startTime.trim())) return 'Enter a valid start time (e.g., 08:00).';
+    if (!TIME_24H_REGEX.test(block.endTime.trim())) return 'Enter a valid end time (e.g., 09:30).';
+    if (block.startTime.trim() >= block.endTime.trim()) return 'End time must be after start time.';
   }
   return null;
 };
@@ -391,7 +391,7 @@ const validateNoInternalScheduleOverlap = (blocks: ClassScheduleFormBlock[]): st
   for (let i = 0; i < blocks.length; i++) {
     for (let j = i + 1; j < blocks.length; j++) {
       if (entriesConflict(blocks[i], blocks[j])) {
-        return `Schedule ${i + 1} and Schedule ${j + 1} overlap. Each schedule block for a class must have distinct days/times.`;
+        return `Schedule ${i + 1} and ${j + 1} overlap.`;
       }
     }
   }
@@ -418,7 +418,7 @@ const findTeacherScheduleConflict = (
     for (const newBlock of newBlocks) {
       for (const otherBlock of otherSchedule) {
         if (entriesConflict(newBlock, otherBlock)) {
-          return `This schedule conflicts with "${course.name}" (${course.section || course.yearSection || ''}), which you already teach at an overlapping day/time.`;
+          return `Schedule conflicts with "${course.name}" (${course.section || course.yearSection || ''}).`;
         }
       }
     }

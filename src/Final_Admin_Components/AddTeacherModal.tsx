@@ -80,7 +80,7 @@ function calculateAge(birthDate: Date, on: Date = startOfToday()): number {
 /** Returns a user-facing error message, or null if the birthday is valid. */
 function getBirthdayError(date: Date | null): string | null {
   if (!date) {
-    return "Please select a birthday.";
+    return "Select a birthday.";
   }
 
   if (date.getTime() >= startOfToday().getTime()) {
@@ -94,7 +94,7 @@ function getBirthdayError(date: Date | null): string | null {
   }
 
   if (age > MAX_AGE) {
-    return "Please enter a realistic date of birth.";
+    return "Enter a realistic date of birth.";
   }
 
   return null;

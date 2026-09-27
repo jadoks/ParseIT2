@@ -557,7 +557,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       }
 
       showToast(
-        error instanceof Error ? error.message : "Something went wrong. Please try again.",
+        error instanceof Error ? error.message : "Something went wrong. Try again.",
         "error"
       );
     }
@@ -693,7 +693,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     if (!selectedClassForMembers) return;
     const studentId = newMemberStudentId.trim();
     if (!studentId) {
-      showToast("Please enter a Student ID.", "error");
+      showToast("Enter a Student ID.", "error");
       return;
     }
     try {

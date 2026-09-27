@@ -674,7 +674,7 @@ function InlineMaterialViewer({
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
       <Text style={{ color: "#888", textAlign: "center", marginTop: 10 }}>
-        Preview not available on this device. Please download or open externally.
+        Preview not available on this device. Download or open externally.
       </Text>
       {canRefresh && (
         <TouchableOpacity
@@ -1471,7 +1471,7 @@ const Assignments = ({
       return;
     }
     if (!currentStudent?.studentId) {
-      showToast('Please sign in again.', 'error');
+      showToast('Sign in again.', 'error');
       return;
     }
 
@@ -1511,7 +1511,7 @@ const Assignments = ({
         }));
 
       if (regularFiles.length === 0 && linkItems.length === 0) {
-        throw new Error('No valid items were found. Please check your uploads.');
+        throw new Error('No valid items found in your uploads.');
       }
 
       const submissionItems = regularFiles.map(file => ({
@@ -1568,7 +1568,7 @@ const Assignments = ({
       return;
     }
     if (!currentStudent?.studentId) {
-      showToast('Please sign in again.', 'error');
+      showToast('Sign in again.', 'error');
       return;
     }
 

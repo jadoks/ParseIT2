@@ -1035,7 +1035,7 @@ async function createReadSignedUrlIfExists(storagePath) {
   function getPasswordPolicyError(password) {
     const value = typeof password === "string" ? password.trim() : "";
     const REQUIREMENT_MESSAGE =
-      "Password must be at least 8 characters, and include an uppercase letter, a lowercase letter, a number, and a special character.";
+      "Password needs 8+ characters, upper & lower case, a number, and a symbol.";
 
     if (
       value.length < 8 ||
@@ -2552,7 +2552,7 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
   app.post("/game/upload", requireAuth, gameUpload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({ error: "File is required. Make sure you are sending FormData correctly." });
+        return res.status(400).json({ error: "File is required." });
       }
 
       const profile = await findUserProfileByAuthUid(req.user.uid);
@@ -3795,7 +3795,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
 
       if (matches.length > 1) {
         return res.status(409).json({
-          error: "Duplicate ID found across multiple roles. Please contact admin.",
+          error: "Duplicate ID found across multiple roles.",
         });
       }
 
@@ -3997,13 +3997,13 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
 
       if (!expiresAt) {
         return res.status(400).json({
-          error: "PIN expiry is invalid. Please request a new PIN.",
+          error: "PIN expiry is invalid. Request a new PIN.",
         });
       }
 
       if (expiresAt.getTime() < Date.now()) {
         return res.status(400).json({
-          error: "PIN has expired. Please sign in again to receive a new PIN.",
+          error: "PIN has expired. Sign in again for a new PIN.",
         });
       }
 
@@ -4173,7 +4173,7 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
     // If it's a Resend-specific error, provide more context
     if (errorMessage.includes("api_key") || errorMessage.includes("unauthorized")) {
       return res.status(500).json({ 
-        error: "Email service configuration error. Please contact support." 
+        error: "Email service error. Contact support." 
       });
     }
     
@@ -4214,13 +4214,13 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
 
       if (!expiresAt) {
         return res.status(400).json({
-          error: "PIN expiry is invalid. Please request a new PIN.",
+          error: "PIN expiry is invalid. Request a new PIN.",
         });
       }
 
       if (expiresAt.getTime() < Date.now()) {
         return res.status(400).json({
-          error: "PIN has expired. Please request a new PIN.",
+          error: "PIN has expired. Request a new PIN.",
         });
       }
 
@@ -5190,7 +5190,7 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
 
       if (geminiContents.length === 0 && !combinedExtractedText.trim()) {
         return res.status(400).json({
-          error: "No readable content found. Ensure materials have uploaded files or text content."
+          error: "No readable content found in the materials."
         });
       }
 
@@ -5441,7 +5441,7 @@ async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQ
       // bypassed by calling this endpoint directly.
       if (isPastDueDate(assignment.dueDate)) {
         return res.status(403).json({
-          error: "This game-based assignment is past its due date and can no longer be played.",
+          error: "This assignment is past its due date.",
         });
       }
 
@@ -5981,7 +5981,7 @@ app.post("/create-admin", async (req, res) => {
   };
 
   const buildGradeAlreadyUploadedMessage = (term) =>
-    `You have already uploaded your grade for ${term.semester} S.Y. ${term.schoolYear}. You can upload again next semester.`;
+    `You already uploaded your grade for ${term.semester} S.Y. ${term.schoolYear}.`;
 
   // Lets the app check the limit BEFORE the student picks a file.
   app.get("/student-grade/upload-status/:studentId", requireAuth, async (req, res) => {
@@ -6127,7 +6127,7 @@ app.post("/create-admin", async (req, res) => {
       } else {
         console.warn("[Identity Check] ❌ Mismatch:", verificationResult.reason);
         return res.status(403).json({
-          error: `Security Check Failed: The ID in your account (${currentStudentId}) does not match the ID found in the uploaded file (${verificationResult.foundId || 'None'}). Please upload the correct transcript.`
+          error: `Security Check Failed: ID does not match the uploaded file.`
         });
       }
 
@@ -6158,13 +6158,13 @@ app.post("/create-admin", async (req, res) => {
     
     if (lastError?.status === 503 || lastError?.message.includes("Service Unavailable")) {
       return res.status(503).json({
-        error: "Identity verification service is currently busy. Please try again in a few minutes."
+        error: "Identity verification service is busy. Try again later."
       });
     }
     
     // Generic fallback for quota/key issues or other crashes
     return res.status(500).json({
-      error: "Unable to verify document identity. Please check your internet connection or try a smaller file."
+      error: "Unable to verify document identity."
     });
   }
 
@@ -7350,7 +7350,7 @@ app.post("/create-admin", async (req, res) => {
       if (duplicateClass) {
         return res.status(409).json({
           error:
-            "A class with the same name, course code, section, semester, and school year already exists.",
+            "A class with these details already exists.",
         });
       }
 
@@ -7551,7 +7551,7 @@ app.post("/create-admin", async (req, res) => {
         if (duplicateClass) {
           return res.status(409).json({
             error:
-              "A class with the same name, course code, section, semester, and school year already exists.",
+              "A class with these details already exists.",
           });
         }
       }
@@ -10405,7 +10405,7 @@ app.get(
 
         if (mostOverlappingRoom && highestOverlapRatio >= MEMBER_OVERLAP_WARNING_THRESHOLD) {
           return res.status(409).json({
-            error: `A room named "${trimmedRoomName}" with mostly the same members already exists in this class.`,
+            error: `A similar room already exists in this class.`,
             warning: true,
             conflictingRoomId: mostOverlappingRoom.id,
           });
@@ -11854,7 +11854,7 @@ app.get(
       // Prevent modifying graded assignments
       if (!existingSnapshot.empty && existingSnapshot.docs[0].data().status === "graded") {
         return res.status(409).json({
-          error: "This assignment has already been graded and can no longer be changed.",
+          error: "This assignment has already been graded.",
         });
       }
 
@@ -12392,7 +12392,7 @@ app.get(
 
       if (submissionData.status === "graded") {
         return res.status(409).json({
-          error: "This assignment has already been graded and cannot be unsubmitted.",
+          error: "This assignment has already been graded.",
         });
       }
 
@@ -14424,13 +14424,13 @@ app.get(
 
       if (!aiContent.contentsData.length) {
         return res.status(400).json({
-          error: "No related materials found. Please ensure the assignment has linked one or more Module Lessons or Class Materials.",
+          error: "No related materials linked to this assignment.",
         });
       }
 
       if (!aiContent.geminiContents.length && !aiContent.combinedExtractedText.trim()) {
         return res.status(422).json({
-          error: "No readable content found in the selected lessons/materials. Module Lessons must have 'Discussion' text, or an uploaded file that can be read (PDF, image, DOCX, PPTX, etc.).",
+          error: "No readable content found in the selected materials.",
         });
       }
 
@@ -14455,7 +14455,7 @@ app.get(
       } catch (aiError) {
         console.error("Material-based AI activity generation failed:", aiError?.message || aiError);
         return res.status(502).json({
-          error: "AI failed to generate a valid quiz from the related lesson/material content.",
+          error: "AI failed to generate a valid quiz.",
           details: aiError?.message || "Invalid AI output",
         });
       }
@@ -14476,7 +14476,7 @@ app.get(
 
       if (!activity?.quiz) {
         return res.status(502).json({
-          error: "AI did not return a valid material-based quiz. Please try again.",
+          error: "AI did not return a valid quiz. Try again.",
         });
       }
 
@@ -15245,7 +15245,7 @@ app.get(
       if (!fs.existsSync(templatePath)) {
         return res.status(500).json({
           error:
-            "Deans List Word template is missing on the server (templates/deans-list-template.docx).",
+            "Deans List template is missing on the server.",
         });
       }
 
@@ -16922,7 +16922,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       const normalizedEmail = String(newEmail).trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-        return res.status(400).json({ error: "Please provide a valid email address." });
+        return res.status(400).json({ error: "Provide a valid email address." });
       }
 
       const { userRef, userData } = await getManagedUserRecord(id, role);
@@ -18017,10 +18017,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           }
           return res.status(400).json({
             error:
-              "Could not generate a chatbot response or triggers from the uploaded file. Please try a different file, or enter the response and triggers manually.",
+              "Could not generate a response from the file. Try another file.",
           });
         }
-        return res.status(400).json({ error: "Please provide a chatbot response, triggers, or upload a file." });
+        return res.status(400).json({ error: "Provide a response, triggers, or a file." });
       }
 
       const batch = db.batch();
@@ -18840,7 +18840,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const isAdmin = profile.role === "admin";
 
       if (!isParticipant && !isTeacher && !isAdmin) {
-        return res.status(403).json({ error: "You do not have permission to change this conversation's picture." });
+        return res.status(403).json({ error: "You don't have permission to change this picture." });
       }
 
       const cleanedBase64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
@@ -19899,7 +19899,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       if (!isAllowedSyllabusFile(fileName, fileType)) {
         return res.status(400).json({
-          error: "Unsupported file type. Please upload a PDF, DOC, or DOCX Course Syllabus file.",
+          error: "Unsupported file type. Use PDF, DOC, or DOCX.",
           code: "UNSUPPORTED_FILE_TYPE",
         });
       }
@@ -19935,7 +19935,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         console.warn("Auto-parse failed:", parseError.message);
         // If parsing fails, it might be because the PDF is still unreadable.
         // You might want to return an error here instead of saving incomplete data.
-        return res.status(500).json({ error: "Could not read syllabus content. Please ensure the file is text-based and not scanned images." });
+        return res.status(500).json({ error: "Could not read syllabus content." });
       }
       if (needsConversion(fileType, fileName, buffer)) {
         try {
@@ -20035,7 +20035,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       if (!isAllowedSyllabusFile(fileName, fileType)) {
         return res.status(400).json({
-          error: "Unsupported file type. Please upload a PDF, DOC, or DOCX Course Syllabus file.",
+          error: "Unsupported file type. Use PDF, DOC, or DOCX.",
           code: "UNSUPPORTED_FILE_TYPE",
         });
       }
@@ -20693,7 +20693,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
 
       if (!targetSyllabusModule) {
-        return res.status(404).json({ error: "This module doesn't match a module in the syllabus, so there are no subtopics to generate from. Use \"Add Lesson (Manual)\" instead." });
+        return res.status(404).json({ error: "No subtopics to generate — use Add Lesson (Manual) instead." });
       }
 
       // 3. Generate content for EACH selected topic/subtopic. This route is
@@ -21512,7 +21512,7 @@ ${spec.rules}
       );
       if (lessonTitleAlreadyExists) {
         return res.status(409).json({
-          error: `A lesson titled "${title.trim()}" already exists in this module.`
+          error: `A lesson with this title already exists.`
         });
       }
 
@@ -21983,7 +21983,7 @@ ${spec.rules}
           );
           if (lessonTitleAlreadyExists) {
             return res.status(409).json({
-              error: `A lesson titled "${trimmedTitle}" already exists in this module.`
+              error: `A lesson with this title already exists.`
             });
           }
         }

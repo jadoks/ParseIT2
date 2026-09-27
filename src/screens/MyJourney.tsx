@@ -433,7 +433,7 @@ const MyJourney = ({
             <View style={[styles.emptyState, styles.emptyStateBordered]}>
               <Text style={styles.emptyTitle}>No Uploaded Grade Yet</Text>
               <Text style={styles.emptyText}>
-                Please upload your grade file from the menu to generate your academic record.
+                Upload your grade file from the menu to generate your academic record.
               </Text>
             </View>
           ) : null}

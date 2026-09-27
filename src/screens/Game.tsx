@@ -381,11 +381,11 @@ const Game = ({
   };
 
   const generateFromMaterials = async () => {
-    if (!gameType) return showToast('Please select a game type first.', 'error');
+    if (!gameType) return showToast('Select a game type first.', 'error');
     if (!selectedClassId || selectedMaterialIds.length === 0) return showToast('Select a class and a material.', 'error');
-    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) return showToast(`${MAX_MODULE_LESSONS_MESSAGE} Please deselect some before generating.`, 'error');
+    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) return showToast(`${MAX_MODULE_LESSONS_MESSAGE} Deselect some to continue.`, 'error');
     if (!studentId) return showToast('Not logged in: Student ID missing.', 'error');
-    if (isInvalidCount) return showToast(`Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
+    if (isInvalidCount) return showToast(`Enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
     // 🌟 NEW: Enforce daily AI generation limit
     if (hasReachedDailyLimit) {
       return showToast(`Daily limit reached (${MAX_GENERATIONS_PER_DAY}). Try again tomorrow.`, 'error');
@@ -488,7 +488,7 @@ const Game = ({
           />
           {isInvalidCount && (
             <Text style={styles.errorText}>
-              {parsedCount > MAX_QUESTIONS_PER_GENERATION ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} items.` : 'Please enter at least 1 item.'}
+              {parsedCount > MAX_QUESTIONS_PER_GENERATION ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} items.` : 'Enter at least 1 item.'}
             </Text>
           )}
         </View>
@@ -510,7 +510,7 @@ const Game = ({
               );
             })}
           </View>
-          {!gameType && <Text style={[styles.errorText, { marginTop: 8 }]}>Please select a game type to continue.</Text>}
+          {!gameType && <Text style={[styles.errorText, { marginTop: 8 }]}>Select a game type to continue.</Text>}
         </View>
       </View>
 

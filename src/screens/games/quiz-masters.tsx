@@ -1310,7 +1310,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <View style={styles.headerSection}>
             <Text style={styles.eyebrow}>Quiz Masters</Text>
             <Text style={styles.title}>No Questions Generated</Text>
-            <Text style={styles.subtitle}>Please upload a lesson file first to generate practice questions.</Text>
+            <Text style={styles.subtitle}>Upload a lesson file first to generate practice questions.</Text>
           </View>
           <Pressable style={styles.nextButton} onPress={onBack}>
             <Text style={styles.nextButtonText}>Back to Games</Text>

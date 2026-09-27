@@ -420,10 +420,10 @@ const createEmptyScheduleBlock = (): ClassScheduleFormBlock => ({
 // Returns an error message for the first invalid block, or null if all blocks are valid.
 const validateScheduleBlocks = (blocks: ClassScheduleFormBlock[]): string | null => {
   for (const block of blocks) {
-    if (block.days.length === 0) return "Select at least one day for each schedule block.";
-    if (!TIME_24H_REGEX.test(block.startTime.trim())) return "Enter a valid start time (e.g., 08:00) for each schedule block.";
-    if (!TIME_24H_REGEX.test(block.endTime.trim())) return "Enter a valid end time (e.g., 09:30) for each schedule block.";
-    if (block.startTime.trim() >= block.endTime.trim()) return "End time must be after start time for each schedule block.";
+    if (block.days.length === 0) return "Select at least one day per schedule block.";
+    if (!TIME_24H_REGEX.test(block.startTime.trim())) return "Enter a valid start time (e.g., 08:00).";
+    if (!TIME_24H_REGEX.test(block.endTime.trim())) return "Enter a valid end time (e.g., 09:30).";
+    if (block.startTime.trim() >= block.endTime.trim()) return "End time must be after start time.";
   }
   return null;
 };
@@ -449,7 +449,7 @@ const validateNoInternalScheduleOverlap = (blocks: ClassScheduleFormBlock[]): st
   for (let i = 0; i < blocks.length; i++) {
     for (let j = i + 1; j < blocks.length; j++) {
       if (entriesConflict(blocks[i], blocks[j])) {
-        return `Schedule ${i + 1} and Schedule ${j + 1} overlap. Each schedule block for a class must have distinct days/times.`;
+        return `Schedule ${i + 1} and ${j + 1} overlap.`;
       }
     }
   }
@@ -482,7 +482,7 @@ const findInstructorScheduleConflict = (
     for (const newBlock of newBlocks) {
       for (const otherBlock of otherSchedule) {
         if (entriesConflict(newBlock, otherBlock)) {
-          return `This schedule conflicts with "${klass.className || "another class"}" (${klass.section || ""}), which this teacher is already assigned to at an overlapping day/time.`;
+          return `Schedule conflicts with "${klass.className || "another class"}" (${klass.section || ""}).`;
         }
       }
     }
@@ -840,37 +840,37 @@ export default function AddClassModal({
     if (isBusy) return;
 
     if (!selectedYear) {
-      showToast("Please select a year.", "error");
+      showToast("Select a year.", "error");
       return;
     }
 
     if (!selectedSemester) {
-      showToast("Please select a semester.", "error");
+      showToast("Select a semester.", "error");
       return;
     }
 
     if (!selectedSection) {
-      showToast("Please select a section.", "error");
+      showToast("Select a section.", "error");
       return;
     }
 
     if (!courseNameInput.trim()) {
-      showToast("Please enter a course name.", "error");
+      showToast("Enter a course name.", "error");
       return;
     }
 
     if (!startYear.trim() || !endYear.trim()) {
-      showToast("Please enter start year.", "error");
+      showToast("Enter a start year.", "error");
       return;
     }
 
     if (!instructorIdentifier.trim()) {
-      showToast("Please enter teacher ID.", "error");
+      showToast("Enter a teacher ID.", "error");
       return;
     }
 
     if (!bannerFile?.uri) {
-      showToast("Please upload a class banner image.", "error");
+      showToast("Upload a class banner image.", "error");
       return;
     }
 

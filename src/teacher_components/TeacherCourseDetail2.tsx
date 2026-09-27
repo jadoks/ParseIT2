@@ -1035,7 +1035,7 @@ const CUSTOM_SECTION_MAX = 5;
 const CUSTOM_SECTION_TITLE_MAX = 60;
 const IMAGE_GEN_BLOCK_TITLE = 'Image generation not supported';
 const IMAGE_GEN_BLOCK_MESSAGE =
-  'Lessons are text-only, so image generation requests are not accepted. Please remove the image request and try again.';
+  'Lessons are text-only. Remove the image request and try again.';
 // Explicit AI-image wording — always blocked.
 const IMAGE_GEN_STRONG =
   /\b(?:image[\s-]*generat(?:ion|or|ing)|text[\s-]*to[\s-]*image|ai[\s-]*(?:generated[\s-]*)?(?:images?|art|pictures?|photos?)|image[\s-]*prompt|midjourney|dall[\s-]*e|stable[\s-]*diffusion)\b/i;
@@ -3124,7 +3124,7 @@ useEffect(() => {
   const handleCreateManualModule = async () => {
     const num = Number(newModuleNum);
     if (!newModuleTitle.trim() || !course?.id) {
-      toast.show('error', 'Error', 'Please enter a title.');
+      toast.show('error', 'Error', 'Enter a title.');
       return;
     }
     if (isDuplicateModuleTitle) {
@@ -3196,7 +3196,7 @@ useEffect(() => {
   const handleSaveModuleTitle = async () => {
     const trimmed = editModuleTitleValue.trim();
     if (!trimmed || !moduleBeingEdited?.id) {
-      toast.show('error', 'Error', 'Please enter a title.');
+      toast.show('error', 'Error', 'Enter a title.');
       return;
     }
     if (isDuplicateModuleDisplayTitle) {
@@ -3342,7 +3342,7 @@ useEffect(() => {
       ];
       const missing = sasRequiredChecks.filter(([isMissing]) => isMissing).map(([, label]) => label);
       if (missing.length > 0) {
-        toast.show('error', 'Missing Sections', `Please fill in: ${missing.join(', ')}.`);
+        toast.show('error', 'Missing Sections', `Fill in: ${missing.join(', ')}.`);
         return;
       }
     }
@@ -4178,7 +4178,7 @@ useEffect(() => {
       // flagged just because a second or two ticked by before Apply.
       const nowAtMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
       if (draftDueDateTime.getTime() < nowAtMinute.getTime()) {
-        return "That time has already passed today. Please pick a later time.";
+        return "That time has already passed today.";
       }
     }
     return null;
@@ -4845,7 +4845,7 @@ useEffect(() => {
 
     if (assignmentType === 'game_based') {
       if (generatedQuestions.length === 0)
-        nextErrors.totalScore = 'Please generate at least one question for the game.';
+        nextErrors.totalScore = 'Generate at least one question for the game.';
     } else {
       const trimmedPoints = formPoints.trim();
       const numericPoints = Number(trimmedPoints);
@@ -4871,7 +4871,7 @@ useEffect(() => {
           nowForDue.getMinutes()
         );
         if (parsedDue.getTime() < nowAtMinute.getTime()) {
-          nextErrors.dueDate = 'That time has already passed today. Please pick a later time.';
+          nextErrors.dueDate = 'That time has already passed today.';
         }
       }
     }
@@ -4879,12 +4879,12 @@ useEffect(() => {
     if (selectedMaterialIds.length === 0)
       nextErrors.materials = 'Select at least one related material.';
     else if (selectedMaterialIds.length > MAX_MODULE_LESSONS)
-      nextErrors.materials = `${MAX_MODULE_LESSONS_MESSAGE} Please deselect ${selectedMaterialIds.length - MAX_MODULE_LESSONS} lesson(s).`;
+      nextErrors.materials = `${MAX_MODULE_LESSONS_MESSAGE} Deselect ${selectedMaterialIds.length - MAX_MODULE_LESSONS} lesson(s).`;
 
     if (assignmentType === 'game_based') {
-      if (!gameType) nextErrors.gameType = 'Please select a game type.';
+      if (!gameType) nextErrors.gameType = 'Select a game type.';
 
-      if (!numberOfAttempts) nextErrors.attempts = 'Please select number of attempts.';
+      if (!numberOfAttempts) nextErrors.attempts = 'Select number of attempts.';
       else if (numberOfAttempts === 'custom') {
         const trimmedAttempts = customAttempts.trim();
         const numericAttempts = Number(trimmedAttempts);
@@ -4896,7 +4896,7 @@ useEffect(() => {
           nextErrors.customAttempts = 'Custom attempts cannot exceed 50.';
       }
 
-      if (!timeLimit) nextErrors.timeLimit = 'Please select a time limit.';
+      if (!timeLimit) nextErrors.timeLimit = 'Select a time limit.';
       else if (timeLimit === 'custom') {
         const trimmedTimeLimit = customTimeLimit.trim();
         const numericTimeLimit = Number(trimmedTimeLimit);
@@ -4935,7 +4935,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Invalid Count',
-        `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+        `Enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
       );
       return;
     }
@@ -4945,7 +4945,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Daily Limit Reached',
-        `You've used all ${DAILY_GENERATION_LIMIT} question generations allowed today across your classes. Please try again tomorrow.`
+        `You've used all ${DAILY_GENERATION_LIMIT} generations for today. Try again tomorrow.`
       );
       return;
     }
@@ -4989,7 +4989,7 @@ useEffect(() => {
         });
       }
       if (finalQuestions.length === 0) {
-        throw new Error('AI did not return any valid questions. Please try again.');
+        throw new Error('AI did not return any valid questions. Try again.');
       }
       const editableQuestions = finalQuestions.map((q: any, index: number) => {
         if (gameType === 'fill_in_blanks') {
@@ -5107,7 +5107,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Invalid Count',
-        `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+        `Enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
       );
       return;
     }
@@ -5117,7 +5117,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Daily Limit Reached',
-        `You've used all ${DAILY_GENERATION_LIMIT} question generations allowed today across your classes. Please try again tomorrow.`
+        `You've used all ${DAILY_GENERATION_LIMIT} generations for today. Try again tomorrow.`
       );
       return;
     }
@@ -6799,7 +6799,7 @@ useEffect(() => {
                 <Text style={styles.errorText}>
                   {parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION
                     ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} questions.`
-                    : 'Please enter at least 1 question.'}
+                    : 'Enter at least 1 question.'}
                 </Text>
               )}
               <Text
@@ -7512,8 +7512,8 @@ the button looked completely dead.
                     'error',
                     'Invalid Questions',
                     gameType === 'memory_match'
-                      ? 'Please ensure every term and definition has text.'
-                      : 'Please ensure all items have text and a correct option is selected.'
+                      ? 'Every term and definition needs text.'
+                      : 'Every item needs text and a correct option.'
                   );
                   return;
                 }
@@ -8657,8 +8657,8 @@ GENERATED QUESTIONS PREVIEW MODAL
                     'error',
                     'Invalid Questions',
                     gameType === 'memory_match'
-                      ? 'Please ensure every term and definition has text.'
-                      : 'Please ensure all items have text and a correct option is selected.'
+                      ? 'Every term and definition needs text.'
+                      : 'Every item needs text and a correct option.'
                   );
                   return;
                 }
@@ -9882,7 +9882,7 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
                 </>
               ) : (
                 <>
-                  Please verify that this is the correct syllabus file.
+                  Verify that this is the correct syllabus file.
                   <Text style={{ fontWeight: '700', color: '#D32F2F' }}> You can replace or delete it later using Edit / Delete.</Text>
                 </>
               )}

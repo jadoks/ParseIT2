@@ -486,7 +486,7 @@ const GenerateActivity = ({
       return {
         isCorrect: false,
         confidence: 0,
-        feedback: 'AI semantic grading was unavailable. Please review the expected answer.',
+        feedback: 'AI semantic grading was unavailable. Review the expected answer.',
         method: 'error',
       };
     }
@@ -988,7 +988,7 @@ const GenerateActivity = ({
           <View style={styles.errorCard}>
             <Text style={styles.errorTitle}>No material-based activity was generated</Text>
             <Text style={styles.errorText}>
-              The backend did not return valid activity items from the related material file content. Please regenerate the activity after confirming the related material file is readable.
+              No valid activity items were returned. Try regenerating after confirming the material file is readable.
             </Text>
           </View>
         )}

@@ -2503,7 +2503,7 @@ const fetchModules = useCallback(async (silent = false) => {
       return;
     }
     if (!currentStudent?.studentId) {
-      showFeedback('error', 'Missing student', 'Please sign in again.');
+      showFeedback('error', 'Missing student', 'Sign in again.');
       return;
     }
     // ✅ FIX (mirrors Assignments.tsx): Only ever submit the student's OWN
@@ -2539,7 +2539,7 @@ const fetchModules = useCallback(async (silent = false) => {
           url: file.linkUrl!.trim(),
         }));
       if (regularFiles.length === 0 && linkItems.length === 0) {
-        throw new Error('No valid items were found. Please check your uploads.');
+        throw new Error('No valid items found in your uploads.');
       }
       const submissionItems = regularFiles.map(file => ({
         id: file.id,
@@ -2586,7 +2586,7 @@ const fetchModules = useCallback(async (silent = false) => {
       return;
     }
     if (!currentStudent?.studentId) {
-      showFeedback('error', 'Missing student', 'Please sign in again.');
+      showFeedback('error', 'Missing student', 'Sign in again.');
       return;
     }
     try {

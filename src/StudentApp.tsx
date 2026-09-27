@@ -1253,11 +1253,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   const handleJoinClass = async (classCode: string) => {
     const trimmedCode = String(classCode || '').trim().toUpperCase();
-    if (!trimmedCode) throw new Error('Please enter a class code.');
-    if (!currentStudent?.studentId) throw new Error('Student ID is missing. Please log in again.');
+    if (!trimmedCode) throw new Error('Enter a class code.');
+    if (!currentStudent?.studentId) throw new Error('Student ID is missing. Log in again.');
     const joinResponse = await apiFetch(`${API_BASE_URL}/join-class`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classCode: trimmedCode, studentId: currentStudent.studentId }) });
     const joinData = await joinResponse.json().catch(() => ({}));
-    if (!joinResponse.ok) throw new Error(joinData?.error || joinData?.message || 'Failed to join class. Please check the class code.');
+    if (!joinResponse.ok) throw new Error(joinData?.error || joinData?.message || 'Failed to join class. Check the class code.');
     await loadJoinedClasses();
     return { success: true, message: joinData?.message || 'Class joined successfully.', data: joinData?.data };
   };
@@ -2846,7 +2846,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       setLeaveSuccessModalVisible(true);
     } catch (error: any) {
       setLeaveErrorMessage(
-        error?.message || 'Unable to leave the course.\nPlease try again later.'
+        error?.message || 'Unable to leave the course. Try again later.'
       );
       setLeaveErrorModalVisible(true);
     } finally {
@@ -3633,7 +3633,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
               </View>
               <Text style={[styles.logoutModalTitle, { color: '#D32F2F' }]}>Unable to Leave Course</Text>
               <Text style={[styles.logoutModalSubtitle, { textAlign: 'center', marginTop: 10 }]}>
-                {leaveErrorMessage || 'Unable to leave the course.\nPlease try again later.'}
+                {leaveErrorMessage || 'Unable to leave the course. Try again later.'}
               </Text>
               <View style={styles.logoutButtonsRow}>
                 <Pressable

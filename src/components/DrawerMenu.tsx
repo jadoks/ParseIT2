@@ -411,7 +411,7 @@ const uploadJsonWithProgress = (
       };
 
       xhr.onerror = () => reject(new Error('Network error while uploading grade file.'));
-      xhr.ontimeout = () => reject(new Error('Upload timed out. Please try again.'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out. Try again.'));
 
       xhr.send(JSON.stringify(body));
     });
@@ -673,7 +673,7 @@ const DrawerMenu = ({
     const pin = changeEmailPin.join('');
 
     if (pin.length !== 4) {
-      showToast('Please enter the 4-digit code.', 'error');
+      showToast('Enter the 4-digit code.', 'error');
       return;
     }
 
@@ -706,7 +706,7 @@ const DrawerMenu = ({
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      showToast('Please enter a valid email address.', 'error');
+      showToast('Enter a valid email address.', 'error');
       return;
     }
 
@@ -779,7 +779,7 @@ const DrawerMenu = ({
     const pin = changePasswordPin.join('');
 
     if (pin.length !== 4) {
-      showToast('Please enter the 4-digit code.', 'error');
+      showToast('Enter the 4-digit code.', 'error');
       return;
     }
 
@@ -871,7 +871,10 @@ const DrawerMenu = ({
         );
         const statusData = await statusResponse.json().catch(() => null);
         if (statusResponse.ok && statusData?.canUpload === false) {
-          showToast(statusData.message || 'You have already uploaded your grade for this semester.', 'error');
+          // Always show our own short message — statusData.message from the
+          // server includes the semester/year and a trailing sentence and
+          // was overflowing the toast.
+          showToast('You already uploaded your grade for this semester.', 'error');
           return;
         }
       } catch {}
@@ -969,7 +972,9 @@ const DrawerMenu = ({
       if (!ok) {
         // ✅ NEW: already uploaded for this semester + school year
         if (status === 409) {
-          showToast(data?.error || 'You have already uploaded your grade for this semester.', 'error');
+          // Same here — data?.error from the server is the same long,
+          // semester/year-specific sentence, so show our short version instead.
+          showToast('You already uploaded your grade for this semester.', 'error');
           return;
         }
 
@@ -981,13 +986,13 @@ const DrawerMenu = ({
 
         // Handle AI Service Outage (Strict Mode)
         if (status === 503) {
-          showToast(data?.error || 'Service unavailable. Please try uploading your grade again in a few minutes.', 'error');
+          showToast('Service unavailable. Try uploading your grade again later.', 'error');
           return;
         }
 
         // Handle Internal Server Errors (500) - Usually means AI Key issue or File Too Large
         if (status === 500) {
-          showToast(data?.error || 'The server encountered an error processing your file. Please try a smaller file or contact support.', 'error');
+          showToast('Failed to process your file. Try a smaller file.', 'error');
           return;
         }
 

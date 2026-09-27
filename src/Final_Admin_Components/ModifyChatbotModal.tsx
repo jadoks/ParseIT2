@@ -286,7 +286,7 @@ export default function ModifyChatbotModal({
   const handleAddTrigger = () => {
     const cleaned = newTriggerText.trim();
     if (!cleaned) {
-      showToast("Please enter a trigger.", "error");
+      showToast("Enter a trigger.", "error");
       return;
     }
 
