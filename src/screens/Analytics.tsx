@@ -890,14 +890,14 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
             <Text style={styles.emptyStateText}>Your graded assignments will appear here once they are marked.</Text>
           </View>
         ) : (
-          <>
+          <View style={[styles.cardGrid, isTablet && styles.cardGridTablet]}>
             {analytics.recentGradedAssignments
               .slice(0, showAllRecentAssignments ? undefined : 5)
               .map((item) => {
                 const scoreColor =
                   item.score >= 90 ? COLORS.success : item.score >= 80 ? COLORS.info : item.score >= 70 ? COLORS.warning : COLORS.danger;
                 return (
-                  <View key={item.id} style={styles.recentAssignmentCard}>
+                  <View key={item.id} style={[styles.recentAssignmentCard, isTablet && styles.gridItemTablet, isDesktop && styles.gridItemDesktop]}>
                     <View style={styles.recentAssignmentTopRow}>
                       <View style={{ flex: 1, paddingRight: 12 }}>
                         <Text style={styles.recentAssignmentTitle}>{item.title}</Text>
@@ -917,7 +917,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                   </View>
                 );
               })}
-          </>
+          </View>
         )}
       </View>
 
@@ -953,11 +953,11 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
             <Text style={styles.emptyStateText}>Great job. You do not have any overdue unsubmitted assignments.</Text>
           </View>
         ) : (
-          <>
+          <View style={[styles.cardGrid, isTablet && styles.cardGridTablet]}>
             {analytics.missingAssignments
               .slice(0, showAllMissingWork ? undefined : 5) // ✅ Show first 5 or all
               .map((item: AnalyticsAssignment, index: number) => (
-                <View key={`${item.id}-${index}`} style={styles.missingWorkCard}>
+                <View key={`${item.id}-${index}`} style={[styles.missingWorkCard, isTablet && styles.gridItemTablet, isDesktop && styles.gridItemDesktop]}>
                   <View style={styles.missingWorkTopRow}>
                     <View style={{ flex: 1, paddingRight: 12 }}>
                       <Text style={styles.missingWorkTitle}>{item.title}</Text>
@@ -971,7 +971,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                   </View>
                 </View>
               ))}
-          </>
+          </View>
         )}
       </View>
 
@@ -1122,6 +1122,10 @@ const styles = StyleSheet.create({
   subjectCountText: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, color: COLORS.subtext, fontWeight: WEIGHT_EMPHASIS },
   seeAllButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#F8F0F0', borderWidth: 1, borderColor: '#E8CCCC' , alignItems: 'center'},
   seeAllButtonText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: COLORS.primary },
+  cardGrid: { flexDirection: 'column' },
+  cardGridTablet: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start' },
+  gridItemTablet: { width: '48.5%' },
+  gridItemDesktop: { width: '32%' },
   subjectGrid: { flexDirection: 'column' },
   subjectGridTablet: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   subjectGridDesktop: { justifyContent: 'space-between' },
