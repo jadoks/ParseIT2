@@ -757,7 +757,11 @@ const Dashboard = ({
                         <TouchableOpacity
                           style={[
                             styles.smallActionBtn,
-                            { backgroundColor: '#8B0000' },
+                            {
+                              backgroundColor: '#8B0000',
+                              paddingHorizontal: isMobile ? 10 : 14,
+                              paddingVertical: isMobile ? 9 : 8,
+                            },
                           ]}
                           disabled={isGeneratingActivity}
                           onPress={() => {
@@ -768,7 +772,12 @@ const Dashboard = ({
                           {isGeneratingActivity ? (
                             <ActivityIndicator size="small" color="#FFFFFF" />
                           ) : (
-                            <Text style={styles.smallActionBtnText}>
+                            <Text
+                              style={[
+                                styles.smallActionBtnText,
+                                { fontSize: isMobile ? 12 : 13 },
+                              ]}
+                            >
                               Generate Activity
                             </Text>
                           )}
@@ -777,11 +786,20 @@ const Dashboard = ({
                         <TouchableOpacity
                           style={[
                             styles.smallActionBtn,
-                            { backgroundColor: '#444' },
+                            {
+                              backgroundColor: '#444',
+                              paddingHorizontal: isMobile ? 10 : 14,
+                              paddingVertical: isMobile ? 9 : 8,
+                            },
                           ]}
                           onPress={() => onOpenAssignments?.(item.course, item.assignment)}
                         >
-                          <Text style={styles.smallActionBtnText}>
+                          <Text
+                            style={[
+                              styles.smallActionBtnText,
+                              { fontSize: isMobile ? 12 : 13 },
+                            ]}
+                          >
                             Open Assignment
                           </Text>
                         </TouchableOpacity>
@@ -1343,6 +1361,7 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 10,
   },
@@ -1350,6 +1369,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   disabledActionBtn: {
     backgroundColor: '#BDBDBD',
@@ -1358,6 +1380,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: WEIGHT_EMPHASIS,
     fontSize: 12,
+    textAlign: 'center',
   },
 
   courseGrid: {

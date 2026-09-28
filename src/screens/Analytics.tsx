@@ -1120,7 +1120,7 @@ const styles = StyleSheet.create({
   missingBadgeText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: WEIGHT_EMPHASIS, color: '#FFFFFF' },
   subjectSectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   subjectCountText: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, color: COLORS.subtext, fontWeight: WEIGHT_EMPHASIS },
-  seeAllButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#F8F0F0', borderWidth: 1, borderColor: '#E8CCCC' , alignItems: 'center'},
+  seeAllButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#F8F0F0', borderWidth: 1, borderColor: '#E8CCCC' , alignItems: 'center', flexShrink: 0},
   seeAllButtonText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: COLORS.primary },
   cardGrid: { flexDirection: 'column' },
   cardGridTablet: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -1148,11 +1148,11 @@ const styles = StyleSheet.create({
   recommendationText: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: '#374151', lineHeight: 22 },
   infoButton: { padding: 2, alignItems: 'center', justifyContent: 'center' },
   metricTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexShrink: 1 },
   // ✅ NEW: pairs a section title with a See All / Show Less button on the
   // same row (title/info on the left, button pinned to the right) — same
   // row-based layout as subjectSectionHeaderRow in Per-Subject Details.
-  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 },
+  sectionHeaderRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 12, rowGap: 8, marginBottom: 4 },
   infoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   infoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   infoSheet: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: COLORS.surface, borderRadius: 22, padding: 18 },
