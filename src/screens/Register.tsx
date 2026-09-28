@@ -1275,7 +1275,7 @@ export default function Register({
       if (error?.code === 'NOT_IN_RECORDS') {
         // The admin's uploaded student/teacher list doesn't contain a matching
         // record, so the server refused to create the account.
-        showFeedback('error', 'Not in School Records', errorMessage);
+        showFeedback('error', 'Not Found', errorMessage);
       } else if (/id already exists/i.test(errorMessage)) {
         showFeedback('error', 'ID Already Exists', 'This User ID is already registered.');
       } else if (/email already exists/i.test(errorMessage)) {

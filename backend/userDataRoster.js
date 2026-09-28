@@ -39,7 +39,7 @@ const MAX_ERRORS_RETURNED = 50;
 const LIST_LIMIT = 10000;
 
 export const ROSTER_REJECTION_MESSAGE =
-  "We couldn't find a matching record for you. Make sure your User ID, first name, last name, and birthday exactly match what the school has on file, or contact your administrator.";
+  "No matching record. Check your ID, name, and birthday.";
 
 const ROSTERS = {
   students: { role: "student", collection: "studentRoster", accounts: "students", label: "Student" },
