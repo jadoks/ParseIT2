@@ -1710,7 +1710,7 @@ const DrawerMenu = ({
                 ? `Your year level during ${lastTermLabel} (the semester your grade file is for).`
                 : 'Your year level during the last semester (the semester your grade file is for).'}
             </Text>
-            <View style={styles.gradeDropdownField}>
+            <View style={[styles.gradeDropdownField, openGradeDropdown === 'year' && styles.gradeDropdownFieldOpen]}>
               <GradeDropdown
                 value={selectedYearLevel ? GRADE_YEAR_OPTIONS[selectedYearLevel - 1] : null}
                 options={GRADE_YEAR_OPTIONS}
@@ -1727,7 +1727,7 @@ const DrawerMenu = ({
             </View>
 
             <Text style={styles.gradeInfoLabel}>Section</Text>
-            <View style={styles.gradeDropdownField}>
+            <View style={[styles.gradeDropdownField, openGradeDropdown === 'section' && styles.gradeDropdownFieldOpen]}>
               <GradeDropdown
                 value={selectedSection ? `Section ${selectedSection}` : null}
                 options={GRADE_SECTION_OPTIONS}
@@ -1826,7 +1826,8 @@ const styles = StyleSheet.create({
   logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   gradeInfoLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111', marginTop: 18 },
   gradeInfoHint: { fontSize: 12, color: '#777', fontFamily: FONT_BODY, marginTop: 2 },
-  gradeDropdownField: { marginTop: 8, zIndex: 1 },
+  gradeDropdownField: { marginTop: 8, position: 'relative' },
+  gradeDropdownFieldOpen: { zIndex: 50, elevation: 50 },
 
   // Dropdown field (same look as Honors.tsx CustomDropdown)
   gradeDropdownContainer: { position: 'relative', width: '100%', zIndex: 1 },
