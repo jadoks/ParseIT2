@@ -436,6 +436,111 @@ const uploadJsonWithProgress = (
   })();
 };
 
+// ─── Dropdown used in the "Before you upload" modal ─────────────────────────
+// Same behaviour as CustomDropdown in Honors.tsx:
+//  • Large screens  -> inline menu that drops down under the field
+//  • Small screens  -> bottom-sheet Modal (always on top, always tappable)
+type GradeDropdownProps = {
+  value: string | null;
+  options: string[];
+  placeholder: string;
+  label: string;
+  onSelect: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  isMobile: boolean;
+};
+
+function GradeDropdown({
+  value,
+  options,
+  placeholder,
+  label,
+  onSelect,
+  visible,
+  onToggle,
+  isMobile,
+}: GradeDropdownProps) {
+  return (
+    <View style={[styles.gradeDropdownContainer, visible && !isMobile && styles.gradeDropdownContainerOpen]}>
+      <TouchableOpacity
+        style={[styles.gradeDropdownButton, isMobile && styles.gradeDropdownButtonMobile]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
+        <Text
+          style={[styles.gradeDropdownButtonText, !value && styles.gradeDropdownPlaceholder]}
+          numberOfLines={1}
+        >
+          {value || placeholder}
+        </Text>
+        <Ionicons name={visible ? 'chevron-up' : 'chevron-down'} size={16} color="#000" />
+      </TouchableOpacity>
+
+      {isMobile ? (
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onToggle} statusBarTranslucent>
+          <TouchableOpacity style={styles.gradeSheetOverlay} activeOpacity={1} onPress={onToggle}>
+            {/* Swallow taps on the sheet itself so they don't close it */}
+            <TouchableOpacity style={styles.gradeSheet} activeOpacity={1} onPress={() => {}}>
+              <View style={styles.gradeSheetHandle} />
+
+              <View style={styles.gradeSheetHeader}>
+                <Text style={styles.gradeSheetTitle}>{label}</Text>
+                <TouchableOpacity onPress={onToggle} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#3B332E" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.gradeSheetScroll} showsVerticalScrollIndicator={false}>
+                {options.map((option) => {
+                  const isSelected = option === value;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.gradeSheetItem, isSelected && styles.gradeSheetItemSelected]}
+                      onPress={() => onSelect(option)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.gradeSheetItemText, isSelected && styles.gradeSheetItemTextSelected]}>
+                        {option}
+                      </Text>
+                      {isSelected ? <Ionicons name="checkmark" size={18} color="#8B0000" /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      ) : visible ? (
+        <View style={styles.gradeInlineMenu}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {options.map((option) => {
+              const isSelected = option === value;
+              return (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.gradeInlineItem, isSelected && styles.gradeInlineItemSelected]}
+                  onPress={() => onSelect(option)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.gradeInlineItemText, isSelected && styles.gradeInlineItemTextSelected]}>
+                    {option}
+                  </Text>
+                  {isSelected ? <Ionicons name="checkmark" size={16} color="#8B0000" /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const GRADE_YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+const GRADE_SECTION_OPTIONS = ['Section A', 'Section B', 'Section C'];
+
 const DrawerMenu = ({
   isFixed,
   onClose,
@@ -475,6 +580,7 @@ const DrawerMenu = ({
   const [isGradeInfoModalVisible, setGradeInfoModalVisible] = useState(false);
   const [selectedSection, setSelectedSection] = useState<'A' | 'B' | 'C' | null>(null);
   const [selectedYearLevel, setSelectedYearLevel] = useState<1 | 2 | 3 | 4 | null>(null);
+  const [openGradeDropdown, setOpenGradeDropdown] = useState<'year' | 'section' | null>(null);
   // e.g. "2nd Semester S.Y. 2025-2026" - the semester the grade file is for (from the server).
   const [lastTermLabel, setLastTermLabel] = useState('');
 
@@ -907,12 +1013,17 @@ const DrawerMenu = ({
     }
   };
 
+  const closeGradeInfoModal = () => {
+    setOpenGradeDropdown(null);
+    setGradeInfoModalVisible(false);
+  };
+
   const handleConfirmGradeInfo = () => {
     if (!selectedSection || !selectedYearLevel) {
       showToast('Please select your year level and section.', 'error');
       return;
     }
-    setGradeInfoModalVisible(false);
+    closeGradeInfoModal();
     // iOS can't present the picker while a Modal is still dismissing.
     setTimeout(() => { startGradeUpload(selectedSection, selectedYearLevel); }, Platform.OS === 'ios' ? 400 : 0);
   };
@@ -1585,7 +1696,7 @@ const DrawerMenu = ({
       </Modal>
 
       {/* ─── GRADE UPLOAD: pick year level + section before choosing the file ─── */}
-      <Modal animationType="fade" transparent visible={isGradeInfoModalVisible} onRequestClose={() => setGradeInfoModalVisible(false)}>
+      <Modal animationType="fade" transparent visible={isGradeInfoModalVisible} onRequestClose={closeGradeInfoModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.logoutModalContainer}>
             <Text style={styles.logoutModalTitle}>Before you upload</Text>
@@ -1599,41 +1710,41 @@ const DrawerMenu = ({
                 ? `Your year level during ${lastTermLabel} (the semester your grade file is for).`
                 : 'Your year level during the last semester (the semester your grade file is for).'}
             </Text>
-            <View style={styles.gradeChipRow}>
-              {([1, 2, 3, 4] as const).map((level) => {
-                const active = selectedYearLevel === level;
-                return (
-                  <Pressable
-                    key={level}
-                    style={[styles.gradeChip, active && styles.gradeChipActive]}
-                    onPress={() => setSelectedYearLevel(level)}
-                  >
-                    <Text style={[styles.gradeChipText, active && styles.gradeChipTextActive]}>
-                      {level}{['st', 'nd', 'rd', 'th'][level - 1]} Year
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.gradeDropdownField}>
+              <GradeDropdown
+                value={selectedYearLevel ? GRADE_YEAR_OPTIONS[selectedYearLevel - 1] : null}
+                options={GRADE_YEAR_OPTIONS}
+                placeholder="Select year level"
+                label="Select Year Level"
+                onSelect={(option) => {
+                  setSelectedYearLevel((GRADE_YEAR_OPTIONS.indexOf(option) + 1) as 1 | 2 | 3 | 4);
+                  setOpenGradeDropdown(null);
+                }}
+                visible={openGradeDropdown === 'year'}
+                onToggle={() => setOpenGradeDropdown((prev) => (prev === 'year' ? null : 'year'))}
+                isMobile={isMobile}
+              />
             </View>
 
             <Text style={styles.gradeInfoLabel}>Section</Text>
-            <View style={styles.gradeChipRow}>
-              {(['A', 'B', 'C'] as const).map((letter) => {
-                const active = selectedSection === letter;
-                return (
-                  <Pressable
-                    key={letter}
-                    style={[styles.gradeChip, active && styles.gradeChipActive]}
-                    onPress={() => setSelectedSection(letter)}
-                  >
-                    <Text style={[styles.gradeChipText, active && styles.gradeChipTextActive]}>Section {letter}</Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.gradeDropdownField}>
+              <GradeDropdown
+                value={selectedSection ? `Section ${selectedSection}` : null}
+                options={GRADE_SECTION_OPTIONS}
+                placeholder="Select section"
+                label="Select Section"
+                onSelect={(option) => {
+                  setSelectedSection(option.replace('Section ', '') as 'A' | 'B' | 'C');
+                  setOpenGradeDropdown(null);
+                }}
+                visible={openGradeDropdown === 'section'}
+                onToggle={() => setOpenGradeDropdown((prev) => (prev === 'section' ? null : 'section'))}
+                isMobile={isMobile}
+              />
             </View>
 
             <View style={styles.logoutButtonsRow}>
-              <Pressable style={styles.modalCancelBtn} onPress={() => setGradeInfoModalVisible(false)}>
+              <Pressable style={styles.modalCancelBtn} onPress={closeGradeInfoModal}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
@@ -1715,11 +1826,42 @@ const styles = StyleSheet.create({
   logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   gradeInfoLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111', marginTop: 18 },
   gradeInfoHint: { fontSize: 12, color: '#777', fontFamily: FONT_BODY, marginTop: 2 },
-  gradeChipRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
-  gradeChip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#EBD4D4', backgroundColor: '#FFF', marginRight: 8, marginBottom: 8 },
-  gradeChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
-  gradeChipText: { fontSize: 13, fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#7A4A4A' },
-  gradeChipTextActive: { color: '#FFF' },
+  gradeDropdownField: { marginTop: 8, zIndex: 1 },
+
+  // Dropdown field (same look as Honors.tsx CustomDropdown)
+  gradeDropdownContainer: { position: 'relative', width: '100%', zIndex: 1 },
+  gradeDropdownContainerOpen: { zIndex: 10 },
+  gradeDropdownButton: {
+    width: '100%', height: 46, borderWidth: 1, borderColor: '#B8AFA7', borderRadius: 16,
+    paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+  },
+  gradeDropdownButtonMobile: { height: 48 },
+  gradeDropdownButtonText: { fontFamily: FONT_BODY, fontSize: 14, color: '#111', fontWeight: '700', flexShrink: 1, marginRight: 8 },
+  gradeDropdownPlaceholder: { color: '#8A8A8A', fontWeight: '500' },
+
+  // Large screens: inline menu under the field
+  gradeInlineMenu: {
+    position: 'absolute', top: 50, left: 0, width: '100%', maxHeight: 220,
+    backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#CFCFCF',
+    overflow: 'hidden', zIndex: 20,
+  },
+  gradeInlineItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#FFFFFF' },
+  gradeInlineItemSelected: { backgroundColor: '#F7EDED' },
+  gradeInlineItemText: { fontFamily: FONT_BODY, fontSize: 13, color: '#000' },
+  gradeInlineItemTextSelected: { color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
+
+  // Small screens: bottom-sheet Modal
+  gradeSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  gradeSheet: { width: '100%', maxHeight: '70%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24 },
+  gradeSheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDD6CE', marginBottom: 12 },
+  gradeSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F0EBE4' },
+  gradeSheetTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: WEIGHT_TITLE, color: '#3B332E' },
+  gradeSheetScroll: { maxHeight: 320 },
+  gradeSheetItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 10, borderRadius: 16 },
+  gradeSheetItemSelected: { backgroundColor: '#F7EDED' },
+  gradeSheetItemText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600', color: '#111' },
+  gradeSheetItemTextSelected: { color: '#8B0000', fontWeight: WEIGHT_EMPHASIS },
 
   // ─── Settings (mirrors Admin Settings.tsx's card modal styling) ───────
   modalCard: {
