@@ -475,6 +475,8 @@ const DrawerMenu = ({
   const [isGradeInfoModalVisible, setGradeInfoModalVisible] = useState(false);
   const [selectedSection, setSelectedSection] = useState<'A' | 'B' | 'C' | null>(null);
   const [selectedYearLevel, setSelectedYearLevel] = useState<1 | 2 | 3 | 4 | null>(null);
+  // e.g. "2nd Semester S.Y. 2025-2026" - the semester the grade file is for (from the server).
+  const [lastTermLabel, setLastTermLabel] = useState('');
 
   // ✅ Toast state — same shape/usage as Admin Settings, replacing Alert.alert
   // for the Change Email / Change Password flows below.
@@ -892,6 +894,9 @@ const DrawerMenu = ({
           showToast('You already uploaded your grade for this semester.', 'error');
           return;
         }
+        if (statusResponse.ok && statusData?.lastSemester && statusData?.lastSchoolYear) {
+          setLastTermLabel(`${statusData.lastSemester} S.Y. ${statusData.lastSchoolYear}`);
+        }
       } catch {}
 
       // Ask for section + year level first; the file picker opens after they confirm.
@@ -1012,6 +1017,13 @@ const DrawerMenu = ({
           // Same here — data?.error from the server is the same long,
           // semester/year-specific sentence, so show our short version instead.
           showToast('You already uploaded your grade for this semester.', 'error');
+          return;
+        }
+
+        // The file doesn't contain last semester's grades. Server already released
+        // the upload so the student can try again with the right file.
+        if (status === 422) {
+          showToast("Your file doesn't include last semester's grades.", 'error');
           return;
         }
 
@@ -1582,7 +1594,11 @@ const DrawerMenu = ({
             </Text>
 
             <Text style={styles.gradeInfoLabel}>Year level</Text>
-            <Text style={styles.gradeInfoHint}>Your year level in the latest school year that already has grades on your file.</Text>
+            <Text style={styles.gradeInfoHint}>
+              {lastTermLabel
+                ? `Your year level during ${lastTermLabel} (the semester your grade file is for).`
+                : 'Your year level during the last semester (the semester your grade file is for).'}
+            </Text>
             <View style={styles.gradeChipRow}>
               {([1, 2, 3, 4] as const).map((level) => {
                 const active = selectedYearLevel === level;

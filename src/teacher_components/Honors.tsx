@@ -466,7 +466,7 @@ const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
     icon: 'cloud-upload-outline',
     badge: 'server',
     title: 'Student uploads grade file (from MIS Portal)',
-    subtitle: 'PDF or image, uploaded through the app',
+    subtitle: 'PDF or image, after the student picks their year level & section',
   },
   {
     icon: 'save-outline',
@@ -481,7 +481,7 @@ const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
     subtitle: 'Confirms the ID on the document matches the logged-in student',
     reject: {
       title: 'ID mismatch',
-      subtitle: 'Upload is rejected (403). Student must re-upload the correct file.',
+      subtitle: 'Upload is rejected (403), the stored file is deleted and the previous record is restored. Student re-uploads the correct file.',
     },
   },
   {
@@ -489,6 +489,16 @@ const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
     badge: 'ai',
     title: 'Gemini AI — Transcript Parser',
     subtitle: 'Reads the grade table and extracts only the FINAL GRADE column',
+  },
+  {
+    icon: 'time-outline',
+    badge: 'server',
+    title: 'Check — Last semester included',
+    subtitle: "The file must contain last semester's grades; earlier semesters are fine",
+    reject: {
+      title: 'Last semester missing',
+      subtitle: "Upload is rejected (422), the stored file is deleted, the previous record is restored and the semester's upload isn't used up. Student re-uploads.",
+    },
   },
   {
     icon: 'calculator-outline',

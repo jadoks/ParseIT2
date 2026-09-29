@@ -5974,6 +5974,18 @@ app.post("/create-admin", async (req, res) => {
     return { schoolYear: `${year - 1}-${year}`, semester: "2nd Semester" };
   };
 
+  // The grade file a student uploads is for the LAST semester (the one that just
+  // ended), not the current one:
+  //   current 1st Sem of Y-(Y+1)  -> last = 2nd Sem of (Y-1)-Y
+  //   current 2nd Sem of Y-(Y+1)  -> last = 1st Sem of Y-(Y+1)
+  const getPreviousAcademicTerm = (term) => {
+    const startYear = parseInt(String(term.schoolYear).match(/\d{4}/)?.[0] || "0", 10);
+    if (term.semester === "1st Semester") {
+      return { schoolYear: `${startYear - 1}-${startYear}`, semester: "2nd Semester" };
+    }
+    return { schoolYear: term.schoolYear, semester: "1st Semester" };
+  };
+
   const buildGradeUploadLogRef = (studentId, term) => {
     const safeSY = term.schoolYear.replace(/[^a-zA-Z0-9]/g, "_");
     const safeSem = term.semester.replace(/[^a-zA-Z0-9]/g, "_");
@@ -6003,6 +6015,8 @@ app.post("/create-admin", async (req, res) => {
         canUpload: !logSnap.exists,
         schoolYear: term.schoolYear,
         semester: term.semester,
+        lastSchoolYear: getPreviousAcademicTerm(term).schoolYear,
+        lastSemester: getPreviousAcademicTerm(term).semester,
         message: logSnap.exists ? buildGradeAlreadyUploadedMessage(term) : null,
       });
     } catch (error) {
@@ -6012,6 +6026,9 @@ app.post("/create-admin", async (req, res) => {
   });
 
   app.post("/upload-student-grade", requireAuth, async (req, res) => {
+    // Undoes a rejected upload (stored file + overwritten studentGrades record).
+    let rollbackRejectedUpload = null;
+    let uploadAccepted = false; // true once identity is verified and the semester slot is claimed
     try {
       // 1. Accept studentId from frontend for verification
       const { fileBase64, fileName, fileType, studentId: frontendStudentId, section: requestedSection, yearLevel: requestedYearLevel } = req.body;
@@ -6048,6 +6065,7 @@ app.post("/create-admin", async (req, res) => {
       // ✅ ONE UPLOAD PER SEMESTER + SCHOOL YEAR — reject early, before the file
       // is stored or any AI call is made.
       const currentTerm = getCurrentAcademicTerm();
+      const lastTerm = getPreviousAcademicTerm(currentTerm); // the semester the uploaded grades are for
       const gradeUploadLogRef = buildGradeUploadLogRef(currentStudentId, currentTerm);
       if ((await gradeUploadLogRef.get()).exists) {
         return res.status(409).json({
@@ -6063,6 +6081,35 @@ app.post("/create-admin", async (req, res) => {
       const safeFileName = sanitizeFileName(fileName || `grade.${extension}`);
       const storagePath = `student-grades/${currentStudentId}/${Date.now()}-${safeFileName}`;
       const file = bucket.file(storagePath);
+
+      // Remember the student's current grade-file record BEFORE it is overwritten,
+      // so a rejected upload (ID mismatch, AI unavailable, last semester missing,
+      // ...) can be undone and never replaces the good record or leaves a stray file.
+      const gradeRecordRef = db.collection("studentGrades").doc(currentStudentId);
+      const previousGradeSnap = await gradeRecordRef.get();
+      const previousGradeRecord = previousGradeSnap.exists ? previousGradeSnap.data() : null;
+      let rolledBack = false;
+      rollbackRejectedUpload = async () => {
+        if (rolledBack) return;
+        rolledBack = true;
+        try {
+          await file.delete({ ignoreNotFound: true });
+        } catch (deleteErr) {
+          console.warn("[Grade Upload] Could not delete rejected file:", deleteErr.message);
+        }
+        invalidateSignedUrlCache(storagePath);
+        try {
+          // Only touch the record if it still points at THIS upload - a concurrent
+          // upload that already replaced it must not be overwritten.
+          const currentSnap = await gradeRecordRef.get();
+          if (currentSnap.exists && currentSnap.data()?.storagePath === storagePath) {
+            if (previousGradeRecord) await gradeRecordRef.set(previousGradeRecord);
+            else await gradeRecordRef.delete();
+          }
+        } catch (restoreErr) {
+          console.warn("[Grade Upload] Could not restore previous grade record:", restoreErr.message);
+        }
+      };
       
       // 1. Save to Firebase Storage first (so we have a record even if AI fails later)
       await file.save(Buffer.from(cleanedBase64, "base64"), {
@@ -6083,6 +6130,7 @@ app.post("/create-admin", async (req, res) => {
 
       // 2. VERIFY STUDENT IDENTITY WITH GEMINI
       if (!geminiGameAI) {
+        await rollbackRejectedUpload();
         return res.status(500).json({ error: "AI service not available for verification." });
       }
 
@@ -6143,6 +6191,7 @@ app.post("/create-admin", async (req, res) => {
         break; 
       } else {
         console.warn("[Identity Check] ❌ Mismatch:", verificationResult.reason);
+        await rollbackRejectedUpload();
         return res.status(403).json({
           error: `Security Check Failed: ID does not match the uploaded file.`
         });
@@ -6174,12 +6223,14 @@ app.post("/create-admin", async (req, res) => {
     console.error("[Identity Check] Final Failure:", lastError?.message || "Unknown error");
     
     if (lastError?.status === 503 || lastError?.message.includes("Service Unavailable")) {
+      await rollbackRejectedUpload();
       return res.status(503).json({
         error: "Identity verification service is busy. Try again later."
       });
     }
     
     // Generic fallback for quota/key issues or other crashes
+    await rollbackRejectedUpload();
     return res.status(500).json({
       error: "Unable to verify document identity."
     });
@@ -6199,6 +6250,7 @@ app.post("/create-admin", async (req, res) => {
     });
   } catch (logError) {
     if (logError?.code === 6 || /already exists/i.test(logError?.message || "")) {
+      await rollbackRejectedUpload();
       return res.status(409).json({
         error: buildGradeAlreadyUploadedMessage(currentTerm),
         schoolYear: currentTerm.schoolYear,
@@ -6208,6 +6260,7 @@ app.post("/create-admin", async (req, res) => {
     throw logError;
   }
 
+  uploadAccepted = true; // from here on the upload counts, even if parsing later soft-fails
   // 3. Proceed with Grade Parsing (Only if verified)
   if (isIdentityVerified) {
           const promptText = `
@@ -6357,6 +6410,36 @@ app.post("/create-admin", async (req, res) => {
                   groupedGrades[key].weightedGradeTotal += grade * units;
               }
 
+              // ---- The file must include LAST semester's grades ----
+              // A full transcript with many earlier semesters is fine (the Deans
+              // List can be viewed for any school year + semester) - it just has
+              // to contain the last semester. This is checked on the parsed
+              // result, not by asking the AI a second time. On failure the upload
+              // log is released so the student can try again with the right file.
+              const semesterKeyOf = (v) => {
+                  const t = String(v || "").toLowerCase();
+                  if (t.includes("first") || t.includes("1st")) return "first";
+                  if (t.includes("second") || t.includes("2nd")) return "second";
+                  return t;
+              };
+              const firstYearIn = (sy) => parseInt(String(sy || "").match(/\d{4}/)?.[0] || "0", 10);
+              const hasLastSemester = Object.values(groupedGrades).some(
+                  (g) =>
+                      g.subjects.length > 0 &&
+                      firstYearIn(g.schoolYear) === firstYearIn(lastTerm.schoolYear) &&
+                      semesterKeyOf(g.semester) === semesterKeyOf(lastTerm.semester)
+              );
+              if (!hasLastSemester) {
+                  await gradeUploadLogRef.delete().catch(() => {});
+                  await rollbackRejectedUpload();
+                  return res.status(422).json({
+                      error: `Your file must include your grades for ${lastTerm.semester} S.Y. ${lastTerm.schoolYear}.`,
+                      code: "LAST_SEMESTER_MISSING",
+                      schoolYear: lastTerm.schoolYear,
+                      semester: lastTerm.semester,
+                  });
+              }
+
               const uniqueSchoolYears = [...new Set(Object.values(groupedGrades).map(g => g.schoolYear))];
               const startYearOf = (sy) => {
                   const match = String(sy || "").match(/(\d{4})/);
@@ -6399,12 +6482,12 @@ app.post("/create-admin", async (req, res) => {
               //           3) code-based guess, ONLY if the file starts at a 1st
               //              semester (a full transcript from year 1),
               //           4) leave empty ("No Section" / "No Year Level").
-              // The picked year level is the level during the LATEST school year
-              // in the file; earlier school years count back from it.
+              // The picked year level is the level during the LAST semester (the one
+              // the grades are for); other school years count back/forward from it.
               const latestSY = uniqueSchoolYears[uniqueSchoolYears.length - 1];
               let sectionLetter = sectionLetterFromClient;
               let yearAnchor = yearLevelFromClient
-                  ? { startYear: startYearOf(latestSY), level: yearLevelFromClient }
+                  ? { startYear: startYearOf(lastTerm.schoolYear), level: yearLevelFromClient }
                   : null;
 
               if (!sectionLetter || !yearAnchor) {
@@ -6515,6 +6598,9 @@ app.post("/create-admin", async (req, res) => {
       }
 
     } catch (error) {
+      if (rollbackRejectedUpload && !uploadAccepted) {
+        await rollbackRejectedUpload();
+      }
       console.error("Upload student grade error:", error);
       return res.status(500).json({ error: error.message || "Failed to upload grade file." });
     }
