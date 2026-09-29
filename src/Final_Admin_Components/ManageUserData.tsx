@@ -830,10 +830,10 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
               <Text style={styles.modalMessage}>
                 Remove {deleteTarget?.record.firstName} {deleteTarget?.record.lastName} (ID{" "}
                 {deleteTarget?.record.userId}) from the {deleteTarget?.type === "teachers" ? "teacher" : "student"}{" "}
-                list? They won't be able to register unless you add them again.
-                {deleteTarget?.record.registered
-                  ? " Their existing account is not affected."
-                  : ""}
+                list?{" "}
+                {deleteTarget?.type === "teachers"
+                  ? "This also permanently deletes their account and personal data (class memberships, messages, comments, posts). Classes they teach are kept. This cannot be undone."
+                  : "This also permanently deletes their account and everything tied to it (joined classes, submissions, uploaded grades and files, messages). This cannot be undone."}
               </Text>
             </View>
             <View style={styles.modalFooter}>

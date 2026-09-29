@@ -561,7 +561,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
 
       closeDeleteModal();
       await loadTeachers();
-      showToast("Teacher deleted successfully.", "success");
+      showToast("Teacher and their data deleted.", "success");
     } catch (error) {
       console.error("Error deleting teacher:", error);
       showToast("Failed to delete teacher.", "error");
@@ -936,7 +936,9 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
                   ? `${teacherToDelete.firstName} ${teacherToDelete.lastName}`
                   : "this teacher"}
               </Text>
-              ?
+              ? This permanently removes their account and personal data (class
+              memberships, messages, comments, posts and uploaded images). Classes
+              they teach are kept. This cannot be undone.
             </Text>
 
             <View style={styles.confirmActions}>

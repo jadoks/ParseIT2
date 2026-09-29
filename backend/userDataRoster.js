@@ -550,6 +550,8 @@ export function createUserDataRoster({
   findUserProfileByAuthUid,
   pdfParse,
   mammoth,
+  deleteStudentAccount, // optional: async (studentId) => wipes the account + every related record
+  deleteTeacherAccount, // optional: async (teacherId) => wipes the account + personal data
 }) {
   // Kill-switch: set ENFORCE_ROSTER_REGISTRATION=false to let anyone register
   // again (e.g. while the first lists are still being uploaded).
@@ -797,8 +799,17 @@ export function createUserDataRoster({
         const snap = await ref.get();
         if (!snap.exists) return res.status(404).json({ error: "Record not found." });
 
+        // Removing someone from the list also deletes their account and their data
+        // (students: joined classes, grades, uploaded files, ...; teachers: personal data).
+        let wipe = null;
+        if (req.roster.role === "student" && typeof deleteStudentAccount === "function") {
+          wipe = await deleteStudentAccount(userId);
+        } else if (req.roster.role === "teacher" && typeof deleteTeacherAccount === "function") {
+          wipe = await deleteTeacherAccount(userId);
+        }
+
         await ref.delete();
-        return res.json({ success: true });
+        return res.json({ success: true, ...(wipe ? { wipe } : {}) });
       } catch (error) {
         console.error("Delete user data error:", error);
         return res.status(500).json({ error: error.message || "Failed to delete record." });

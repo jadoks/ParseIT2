@@ -562,7 +562,7 @@ useEffect(() => {
 
       closeDeleteModal();
       await loadStudents();
-      showToast("Student deleted successfully.", "success");
+      showToast("Student and all related data deleted.", "success");
     } catch (error) {
       console.error("Error deleting student:", error);
       showToast("Failed to delete student.", "error");
@@ -937,7 +937,9 @@ useEffect(() => {
                   ? `${studentToDelete.firstName} ${studentToDelete.lastName}`
                   : "this student"}
               </Text>
-              ?
+              ? This permanently removes their account and everything tied to it:
+              joined classes, submissions, uploaded grades and files, and
+              messages. This cannot be undone.
             </Text>
 
             <View style={styles.confirmActions}>

@@ -3307,9 +3307,436 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
   // Admin endpoints live under /admin/user-data/*. /auth/register below
   // uses verifyRegistration() so only people on those lists can sign up.
   // ============================================================
+  // ============================================================
+  // FULL STUDENT WIPE
+  // Deletes a student's account AND everything tied to it: joined classes,
+  // submissions, game attempts, uploaded grade files + parsed grades, final
+  // grades, activities, lesson progress, comments, favorites, AI chat history,
+  // notifications, community posts/answers, class-chat messages, profile/banner
+  // images and every related file in Firebase Storage.
+  //
+  // Used by DELETE /delete-student/:id and by the User Data list delete.
+  // Each step is isolated: a failure is logged and reported in `warnings`, but
+  // never stops the remaining steps (so the wipe is as complete as possible).
+  // ============================================================
+  async function deleteStudentCompletely(rawId) {
+    const id = String(rawId || "").trim();
+    if (!id) throw new Error("Student ID is required.");
+
+    const summary = { studentFound: false, deleted: {}, filesDeleted: 0, warnings: [] };
+    const bump = (key, n) => {
+      if (n) summary.deleted[key] = (summary.deleted[key] || 0) + n;
+    };
+    const step = async (name, fn) => {
+      try {
+        await fn();
+      } catch (error) {
+        console.error(`[deleteStudent ${id}] ${name} failed:`, error?.message || error);
+        summary.warnings.push(`${name}: ${error?.message || error}`);
+      }
+    };
+
+    const studentRef = db.collection("students").doc(id);
+    const studentSnap = await studentRef.get();
+    const student = studentSnap.exists ? studentSnap.data() || {} : null;
+    summary.studentFound = !!student;
+
+    // A student can be referenced by the document id and/or the studentId field.
+    const ids = [
+      ...new Set([id, student?.studentId ? String(student.studentId).trim() : null].filter(Boolean)),
+    ];
+    const FieldPath = admin.firestore.FieldPath;
+    const storagePaths = new Set();
+    const addPath = (value) => {
+      if (typeof value === "string" && value && !value.startsWith("defaults/")) storagePaths.add(value);
+    };
+
+    const deleteRefs = async (refs) => {
+      for (let i = 0; i < refs.length; i += 400) {
+        const batch = db.batch();
+        refs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+      return refs.length;
+    };
+
+    // Delete every doc in `collectionName` whose `field` is one of this student's ids.
+    const deleteByField = (label, collectionName, field, { filter, onDoc } = {}) =>
+      step(label, async () => {
+        const snap = await db.collection(collectionName).where(field, "in", ids).get();
+        const docs = snap.docs.filter((d) => !filter || filter(d.data() || {}));
+        docs.forEach((d) => onDoc && onDoc(d.data() || {}, d));
+        bump(label, await deleteRefs(docs.map((d) => d.ref)));
+      });
+
+    // Delete docs whose id starts with "<studentId>_" (e.g. upload logs, AI chat history).
+    const deleteByIdPrefix = (label, collectionName) =>
+      step(label, async () => {
+        for (const sid of ids) {
+          const snap = await db
+            .collection(collectionName)
+            .where(FieldPath.documentId(), ">=", `${sid}_`)
+            .where(FieldPath.documentId(), "<", `${sid}_\uf8ff`)
+            .get();
+          bump(label, await deleteRefs(snap.docs.map((d) => d.ref)));
+        }
+      });
+
+    // 1) Joined classes: memberships, class member count, chat participants, chat messages
+    await step("classMemberships", async () => {
+      const snap = await db.collection("classMembers").where("userId", "in", ids).get();
+      const memberships = snap.docs.filter((d) => (d.data()?.role || "student") === "student");
+
+      const perClass = new Map();
+      memberships.forEach((d) => {
+        const classId = d.data()?.classId;
+        if (classId) perClass.set(classId, (perClass.get(classId) || 0) + 1);
+      });
+
+      bump("classMemberships", await deleteRefs(memberships.map((d) => d.ref)));
+
+      for (const [classId, count] of perClass) {
+        await step(`class ${classId} cleanup`, async () => {
+          await db.collection("classes").doc(classId).update({
+            memberCount: FieldValue.increment(-count),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          // Main conversation + discussion rooms of this class
+          const convSnap = await db.collection("messengerConversations").where("classId", "==", classId).get();
+          for (const conv of convSnap.docs) {
+            const participants = Array.isArray(conv.data()?.participants) ? conv.data().participants : [];
+            const remaining = participants.filter((pt) => !ids.includes(String(pt?.userId || "")));
+            if (remaining.length !== participants.length) {
+              await conv.ref.update({ participants: remaining, updatedAt: FieldValue.serverTimestamp() });
+            }
+
+            // The student's own chat messages (+ any attachments)
+            const msgSnap = await conv.ref.collection("messages").where("senderId", "in", ids).get();
+            msgSnap.docs.forEach((m) => {
+              const md = m.data() || {};
+              addPath(md.storagePath);
+              addPath(md.pdfStoragePath);
+              (Array.isArray(md.files) ? md.files : []).forEach((f) => {
+                addPath(f?.storagePath);
+                addPath(f?.pdfStoragePath);
+              });
+            });
+            bump("chatMessages", await deleteRefs(msgSnap.docs.map((m) => m.ref)));
+          }
+        });
+      }
+    });
+
+    // 2) Uploaded grade files, parsed grades, upload logs, final grades
+    await step("studentGrades", async () => {
+      for (const sid of ids) {
+        const gradeRef = db.collection("studentGrades").doc(sid);
+        const gradeSnap = await gradeRef.get();
+        if (gradeSnap.exists) {
+          addPath(gradeSnap.data()?.storagePath);
+          await gradeRef.delete();
+          bump("studentGrades", 1);
+        }
+      }
+    });
+    await deleteByField("parsedGrades", "studentParsedGrades", "studentId");
+    await deleteByIdPrefix("gradeUploadLogs", "studentGradeUploads");
+    await deleteByField("finalGrades", "finalGrades", "studentId");
+
+    // 3) Assignment submissions (+ attached files), game attempts, activities, progress
+    await deleteByField("submissions", "classSubmissions", "studentId", {
+      onDoc: (d) => {
+        addPath(d.storagePath);
+        addPath(d.pdfStoragePath);
+        (Array.isArray(d.files) ? d.files : []).forEach((f) => {
+          addPath(f?.storagePath);
+          addPath(f?.pdfStoragePath);
+        });
+      },
+    });
+    await deleteByField("gameAttempts", "gameAssignmentAttempts", "studentId");
+    await deleteByField("activities", "studentActivities", "studentId");
+    await deleteByField("lessonProgress", "studentLessonProgress", "studentId");
+    await deleteByField("gameUploads", "gameUploads", "studentId", {
+      onDoc: (d) => addPath(d.storagePath),
+    });
+
+    // 4) Comments, favorites, AI chat history, notifications
+    await deleteByField("assignmentCommentThreads", "assignmentComments", "studentId"); // whole thread, incl. teacher replies
+    await deleteByField("assignmentComments", "assignmentComments", "authorId", {
+      filter: (d) => (d.authorRole || "student") === "student",
+    });
+    await deleteByField("videoComments", "videoComments", "userId", {
+      filter: (d) => (d.userRole || "student") === "student",
+    });
+    await deleteByField("videoFavorites", "videoFavorites", "userId", {
+      filter: (d) => (d.role || "student") === "student",
+    });
+    await deleteByIdPrefix("aiChatHistory", "aiChatHistory");
+    await deleteByField("notifications", "notifications", "userId", {
+      filter: (d) => (d.role || "student") === "student",
+    });
+
+    // 5) Community posts (with their answers) and answers on other people's posts
+    await step("communityPosts", async () => {
+      const snap = await db.collection("communityPosts").where("authorId", "in", ids).get();
+      const posts = snap.docs.filter((d) => (d.data()?.authorRole || "student") === "student");
+      for (const post of posts) {
+        if (typeof db.recursiveDelete === "function") {
+          await db.recursiveDelete(post.ref);
+        } else {
+          const answers = await post.ref.collection("answers").get();
+          await deleteRefs(answers.docs.map((a) => a.ref));
+          await post.ref.delete();
+        }
+      }
+      bump("communityPosts", posts.length);
+    });
+    await step("communityAnswers", async () => {
+      // Needs a collection-group index on answers.authorId; skipped with a warning if missing.
+      const snap = await db.collectionGroup("answers").where("authorId", "in", ids).get();
+      const answers = snap.docs.filter((d) => (d.data()?.authorRole || "student") === "student");
+      bump("communityAnswers", await deleteRefs(answers.map((d) => d.ref)));
+    });
+
+    // 6) Storage: every collected file + the student's folders
+    for (const path of storagePaths) {
+      await deleteStorageFileIfExists(path);
+      summary.filesDeleted += 1;
+    }
+    await step("profileImages", async () => {
+      const profilePath = student?.profileImageStoragePath;
+      if (profilePath && !String(profilePath).startsWith("defaults/")) {
+        try {
+          await avatarThumbs.deleteVariants(profilePath);
+        } catch (e) {
+          console.warn("Avatar variant cleanup skipped:", e?.message || e);
+        }
+      }
+      for (const sid of ids) {
+        for (const prefix of [`user-profiles/${sid}/`, `user-banners/${sid}/`, `student-grades/${sid}/`]) {
+          await bucket.deleteFiles({ prefix, force: true });
+        }
+      }
+    });
+
+    // 7) The account itself (Firestore doc + Firebase Auth user) and caches
+    await step("account", async () => {
+      if (studentSnap.exists) await studentRef.delete();
+      if (student?.authUid) {
+        try {
+          await admin.auth().deleteUser(student.authUid);
+        } catch (authError) {
+          console.error("Auth deletion failed (student):", authError.message);
+          summary.warnings.push(`authUser: ${authError.message}`);
+        }
+      } else if (student) {
+        console.warn(`No authUid found for student doc ${id}; Auth user not deleted.`);
+      }
+    });
+
+    invalidateUserProfileCache(student?.authUid);
+    invalidateUserLookupCaches({ id, email: student?.email });
+    ids.forEach((sid) => invalidateStudentJoinedClassesCache(sid));
+
+    // Back to "Not registered" on the User Data page (they can register again).
+    await userDataRoster.markUnregistered({ role: "student", id });
+
+    return summary;
+  }
+
+  // ============================================================
+  // FULL TEACHER WIPE
+  // Deletes a teacher's account AND their personal data: class memberships,
+  // chat messages, comments, favorites, AI chat history, notifications,
+  // community posts/answers, profile/banner images and Firebase Auth user.
+  //
+  // Classes they teach (and the assignments/materials/submissions inside them)
+  // are NOT deleted: those belong to the students in the class too. They are
+  // counted in `classesLeftBehind` so the admin can reassign or delete them.
+  // ============================================================
+  async function deleteTeacherCompletely(rawId) {
+    const id = String(rawId || "").trim();
+    if (!id) throw new Error("Teacher ID is required.");
+
+    const summary = { teacherFound: false, deleted: {}, filesDeleted: 0, classesLeftBehind: 0, warnings: [] };
+    const bump = (key, n) => {
+      if (n) summary.deleted[key] = (summary.deleted[key] || 0) + n;
+    };
+    const step = async (name, fn) => {
+      try {
+        await fn();
+      } catch (error) {
+        console.error(`[deleteTeacher ${id}] ${name} failed:`, error?.message || error);
+        summary.warnings.push(`${name}: ${error?.message || error}`);
+      }
+    };
+
+    const teacherRef = db.collection("teachers").doc(id);
+    const teacherSnap = await teacherRef.get();
+    const teacher = teacherSnap.exists ? teacherSnap.data() || {} : null;
+    summary.teacherFound = !!teacher;
+
+    const ids = [
+      ...new Set([id, teacher?.teacherId ? String(teacher.teacherId).trim() : null].filter(Boolean)),
+    ];
+    const FieldPath = admin.firestore.FieldPath;
+    const storagePaths = new Set();
+    const addPath = (value) => {
+      if (typeof value === "string" && value && !value.startsWith("defaults/")) storagePaths.add(value);
+    };
+
+    const deleteRefs = async (refs) => {
+      for (let i = 0; i < refs.length; i += 400) {
+        const batch = db.batch();
+        refs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+      }
+      return refs.length;
+    };
+    const deleteByField = (label, collectionName, field, { filter } = {}) =>
+      step(label, async () => {
+        const snap = await db.collection(collectionName).where(field, "in", ids).get();
+        const docs = snap.docs.filter((d) => !filter || filter(d.data() || {}));
+        bump(label, await deleteRefs(docs.map((d) => d.ref)));
+      });
+
+    // Classes they teach stay; just report how many now need attention.
+    await step("classesLeftBehind", async () => {
+      const seen = new Set();
+      const queries = [db.collection("classes").where("assignedTeacherId", "in", ids).get()];
+      if (teacher?.authUid) queries.push(db.collection("classes").where("assignedTeacherUid", "==", teacher.authUid).get());
+      if (teacher?.email) queries.push(db.collection("classes").where("instructorEmail", "==", teacher.email).get());
+      (await Promise.all(queries)).forEach((snap) => snap.docs.forEach((d) => seen.add(d.id)));
+      summary.classesLeftBehind = seen.size;
+    });
+
+    // Memberships + chat participation / messages
+    await step("classMemberships", async () => {
+      const snap = await db.collection("classMembers").where("userId", "in", ids).get();
+      const memberships = snap.docs.filter((d) => (d.data()?.role || "teacher") === "teacher");
+      bump("classMemberships", await deleteRefs(memberships.map((d) => d.ref)));
+
+      const classIds = [...new Set(memberships.map((d) => d.data()?.classId).filter(Boolean))];
+      for (const classId of classIds) {
+        await step(`class ${classId} chat cleanup`, async () => {
+          const convSnap = await db.collection("messengerConversations").where("classId", "==", classId).get();
+          for (const conv of convSnap.docs) {
+            const participants = Array.isArray(conv.data()?.participants) ? conv.data().participants : [];
+            const remaining = participants.filter((pt) => !ids.includes(String(pt?.userId || "")));
+            if (remaining.length !== participants.length) {
+              await conv.ref.update({ participants: remaining, updatedAt: FieldValue.serverTimestamp() });
+            }
+            const msgSnap = await conv.ref.collection("messages").where("senderId", "in", ids).get();
+            msgSnap.docs.forEach((m) => {
+              const md = m.data() || {};
+              addPath(md.storagePath);
+              addPath(md.pdfStoragePath);
+              (Array.isArray(md.files) ? md.files : []).forEach((f) => {
+                addPath(f?.storagePath);
+                addPath(f?.pdfStoragePath);
+              });
+            });
+            bump("chatMessages", await deleteRefs(msgSnap.docs.map((m) => m.ref)));
+          }
+        });
+      }
+    });
+
+    await deleteByField("assignmentComments", "assignmentComments", "authorId", {
+      filter: (d) => d.authorRole === "teacher",
+    });
+    await deleteByField("videoComments", "videoComments", "userId", {
+      filter: (d) => d.userRole === "teacher",
+    });
+    await deleteByField("videoFavorites", "videoFavorites", "userId", {
+      filter: (d) => d.role === "teacher",
+    });
+    await deleteByField("notifications", "notifications", "userId", {
+      filter: (d) => d.role === "teacher",
+    });
+    await step("aiChatHistory", async () => {
+      for (const tid of ids) {
+        const snap = await db
+          .collection("aiChatHistory")
+          .where(FieldPath.documentId(), ">=", `${tid}_`)
+          .where(FieldPath.documentId(), "<", `${tid}_\uf8ff`)
+          .get();
+        bump("aiChatHistory", await deleteRefs(snap.docs.map((d) => d.ref)));
+      }
+    });
+
+    await step("communityPosts", async () => {
+      const snap = await db.collection("communityPosts").where("authorId", "in", ids).get();
+      const posts = snap.docs.filter((d) => d.data()?.authorRole === "teacher");
+      for (const post of posts) {
+        if (typeof db.recursiveDelete === "function") await db.recursiveDelete(post.ref);
+        else {
+          const answers = await post.ref.collection("answers").get();
+          await deleteRefs(answers.docs.map((a) => a.ref));
+          await post.ref.delete();
+        }
+      }
+      bump("communityPosts", posts.length);
+    });
+    await step("communityAnswers", async () => {
+      // Needs a collection-group index on answers.authorId; skipped with a warning if missing.
+      const snap = await db.collectionGroup("answers").where("authorId", "in", ids).get();
+      const answers = snap.docs.filter((d) => d.data()?.authorRole === "teacher");
+      bump("communityAnswers", await deleteRefs(answers.map((d) => d.ref)));
+    });
+
+    // Storage
+    for (const path of storagePaths) {
+      await deleteStorageFileIfExists(path);
+      summary.filesDeleted += 1;
+    }
+    await step("profileImages", async () => {
+      const profilePath = teacher?.profileImageStoragePath;
+      if (profilePath && !String(profilePath).startsWith("defaults/")) {
+        try {
+          await avatarThumbs.deleteVariants(profilePath);
+        } catch (e) {
+          console.warn("Avatar variant cleanup skipped:", e?.message || e);
+        }
+      }
+      for (const tid of ids) {
+        for (const prefix of [`user-profiles/${tid}/`, `user-banners/${tid}/`]) {
+          await bucket.deleteFiles({ prefix, force: true });
+        }
+      }
+    });
+
+    // Account
+    await step("account", async () => {
+      if (teacherSnap.exists) await teacherRef.delete();
+      if (teacher?.authUid) {
+        try {
+          await admin.auth().deleteUser(teacher.authUid);
+        } catch (authError) {
+          console.error("Auth deletion failed (teacher):", authError.message);
+          summary.warnings.push(`authUser: ${authError.message}`);
+        }
+      } else if (teacher) {
+        console.warn(`No authUid found for teacher doc ${id}; Auth user not deleted.`);
+      }
+    });
+
+    invalidateUserProfileCache(teacher?.authUid);
+    invalidateUserLookupCaches({ id, email: teacher?.email });
+
+    await userDataRoster.markUnregistered({ role: "teacher", id });
+
+    return summary;
+  }
+
   const userDataRoster = createUserDataRoster({
     db,
     FieldValue,
+    deleteTeacherAccount: deleteTeacherCompletely,
+    // Removing a student from the User Data list also wipes their account + all data.
+    deleteStudentAccount: deleteStudentCompletely,
     requireAuth,
     findUserProfileByAuthUid,
     pdfParse: pdf,
@@ -7110,30 +7537,13 @@ app.post("/create-admin", async (req, res) => {
  app.delete("/delete-teacher/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const docRef = db.collection("teachers").doc(id);
-    const doc = await docRef.get();
-    const data = doc.data();
+    const summary = await deleteTeacherCompletely(id);
 
-    await docRef.delete();
-
-    if (data?.authUid) {
-      try {
-        await admin.auth().deleteUser(data.authUid);
-      } catch (authError) {
-        console.error("Auth deletion failed (teacher):", authError.message);
-      }
-    } else {
-      console.warn(`No authUid found for teacher doc ${id}; Auth user not deleted.`);
-    }
-
-    // ✅ OPTIMIZATION: evict any cached lookups for the deleted account.
-    invalidateUserProfileCache(data?.authUid);
-    invalidateUserLookupCaches({ id, email: data?.email });
-
-    // Back to "Not registered" on the User Data page (they can register again).
-    await userDataRoster.markUnregistered({ role: "teacher", id });
-
-    res.json({ success: true, message: "Teacher deleted successfully." });
+    res.json({
+      success: true,
+      message: "Teacher and their personal data deleted successfully.",
+      ...summary,
+    });
   } catch (error) {
     console.error("Delete teacher error:", error);
     res.status(500).json({ error: error.message || "Failed to delete teacher." });
@@ -7208,30 +7618,13 @@ app.post("/create-admin", async (req, res) => {
  app.delete("/delete-student/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const docRef = db.collection("students").doc(id);
-    const doc = await docRef.get();
-    const data = doc.data();
+    const summary = await deleteStudentCompletely(id);
 
-    await docRef.delete();
-
-    if (data?.authUid) {
-      try {
-        await admin.auth().deleteUser(data.authUid);
-      } catch (authError) {
-        console.error("Auth deletion failed (student):", authError.message);
-      }
-    } else {
-      console.warn(`No authUid found for student doc ${id}; Auth user not deleted.`);
-    }
-
-    // ✅ OPTIMIZATION: evict any cached lookups for the deleted account.
-    invalidateUserProfileCache(data?.authUid);
-    invalidateUserLookupCaches({ id, email: data?.email });
-
-    // Back to "Not registered" on the User Data page (they can register again).
-    await userDataRoster.markUnregistered({ role: "student", id });
-
-    res.json({ success: true, message: "Student deleted successfully." });
+    res.json({
+      success: true,
+      message: "Student and all related data deleted successfully.",
+      ...summary,
+    });
   } catch (error) {
     console.error("Delete student error:", error);
     res.status(500).json({ error: error.message || "Failed to delete student." });
