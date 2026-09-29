@@ -1198,7 +1198,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           schoolYear: schoolYear || 'S.Y ---- - ----',
           semester,
           sections: generatedSections.map((section) => ({
-            yearLevel: section.yearLevel,
+            // sectionName already starts with the year digit (e.g. "1A Microsoft"),
+            // so don't send the year level or the server repeats it ("1st Year 1A ...").
+            yearLevel: '',
             sectionName: displaySection(section.yearLevel, section.sectionName),
             students: section.students.map((student) => ({
               name: student.name,
