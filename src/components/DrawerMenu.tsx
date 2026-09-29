@@ -48,7 +48,8 @@ import {
 // folder layout differs.
 import Toast from '../Final_Admin_Components/Toast';
 
-// Grade file upload — allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.
+// Grade file upload — allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX, plus
+// JPG / PNG / WEBP photos (e.g. a photographed RO Form 4B grade slip).
 const ALLOWED_GRADE_FILE_MIME_TYPES = [
   'application/pdf',
   'application/msword',
@@ -57,6 +58,9 @@ const ALLOWED_GRADE_FILE_MIME_TYPES = [
   'text/csv',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
 ];
 const ALLOWED_GRADE_FILE_EXTENSIONS = [
   '.pdf',
@@ -66,6 +70,10 @@ const ALLOWED_GRADE_FILE_EXTENSIONS = [
   '.csv',
   '.xls',
   '.xlsx',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
 ];
 
 // Some platforms (esp. web) don't report a mimeType for every file — e.g. a
@@ -460,6 +468,13 @@ const DrawerMenu = ({
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
 
   const [isUploadingGrade, setIsUploadingGrade] = useState(false);
+
+  // Section + year level the student confirms before choosing their grade file.
+  // Year level = the level during the LATEST school year on the file; the
+  // server counts earlier school years back from it.
+  const [isGradeInfoModalVisible, setGradeInfoModalVisible] = useState(false);
+  const [selectedSection, setSelectedSection] = useState<'A' | 'B' | 'C' | null>(null);
+  const [selectedYearLevel, setSelectedYearLevel] = useState<1 | 2 | 3 | 4 | null>(null);
 
   // ✅ Toast state — same shape/usage as Admin Settings, replacing Alert.alert
   // for the Change Email / Change Password flows below.
@@ -879,6 +894,26 @@ const DrawerMenu = ({
         }
       } catch {}
 
+      // Ask for section + year level first; the file picker opens after they confirm.
+      setGradeInfoModalVisible(true);
+    } catch (error: any) {
+      console.error('Upload grade error:', error);
+      showToast(error?.message || 'Unable to start grade upload.', 'error');
+    }
+  };
+
+  const handleConfirmGradeInfo = () => {
+    if (!selectedSection || !selectedYearLevel) {
+      showToast('Please select your year level and section.', 'error');
+      return;
+    }
+    setGradeInfoModalVisible(false);
+    // iOS can't present the picker while a Modal is still dismissing.
+    setTimeout(() => { startGradeUpload(selectedSection, selectedYearLevel); }, Platform.OS === 'ios' ? 400 : 0);
+  };
+
+  const startGradeUpload = async (section: 'A' | 'B' | 'C', yearLevel: number) => {
+    try {
       onFilePickerOpen?.(); 
       
       const result = await DocumentPicker.getDocumentAsync({
@@ -949,6 +984,8 @@ const DrawerMenu = ({
           fileName: asset.name,
           fileType: asset.mimeType || 'application/octet-stream',
           studentId: userId,
+          section,
+          yearLevel,
         },
         (percent) => {
           onUploadProgress?.(percent);
@@ -1535,6 +1572,65 @@ const DrawerMenu = ({
         </View>
       </Modal>
 
+      {/* ─── GRADE UPLOAD: pick year level + section before choosing the file ─── */}
+      <Modal animationType="fade" transparent visible={isGradeInfoModalVisible} onRequestClose={() => setGradeInfoModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.logoutModalContainer}>
+            <Text style={styles.logoutModalTitle}>Before you upload</Text>
+            <Text style={styles.logoutModalSubtitle}>
+              Tell us your year level and section so your grades are filed correctly.
+            </Text>
+
+            <Text style={styles.gradeInfoLabel}>Year level</Text>
+            <Text style={styles.gradeInfoHint}>Your year level in the latest school year that already has grades on your file.</Text>
+            <View style={styles.gradeChipRow}>
+              {([1, 2, 3, 4] as const).map((level) => {
+                const active = selectedYearLevel === level;
+                return (
+                  <Pressable
+                    key={level}
+                    style={[styles.gradeChip, active && styles.gradeChipActive]}
+                    onPress={() => setSelectedYearLevel(level)}
+                  >
+                    <Text style={[styles.gradeChipText, active && styles.gradeChipTextActive]}>
+                      {level}{['st', 'nd', 'rd', 'th'][level - 1]} Year
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={styles.gradeInfoLabel}>Section</Text>
+            <View style={styles.gradeChipRow}>
+              {(['A', 'B', 'C'] as const).map((letter) => {
+                const active = selectedSection === letter;
+                return (
+                  <Pressable
+                    key={letter}
+                    style={[styles.gradeChip, active && styles.gradeChipActive]}
+                    onPress={() => setSelectedSection(letter)}
+                  >
+                    <Text style={[styles.gradeChipText, active && styles.gradeChipTextActive]}>Section {letter}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.logoutButtonsRow}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setGradeInfoModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.logoutConfirmBtn, (!selectedSection || !selectedYearLevel) && { opacity: 0.5 }]}
+                onPress={handleConfirmGradeInfo}
+              >
+                <Text style={styles.logoutConfirmText}>Choose File</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal animationType="fade" transparent visible={isLogoutModalVisible} onRequestClose={() => setLogoutModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.logoutModalContainer}>
@@ -1601,6 +1697,13 @@ const styles = StyleSheet.create({
   modalCancelText: { color: '#444', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#8B0000' },
   logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
+  gradeInfoLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111', marginTop: 18 },
+  gradeInfoHint: { fontSize: 12, color: '#777', fontFamily: FONT_BODY, marginTop: 2 },
+  gradeChipRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
+  gradeChip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#EBD4D4', backgroundColor: '#FFF', marginRight: 8, marginBottom: 8 },
+  gradeChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
+  gradeChipText: { fontSize: 13, fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#7A4A4A' },
+  gradeChipTextActive: { color: '#FFF' },
 
   // ─── Settings (mirrors Admin Settings.tsx's card modal styling) ───────
   modalCard: {

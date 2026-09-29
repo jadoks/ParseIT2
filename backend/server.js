@@ -6014,10 +6014,27 @@ app.post("/create-admin", async (req, res) => {
   app.post("/upload-student-grade", requireAuth, async (req, res) => {
     try {
       // 1. Accept studentId from frontend for verification
-      const { fileBase64, fileName, fileType, studentId: frontendStudentId } = req.body;
+      const { fileBase64, fileName, fileType, studentId: frontendStudentId, section: requestedSection, yearLevel: requestedYearLevel } = req.body;
       
       if (!fileBase64 || !fileName) {
         return res.status(400).json({ error: "fileBase64 and fileName are required." });
+      }
+
+      // Section (A/B/C) and year level (1-4) chosen by the student on the upload
+      // screen. Optional for older clients, but if sent they must be valid.
+      let sectionLetterFromClient = null;
+      if (requestedSection !== undefined && requestedSection !== null && String(requestedSection).trim() !== "") {
+        sectionLetterFromClient = String(requestedSection).trim().toUpperCase().replace(/^SECTION\s*/, "");
+        if (!["A", "B", "C"].includes(sectionLetterFromClient)) {
+          return res.status(400).json({ error: "section must be A, B or C." });
+        }
+      }
+      let yearLevelFromClient = null;
+      if (requestedYearLevel !== undefined && requestedYearLevel !== null && String(requestedYearLevel).trim() !== "") {
+        yearLevelFromClient = parseInt(String(requestedYearLevel).match(/\d/)?.[0] || "", 10);
+        if (!Number.isInteger(yearLevelFromClient) || yearLevelFromClient < 1 || yearLevelFromClient > 4) {
+          return res.status(400).json({ error: "yearLevel must be 1 to 4." });
+        }
       }
       
       const profile = await findUserProfileByAuthUid(req.user.uid);
@@ -6196,9 +6213,18 @@ app.post("/create-admin", async (req, res) => {
           const promptText = `
       You are an academic transcript parser.
       IMPORTANT:
-      The transcript is a TABLE.
-      Columns are:
+      The document is a TABLE and comes in one of two layouts:
+      LAYOUT 1 - TRANSCRIPT with several semesters. Columns are:
       CODE | SUBJECT | DESCRIPTION | UNIT | TIME | DAY | ROOM | MIDTERM GRADE | FINAL TERM | FINAL GRADE | COMPLETION
+      LAYOUT 2 - single-semester GRADE SLIP REPORT (it may be a photo or scan). Columns are:
+      MIS Code | Subject Code | Descriptive Title | Final Grade | Re-Exam | UNIT
+      In LAYOUT 2 the semester and school year are printed ONCE near the top (for example
+      "2nd Semester AY 2025-2026"); give EVERY row that semester and school year.
+      For LAYOUT 2: subjectCode = MIS Code column (e.g. CS32), NOT the Subject Code column;
+      subjectTitle = Descriptive Title column, copied as printed (it may be cut off); grade = Final Grade
+      column; units = UNIT column; ignore Re-Exam (".NULL." means none). "AY" means the same as "SY".
+      Always return schoolYear as "YYYY-YYYY" and semester as "1st Semester" or "2nd Semester".
+      The rules below are written for LAYOUT 1; apply the equivalent columns for LAYOUT 2.
       RULES:
       1. Extract ALL subjects.
       2. Each subject belongs to the nearest semester heading:
@@ -6303,6 +6329,9 @@ app.post("/create-admin", async (req, res) => {
               // ... [Existing Grouping and Saving Logic remains exactly the same] ...
               const groupedGrades = {};
               for (const item of parsedGrades) {
+                  // A blank FINAL GRADE comes back as null; Number(null) is 0, which
+                  // would be saved as a real grade of 0 - skip ungraded subjects.
+                  if (item.grade === null || item.grade === undefined || String(item.grade).trim() === "") continue;
                   const grade = Number(item.grade);
                   if (isNaN(grade)) continue; 
                   const normalizedSY = String(item.schoolYear || "Unknown").trim();
@@ -6329,57 +6358,105 @@ app.post("/create-admin", async (req, res) => {
               }
 
               const uniqueSchoolYears = [...new Set(Object.values(groupedGrades).map(g => g.schoolYear))];
-              const extractStartYear = (sy) => {
-                  const match = sy.match(/(\d{4})/);
-                  return match ? parseInt(match[1]) : 0;
+              const startYearOf = (sy) => {
+                  const match = String(sy || "").match(/(\d{4})/);
+                  return match ? parseInt(match[1], 10) : 0;
               };
-              uniqueSchoolYears.sort((a, b) => extractStartYear(a) - extractStartYear(b));
-              const schoolYearToYearLevel = {};
-              uniqueSchoolYears.forEach((sy, index) => {
-                  const yearNumber = index + 1;
-                  const suffixes = ["st", "nd", "rd", "th"];
-                  const suffix = yearNumber <= 3 ? suffixes[yearNumber - 1] : "th";
-                  schoolYearToYearLevel[sy] = `${yearNumber}${suffix} Year`;
-              });
-
-              const determineSectionLetter = (subjectCode) => {
-                  const match = String(subjectCode || "").match(/\d+/);
-                  if (!match) return "A";
-                  const codeNumber = parseInt(match[0]);
-                  if (codeNumber >= 1 && codeNumber <= 10) return "A";
-                  if (codeNumber >= 11 && codeNumber <= 20) return "B";
-                  return "C";
-              };
-
-              const firstSY = uniqueSchoolYears[0];
-              const firstSYKeys = Object.keys(groupedGrades).filter(key => groupedGrades[key].schoolYear === firstSY);
-              const firstSemesterKey = firstSYKeys.find(key => {
-                  const sem = groupedGrades[key].semester.toLowerCase();
-                  return sem.includes("1st") || sem.includes("first");
-              }) || firstSYKeys[0];
-
-              let lockedSectionLetter = "A";
-              if (firstSemesterKey && groupedGrades[firstSemesterKey]) {
-                  const firstSemesterGroup = groupedGrades[firstSemesterKey];
-                  const sectionCounts = { A: 0, B: 0, C: 0 };
-                  firstSemesterGroup.subjects.forEach(subject => {
-                      const sectionLetter = determineSectionLetter(subject.subjectCode);
-                      sectionCounts[sectionLetter]++;
-                  });
-                  let maxCount = 0;
-                  for (const letter in sectionCounts) {
-                      if (sectionCounts[letter] > maxCount) {
-                          maxCount = sectionCounts[letter];
-                          lockedSectionLetter = letter;
-                      }
-                  }
-              }
+              uniqueSchoolYears.sort((a, b) => startYearOf(a) - startYearOf(b));
+              const ordinalYear = (n) => `${n}${["st", "nd", "rd"][n - 1] || "th"} Year`;
 
               const sectionNameMap = {
                   "1st Year": { "A": "Microsoft", "B": "Google", "C": "Amazon" },
                   "2nd Year": { "A": "Algorithm", "B": "Pseudocode", "C": "Binary" },
                   "3rd Year": { "A": "Python", "B": "Java", "C": "C++" },
                   "4th Year": { "A": "Xamarin", "B": "Laravel", "C": "Flutter" }
+              };
+
+              // Each BSIT section is enrolled under its own block of CODE-column
+              // values (CS#), but only the FIRST semester of the first year is a
+              // stable signal (later terms reuse numbers across sections):
+              //   Section A: CS1  - CS9   (e.g. Francisco, John Nicoleden)
+              //   Section B: CS10 - CS18  (e.g. Pantinople, James)
+              //   Section C: CS19 and up  (e.g. Arcete, Jan Bedlar: CS19-CS27, CS72)
+              const SECTION_CODE_RANGES = [
+                  { letter: "A", min: 1, max: 9 },
+                  { letter: "B", min: 10, max: 18 },
+                  { letter: "C", min: 19, max: Infinity },
+              ];
+              const determineSectionLetter = (subjectCode) => {
+                  const match = String(subjectCode || "").match(/\d+/);
+                  if (!match) return null; // e.g. "N/A" - don't let it vote
+                  const codeNumber = parseInt(match[0], 10);
+                  const range = SECTION_CODE_RANGES.find(
+                      (r) => codeNumber >= r.min && codeNumber <= r.max
+                  );
+                  return range ? range.letter : null;
+              };
+
+              // ---- Resolve the student's section letter and year level ----
+              // Priority: 1) what the student picked on the upload screen,
+              //           2) what we saved from their earlier upload,
+              //           3) code-based guess, ONLY if the file starts at a 1st
+              //              semester (a full transcript from year 1),
+              //           4) leave empty ("No Section" / "No Year Level").
+              // The picked year level is the level during the LATEST school year
+              // in the file; earlier school years count back from it.
+              const latestSY = uniqueSchoolYears[uniqueSchoolYears.length - 1];
+              let sectionLetter = sectionLetterFromClient;
+              let yearAnchor = yearLevelFromClient
+                  ? { startYear: startYearOf(latestSY), level: yearLevelFromClient }
+                  : null;
+
+              if (!sectionLetter || !yearAnchor) {
+                  const previousSnap = await db
+                      .collection("studentParsedGrades")
+                      .where("studentId", "==", currentStudentId)
+                      .get();
+                  for (const prevDoc of previousSnap.docs) {
+                      const prev = prevDoc.data() || {};
+                      if (!sectionLetter) {
+                          const byName = ["A", "B", "C"].find(
+                              (l) => sectionNameMap[prev.yearLevel]?.[l] === prev.section
+                          );
+                          sectionLetter = prev.sectionLetter || byName || null;
+                      }
+                      if (!yearAnchor) {
+                          const level = parseInt(String(prev.yearLevel || "").match(/\d/)?.[0] || "", 10);
+                          const sy = startYearOf(prev.schoolYear);
+                          if (level && sy) yearAnchor = { startYear: sy, level };
+                      }
+                  }
+              }
+
+              const firstSY = uniqueSchoolYears[0];
+              const firstSYKeys = Object.keys(groupedGrades).filter(key => groupedGrades[key].schoolYear === firstSY);
+              const firstSemesterKey = firstSYKeys.find(key => {
+                  const sem = groupedGrades[key].semester.toLowerCase();
+                  return sem.includes("1st") || sem.includes("first");
+              });
+
+              if (!sectionLetter && firstSemesterKey) {
+                  const sectionCounts = { A: 0, B: 0, C: 0 };
+                  groupedGrades[firstSemesterKey].subjects.forEach(subject => {
+                      const letter = determineSectionLetter(subject.subjectCode);
+                      if (letter) sectionCounts[letter]++;
+                  });
+                  let maxCount = 0;
+                  for (const letter in sectionCounts) {
+                      if (sectionCounts[letter] > maxCount) {
+                          maxCount = sectionCounts[letter];
+                          sectionLetter = letter;
+                      }
+                  }
+              }
+              if (!yearAnchor && firstSemesterKey) {
+                  yearAnchor = { startYear: startYearOf(firstSY), level: 1 };
+              }
+
+              const yearLevelForSchoolYear = (sy) => {
+                  if (!yearAnchor) return "";
+                  const n = yearAnchor.level + (startYearOf(sy) - yearAnchor.startYear);
+                  return n >= 1 && n <= 4 ? ordinalYear(n) : "";
               };
 
               const studentProfile = profile?.data || {};
@@ -6389,8 +6466,10 @@ app.post("/create-admin", async (req, res) => {
               for (const key in groupedGrades) {
                   const group = groupedGrades[key];
                   const gwa = group.totalUnits > 0 ? Number((group.weightedGradeTotal / group.totalUnits).toFixed(3)) : null;
-                  const yearLevel = schoolYearToYearLevel[group.schoolYear] || "";
-                  const sectionName = sectionNameMap[yearLevel]?.[lockedSectionLetter] || `Section ${lockedSectionLetter}`;
+                  const yearLevel = yearLevelForSchoolYear(group.schoolYear);
+                  const sectionName = sectionLetter
+                      ? (sectionNameMap[yearLevel]?.[sectionLetter] || `Section ${sectionLetter}`)
+                      : null;
                   const safeSY = group.schoolYear.replace(/[^a-zA-Z0-9]/g, "_");
                   const safeSem = group.semester.replace(/[^a-zA-Z0-9]/g, "_");
                   const docId = `${currentStudentId}_${safeSY}_${safeSem}`;
@@ -6402,6 +6481,7 @@ app.post("/create-admin", async (req, res) => {
                       gwa,
                       totalUnits: group.totalUnits,
                       section: sectionName,
+                      sectionLetter: sectionLetter || null,
                       yearLevel: yearLevel,
                       studentName: studentName,
                       subjects: group.subjects,
@@ -6413,7 +6493,7 @@ app.post("/create-admin", async (req, res) => {
               return res.json({
                   success: true,
                   message: "Grade file uploaded and automatically parsed successfully.",
-                  data: { fileUrl, fileName, parsedGroups: Object.keys(groupedGrades).length, lockedSection: lockedSectionLetter }
+                  data: { fileUrl, fileName, parsedGroups: Object.keys(groupedGrades).length, section: sectionLetter || null }
               });
 
           } catch (e) {
