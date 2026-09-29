@@ -583,6 +583,11 @@ const DrawerMenu = ({
   const [openGradeDropdown, setOpenGradeDropdown] = useState<'year' | 'section' | null>(null);
   // e.g. "2nd Semester S.Y. 2025-2026" - the semester the grade file is for (from the server).
   const [lastTermLabel, setLastTermLabel] = useState('');
+  // The CURRENT semester (from the server) - only used to warn the student not to pick it.
+  const [currentTermLabel, setCurrentTermLabel] = useState('');
+  // Second step: "double check your year level & section" before the file picker opens.
+  const [isGradeConfirmVisible, setGradeConfirmVisible] = useState(false);
+  const [gradeConfirmChecked, setGradeConfirmChecked] = useState(false);
 
   // ✅ Toast state — same shape/usage as Admin Settings, replacing Alert.alert
   // for the Change Email / Change Password flows below.
@@ -1003,6 +1008,9 @@ const DrawerMenu = ({
         if (statusResponse.ok && statusData?.lastSemester && statusData?.lastSchoolYear) {
           setLastTermLabel(`${statusData.lastSemester} S.Y. ${statusData.lastSchoolYear}`);
         }
+        if (statusResponse.ok && statusData?.semester && statusData?.schoolYear) {
+          setCurrentTermLabel(`${statusData.semester} S.Y. ${statusData.schoolYear}`);
+        }
       } catch {}
 
       // Ask for section + year level first; the file picker opens after they confirm.
@@ -1023,7 +1031,27 @@ const DrawerMenu = ({
       showToast('Please select your year level and section.', 'error');
       return;
     }
+    // Don't open the file picker yet - ask the student to double check first.
     closeGradeInfoModal();
+    setGradeConfirmChecked(false);
+    // iOS can't present a Modal while another one is still dismissing.
+    setTimeout(() => setGradeConfirmVisible(true), Platform.OS === 'ios' ? 400 : 0);
+  };
+
+  // "Go back" from the double-check step: reopen the form with the same selections.
+  const handleBackFromGradeConfirm = () => {
+    setGradeConfirmVisible(false);
+    setGradeConfirmChecked(false);
+    setTimeout(() => setGradeInfoModalVisible(true), Platform.OS === 'ios' ? 400 : 0);
+  };
+
+  const handleProceedGradeUpload = () => {
+    if (!selectedSection || !selectedYearLevel) return;
+    if (!gradeConfirmChecked) {
+      showToast('Please tick the box to confirm your year level and section.', 'error');
+      return;
+    }
+    setGradeConfirmVisible(false);
     // iOS can't present the picker while a Modal is still dismissing.
     setTimeout(() => { startGradeUpload(selectedSection, selectedYearLevel); }, Platform.OS === 'ios' ? 400 : 0);
   };
@@ -1751,6 +1779,75 @@ const DrawerMenu = ({
                 style={[styles.logoutConfirmBtn, (!selectedSection || !selectedYearLevel) && { opacity: 0.5 }]}
                 onPress={handleConfirmGradeInfo}
               >
+                <Text style={styles.logoutConfirmText}>Continue</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── GRADE UPLOAD: double-check year level + section (last semester) ─── */}
+      <Modal animationType="fade" transparent visible={isGradeConfirmVisible} onRequestClose={handleBackFromGradeConfirm}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.logoutModalContainer}>
+            <View style={styles.gradeConfirmIconWrap}>
+              <Ionicons name="alert-circle-outline" size={30} color="#B45309" />
+            </View>
+            <Text style={styles.logoutModalTitle}>Double-check your details</Text>
+            <Text style={styles.logoutModalSubtitle}>
+              Your grades will be filed under these. Make sure they are from your LAST semester, not your current one.
+            </Text>
+
+            <View style={styles.gradeConfirmSummary}>
+              <View style={styles.gradeConfirmRow}>
+                <Text style={styles.gradeConfirmRowLabel}>Year level</Text>
+                <Text style={styles.gradeConfirmRowValue}>
+                  {selectedYearLevel ? GRADE_YEAR_OPTIONS[selectedYearLevel - 1] : '-'}
+                </Text>
+              </View>
+              <View style={styles.gradeConfirmDivider} />
+              <View style={styles.gradeConfirmRow}>
+                <Text style={styles.gradeConfirmRowLabel}>Section</Text>
+                <Text style={styles.gradeConfirmRowValue}>{selectedSection ? `Section ${selectedSection}` : '-'}</Text>
+              </View>
+              <View style={styles.gradeConfirmDivider} />
+              <View style={styles.gradeConfirmRow}>
+                <Text style={styles.gradeConfirmRowLabel}>Semester</Text>
+                <Text style={styles.gradeConfirmRowValue}>{lastTermLabel || 'Last semester'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.gradeConfirmNote}>
+              <Text style={styles.gradeConfirmNoteText}>
+                {`These must be your year level and section during ${lastTermLabel || 'your last semester'}`}
+                {currentTermLabel ? `, NOT ${currentTermLabel} (your current semester).` : ', not your current semester.'}
+              </Text>
+            </View>
+
+            <Pressable
+              style={styles.gradeConfirmCheckRow}
+              onPress={() => setGradeConfirmChecked((prev) => !prev)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: gradeConfirmChecked }}
+            >
+              <Ionicons
+                name={gradeConfirmChecked ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={gradeConfirmChecked ? '#8B0000' : '#777'}
+              />
+              <Text style={styles.gradeConfirmCheckText}>
+                I confirm my year level and section are correct for my last semester.
+              </Text>
+            </Pressable>
+
+            <View style={styles.logoutButtonsRow}>
+              <Pressable style={styles.modalCancelBtn} onPress={handleBackFromGradeConfirm}>
+                <Text style={styles.modalCancelText}>Go Back</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.logoutConfirmBtn, !gradeConfirmChecked && { opacity: 0.5 }]}
+                onPress={handleProceedGradeUpload}
+              >
                 <Text style={styles.logoutConfirmText}>Choose File</Text>
               </Pressable>
             </View>
@@ -1826,6 +1923,16 @@ const styles = StyleSheet.create({
   logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   gradeInfoLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111', marginTop: 18 },
   gradeInfoHint: { fontSize: 12, color: '#777', fontFamily: FONT_BODY, marginTop: 2 },
+  gradeConfirmIconWrap: { alignSelf: 'center', width: 52, height: 52, borderRadius: 26, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  gradeConfirmSummary: { marginTop: 16, borderWidth: 1, borderColor: '#EBD4D4', borderRadius: 14, backgroundColor: '#FFF8F8', paddingHorizontal: 14 },
+  gradeConfirmRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11 },
+  gradeConfirmRowLabel: { fontSize: 13, color: '#777', fontFamily: FONT_BODY },
+  gradeConfirmRowValue: { fontSize: 14, color: '#2B1111', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, flexShrink: 1, textAlign: 'right', marginLeft: 12 },
+  gradeConfirmDivider: { height: 1, backgroundColor: '#F0DEDE' },
+  gradeConfirmNote: { marginTop: 12, borderRadius: 12, backgroundColor: '#FEF3C7', padding: 12 },
+  gradeConfirmNoteText: { fontSize: 12, lineHeight: 17, color: '#92400E', fontFamily: FONT_BODY },
+  gradeConfirmCheckRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 14 },
+  gradeConfirmCheckText: { flex: 1, marginLeft: 10, fontSize: 13, lineHeight: 18, color: '#2B1111', fontFamily: FONT_BODY },
   gradeDropdownField: { marginTop: 8, position: 'relative' },
   gradeDropdownFieldOpen: { zIndex: 50, elevation: 50 },
 
