@@ -107,10 +107,46 @@ const deriveHighestGwaStudents = (sections: GeneratedSection[]): Student[] => {
   return all.filter((student) => Number(student.gpa).toFixed(3) === best);
 };
 
-// "3rd Year Java" — how a student's year level + section is shown in the
-// Highest GWA table (which mixes every year level).
-const formatYearSection = (student: Student) =>
-  [student.yearLevel, student.section].filter(Boolean).join(' - ');
+// ── DISPLAY ONLY ─────────────────────────────────────────────────────────
+// Real section names, same as SECTION_OPTIONS in TeacherDashboard.tsx. The data
+// itself (backend values, grouping, sorting, sheet names) is NOT changed; this is
+// only applied where a section is shown, so "3rd Year - Section Java" reads as
+// "3B Java" (the 3 already means 3rd year, so the year is not repeated).
+const SECTION_NAMES_BY_YEAR: Record<number, Record<string, string>> = {
+  1: { A: 'Microsoft', B: 'Google', C: 'Amazon' },
+  2: { A: 'Algorithm', B: 'Pseudocode', C: 'Binary' },
+  3: { A: 'Python', B: 'Java', C: 'C++' },
+  4: { A: 'Xamarin', B: 'Laravel', C: 'Flutter' },
+};
+
+const yearLevelToNumber = (yearLevel: string): number | null => {
+  const text = String(yearLevel || '').toLowerCase();
+  if (/\b(1st|first)\b/.test(text)) return 1;
+  if (/\b(2nd|second)\b/.test(text)) return 2;
+  if (/\b(3rd|third)\b/.test(text)) return 3;
+  if (/\b(4th|fourth)\b/.test(text)) return 4;
+  return null;
+};
+
+// ("3rd Year", "Java" | "Section B") -> "3B Java". If it can't be matched, falls
+// back to the old "3rd Year - Name" so nothing is lost.
+const displaySection = (yearLevel: string, sectionName: string): string => {
+  const raw = String(sectionName || '').trim();
+  const year = yearLevelToNumber(yearLevel);
+  const names = year ? SECTION_NAMES_BY_YEAR[year] : null;
+  if (raw && names) {
+    const letterMatch = raw.match(/^(?:section\s+)?([abc])$/i);
+    const letter = letterMatch
+      ? letterMatch[1].toUpperCase()
+      : Object.keys(names).find((l) => names[l].toLowerCase() === raw.toLowerCase());
+    if (letter) return `${year}${letter} ${names[letter]}`;
+  }
+  return [yearLevel, raw].filter(Boolean).join(' - ');
+};
+
+// How a student's year level + section is shown in the Highest GWA table
+// (which mixes every year level), e.g. "3B Java".
+const formatYearSection = (student: Student) => displaySection(student.yearLevel, student.section);
 
 type DropdownName = 'semester';
 
@@ -382,7 +418,7 @@ function HonorRollPreviewModal({
 
                       <View style={styles.previewMetaBox}>
                         <Text style={styles.previewMetaText}>
-                          Section: {section.sectionName}
+                          Section: {displaySection(section.yearLevel, section.sectionName)}
                         </Text>
                         <Text style={styles.previewMetaText}>Adviser: {adviser}</Text>
                         <Text style={styles.previewMetaText}>
@@ -910,7 +946,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             <div class="section-heading">
               <div>
                 <h2>DEANS LIST</h2>
-                <p>${escapeHtml(section.yearLevel)} - Section ${escapeHtml(section.sectionName)}</p>
+                <p>${escapeHtml(displaySection(section.yearLevel, section.sectionName))}</p>
                 <p>Academic Year: ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | Semester: ${escapeHtml(semester)}</p>
               </div>
               <div class="count-box">
@@ -920,7 +956,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             </div>
 
             <div class="meta-box">
-              <div><strong>Section:</strong> ${escapeHtml(section.sectionName)}</div>
+              <div><strong>Section:</strong> ${escapeHtml(displaySection(section.yearLevel, section.sectionName))}</div>
               <div><strong>Adviser:</strong> ${escapeHtml(adviser)}</div>
               <div><strong>Academic Year:</strong> ${escapeHtml(schoolYear || 'S.Y ---- - ----')}</div>
               <div><strong>Semester:</strong> ${escapeHtml(semester)}</div>
@@ -1163,7 +1199,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           semester,
           sections: generatedSections.map((section) => ({
             yearLevel: section.yearLevel,
-            sectionName: section.sectionName,
+            sectionName: displaySection(section.yearLevel, section.sectionName),
             students: section.students.map((student) => ({
               name: student.name,
               gpa: student.gpa,
@@ -1173,8 +1209,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           highestGwa: highestGwaStudents.map((student) => ({
             name: student.name,
             gpa: student.gpa,
-            yearLevel: student.yearLevel,
-            sectionName: student.section,
+            // Server joins year + section for the form; the real name already has the year.
+            yearLevel: '',
+            sectionName: displaySection(student.yearLevel, student.section),
           })),
         }),
       });
@@ -1413,7 +1450,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       doc.text('DEANS LIST', margin + 14, y + 21);
 
       doc.setFontSize(9);
-      doc.text(`${section.yearLevel} - Section ${section.sectionName}`, margin + 14, y + 37);
+      doc.text(displaySection(section.yearLevel, section.sectionName), margin + 14, y + 37);
       doc.text(`Academic Year: ${schoolYear || 'S.Y ---- - ----'} | Semester: ${semester}`, margin + 14, y + 50);
 
       doc.setDrawColor(255, 255, 255);
@@ -1436,7 +1473,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       doc.text('Semester:', margin + tableWidth / 2, y + 28);
 
       doc.setFont('helvetica', 'normal');
-      doc.text(String(section.sectionName), margin + 62, y + 10);
+      doc.text(displaySection(section.yearLevel, section.sectionName), margin + 62, y + 10);
       doc.text(adviser, margin + tableWidth / 2 + 54, y + 10);
       doc.text(schoolYear || 'S.Y ---- - ----', margin + 90, y + 28);
       doc.text(semester, margin + tableWidth / 2 + 62, y + 28);
@@ -1471,7 +1508,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           addHeader();
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(11);
-          doc.text(`${section.yearLevel} - Section ${section.sectionName} (continued)`, margin, y);
+          doc.text(`${displaySection(section.yearLevel, section.sectionName)} (continued)`, margin, y);
           y += 16;
           drawTableHeader();
         }
@@ -1590,7 +1627,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         [],
         ['Section', 'Deans List Students'],
         ...generatedSections.map((section) => [
-          `${section.yearLevel} - ${section.sectionName}`,
+          displaySection(section.yearLevel, section.sectionName),
           section.students.length,
         ]),
       ];
@@ -1607,7 +1644,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           'Student Name': student.name,
           GWA: student.gpa,
           'Year Level': student.yearLevel,
-          Section: student.section,
+          Section: displaySection(student.yearLevel, student.section),
           'Academic Year': schoolYear || 'S.Y ---- - ----',
           Semester: semester,
         }));
@@ -1632,7 +1669,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           'Student ID': student.id,
           'Student Name': student.name,
           GWA: student.gpa,
-          Section: section.sectionName,
+          Section: displaySection(section.yearLevel, section.sectionName),
           'Year Level': section.yearLevel,
           'Academic Year': schoolYear || 'S.Y ---- - ----',
           Semester: semester,
@@ -1657,7 +1694,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
 
         // ── Section title & context (row 0 & 1) ──────────────────────────
-        detailRows.push([`${section.yearLevel} - ${section.sectionName}`]);
+        detailRows.push([displaySection(section.yearLevel, section.sectionName)]);
         merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
 
         detailRows.push([
@@ -2072,7 +2109,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                         DEANS LIST
                       </Text>
                       <Text style={[styles.honorAcademicSubtitle, isMobile && styles.honorAcademicSubtitleMobile]}>
-                        {section.yearLevel} — Section {section.sectionName}
+                        {displaySection(section.yearLevel, section.sectionName)}
                       </Text>
                       <Text style={[styles.honorAcademicMeta, isMobile && styles.honorAcademicMetaMobile]}>
                         Academic Year: {schoolYear || 'S.Y ---- - ----'} | Semester: {semester}

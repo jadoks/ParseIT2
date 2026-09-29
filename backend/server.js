@@ -6452,6 +6452,109 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // Gemini helpers for the grade-upload flow.
+  //
+  // Identity verification and grade parsing used to call ONLY the primary
+  // model, in plain-text mode. Every failure other than a 503 (quota, a model
+  // hiccup, a blocked/empty reply, unparsable JSON) collapsed into a generic
+  // HTTP 500, which the app then reported as "Try a smaller file" - even for
+  // tiny files. These helpers:
+  //   * use JSON mode, like the rest of the server does,
+  //   * retry transient errors with exponential backoff,
+  //   * fall back to GEMINI_GAME_FALLBACK_MODEL when the primary model fails,
+  //   * tag the final error with `aiKind` so the route can answer truthfully.
+  // ---------------------------------------------------------------------------
+  const GRADE_AI_MODELS = [...new Set([GEMINI_GAME_MODEL, GEMINI_GAME_FALLBACK_MODEL].filter(Boolean))];
+  const GRADE_AI_MAX_ATTEMPTS = 3;
+
+  function classifyGeminiError(err) {
+    const msg = String(err?.message || "");
+    const status = Number(err?.status) || 0;
+    if (err?.aiFormat) return "format";
+    if (status === 402 || /payment required|credits? (are )?depleted|billing/i.test(msg)) return "billing";
+    if (status === 429 || /quota|rate.?limit|resource.?exhausted|too many requests/i.test(msg)) return "quota";
+    if (
+      status >= 500 ||
+      /service unavailable|overloaded|high demand|timed? ?out|deadline|fetch failed|econnreset|etimedout|empty response/i.test(msg)
+    ) return "busy";
+    if (status === 404 || /not found|not supported/i.test(msg)) return "model";
+    if (status === 401 || status === 403 || /api key|permission denied|unauthenticated/i.test(msg)) return "auth";
+    if (/blocked|safety|prohibited|recitation/i.test(msg)) return "blocked";
+    return "other";
+  }
+
+  // Sends `parts` to Gemini (primary model, then fallback model) and returns
+  // { text, value, modelName }. `parse` (optional) turns the raw text into a
+  // value; if it throws, that counts as a retryable "format" failure.
+  // Throws an Error carrying `aiKind` when every model/attempt has failed.
+  async function generateGradeAIText(parts, { label = "Grade AI", parse } = {}) {
+    let lastKind = "other";
+    let lastMessage = "Gemini request failed.";
+
+    for (const modelName of GRADE_AI_MODELS) {
+      for (let attempt = 1; attempt <= GRADE_AI_MAX_ATTEMPTS; attempt++) {
+        try {
+          console.log(`[${label}] model=${modelName} attempt ${attempt}/${GRADE_AI_MAX_ATTEMPTS}...`);
+          const model = geminiGameAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+          });
+          const result = await model.generateContent(parts);
+          const text = result.response.text();
+          if (!text || !text.trim()) throw new Error("Empty response from AI");
+
+          let value;
+          if (parse) {
+            try {
+              value = parse(text);
+            } catch (parseErr) {
+              const formatErr = new Error(`AI response format error: ${parseErr.message}`);
+              formatErr.aiFormat = true;
+              throw formatErr;
+            }
+          }
+          if (modelName !== GRADE_AI_MODELS[0]) {
+            console.warn(`[${label}] succeeded on fallback model ${modelName}.`);
+          }
+          return { text, value, modelName };
+        } catch (err) {
+          lastKind = classifyGeminiError(err);
+          lastMessage = err?.message || lastMessage;
+          console.warn(`[${label}] model=${modelName} attempt ${attempt} failed (${lastKind}):`, lastMessage);
+
+          // Only transient problems are worth retrying on the SAME model.
+          // Quota / model / auth / blocked errors move straight to the fallback.
+          const retryable = lastKind === "busy" || lastKind === "format";
+          if (!retryable || attempt === GRADE_AI_MAX_ATTEMPTS) break;
+          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+      // Billing is per API key / project, so the fallback model would fail too.
+      if (lastKind === "billing") {
+        console.error("[" + label + "] GEMINI BILLING PROBLEM: top up credits at https://ai.studio/projects");
+        break;
+      }
+    }
+
+    const finalErr = new Error(lastMessage);
+    finalErr.aiKind = lastKind;
+    throw finalErr;
+  }
+
+  // Pulls the first {...} object out of an AI reply (tolerates ```json fences
+  // or a short preamble) and parses it.
+  function parseAiJsonObject(text) {
+    const cleaned = String(text || "").replace(/```json/gi, "").replace(/```/g, "").trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("No JSON object found in AI response.");
+    const parsed = JSON.parse(match[0]);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("AI response was not a JSON object.");
+    }
+    return parsed;
+  }
+
   app.post("/upload-student-grade", requireAuth, async (req, res) => {
     // Undoes a rejected upload (stored file + overwritten studentGrades record).
     let rollbackRejectedUpload = null;
@@ -6578,88 +6681,41 @@ app.post("/create-admin", async (req, res) => {
   Return ONLY valid JSON. No markdown.
   `;
 
-  let aiVerificationText = "";
   let isIdentityVerified = false;
-  let lastError = null;
-  const MAX_RETRIES = 3;
+  let verificationResult = null;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      console.log(`[Identity Check] Attempt ${attempt}/${MAX_RETRIES}...`);
-      
-      if (cleanedBase64.length > 4 * 1024 * 1024) {
-        console.warn("[Identity Check] File is very large (>4MB). Verification may fail due to token limits.");
-      }
-
-      const model = geminiGameAI.getGenerativeModel({
-        model: GEMINI_GAME_MODEL,
-        generationConfig: { temperature: 0.1 }
-      });
-
-      const result = await model.generateContent([
+  try {
+    ({ value: verificationResult } = await generateGradeAIText(
+      [
         { text: verificationPrompt },
         { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
-      ]);
+      ],
+      { label: "Identity Check", parse: parseAiJsonObject }
+    ));
+  } catch (aiErr) {
+    console.error(`[Identity Check] Final failure (${aiErr.aiKind || "unknown"}):`, aiErr.message);
+    await rollbackRejectedUpload();
 
-      aiVerificationText = result.response.text();
-      
-      let verificationResult;
-      try {
-        const cleanJson = aiVerificationText.replace(/```json/g, "").replace(/```/g, "").trim();
-        verificationResult = JSON.parse(cleanJson);
-      } catch (parseErr) {
-        console.error("[Identity Check] AI returned invalid JSON:", aiVerificationText.substring(0, 200));
-        throw new Error("AI response format error");
-      }
-
-      if (verificationResult.verified === true) {
-        isIdentityVerified = true;
-        console.log("[Identity Check] ✅ Verified:", verificationResult.foundId);
-        break; 
-      } else {
-        console.warn("[Identity Check] ❌ Mismatch:", verificationResult.reason);
-        await rollbackRejectedUpload();
-        return res.status(403).json({
-          error: `Security Check Failed: ID does not match the uploaded file.`
-        });
-      }
-
-    } catch (aiErr) {
-      lastError = aiErr;
-      console.error(`[Identity Check] Attempt ${attempt} failed:`, aiErr.message);
-      
-      const isTransient =
-        aiErr.status === 503 ||
-        aiErr.message.includes("Service Unavailable") ||
-        aiErr.message.includes("timed out") ||
-        aiErr.message.includes("rate limit") ||
-        aiErr.message.includes("AI response format error");
-
-      if (!isTransient || attempt === MAX_RETRIES) {
-        break;
-      }
-
-      const delay = Math.pow(2, attempt) * 1000;
-      console.log(`[Identity Check] Retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  // SINGLE ERROR HANDLING BLOCK
-  if (!isIdentityVerified) {
-    console.error("[Identity Check] Final Failure:", lastError?.message || "Unknown error");
-    
-    if (lastError?.status === 503 || lastError?.message.includes("Service Unavailable")) {
-      await rollbackRejectedUpload();
+    // Busy / over-quota is a temporary AI-side problem: report it as 503 so
+    // the app tells the student to retry later instead of blaming the file.
+    if (aiErr.aiKind === "busy" || aiErr.aiKind === "quota" || aiErr.aiKind === "billing") {
       return res.status(503).json({
         error: "Identity verification service is busy. Try again later."
       });
     }
-    
-    // Generic fallback for quota/key issues or other crashes
-    await rollbackRejectedUpload();
     return res.status(500).json({
       error: "Unable to verify document identity."
+    });
+  }
+
+  if (verificationResult?.verified === true) {
+    isIdentityVerified = true;
+    console.log("[Identity Check] ✅ Verified:", verificationResult.foundId);
+  } else {
+    console.warn("[Identity Check] ❌ Mismatch:", verificationResult?.reason);
+    await rollbackRejectedUpload();
+    return res.status(403).json({
+      error: `Security Check Failed: ID does not match the uploaded file.`
     });
   }
 
@@ -6743,58 +6799,23 @@ app.post("/create-admin", async (req, res) => {
       `;
 
           let aiText = "";
-          {
-              // Same retry strategy as the lesson-generation AI calls
-              // (generateTopicContent): up to 4 attempts, exponential
-              // backoff on transient "server busy" errors, fail fast on
-              // quota/rate-limit errors since retrying won't help those.
-              let result = null;
-              const maxRetries = 4;
-              for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                  try {
-                      console.log(`[Grade Table Parse] Attempt ${attempt}/${maxRetries}: sending PDF directly to Gemini for table parsing...`);
-                      const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
-                      result = await model.generateContent([
-                          { text: promptText },
-                          { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
-                      ]);
-                      if (result && result.response && result.response.text()) {
-                          break;
-                      } else {
-                          result = null;
-                          throw new Error("Empty response from AI");
-                      }
-                  } catch (parseErr) {
-                      console.warn(`[Grade Table Parse] Attempt ${attempt} failed:`, parseErr.message);
-                      result = null;
-
-                      const isServerBusy = parseErr.status === 503 || parseErr.message.includes("Service Unavailable");
-                      const isQuotaError = parseErr.message.includes("quota") || parseErr.message.includes("rate limit");
-
-                      if (isQuotaError) {
-                          // Won't resolve by retrying — stop immediately.
-                          break;
-                      } else if (isServerBusy && attempt < maxRetries) {
-                          const delay = Math.pow(2, attempt) * 1000;
-                          console.warn(`[Grade Table Parse] Server busy. Retrying in ${delay}ms...`);
-                          await new Promise(r => setTimeout(r, delay));
-                      } else if (attempt < maxRetries) {
-                          await new Promise(r => setTimeout(r, 2000));
-                      }
-                      // else: final attempt exhausted, fall through with result === null
-                  }
-              }
-
-              if (!result) {
-                  console.error("Gemini PDF parsing failed after multiple retries.");
-                  return res.json({
-                      success: true,
-                      message: "Grade file uploaded successfully, but AI failed to read the PDF directly.",
-                      data: { fileUrl, fileName }
-                  });
-              }
-
-              aiText = result.response.text();
+          try {
+              // Primary model first, then the fallback model (same strategy as
+              // the game / lesson generators), with backoff on busy errors.
+              ({ text: aiText } = await generateGradeAIText(
+                  [
+                      { text: promptText },
+                      { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
+                  ],
+                  { label: "Grade Table Parse" }
+              ));
+          } catch (parseFailure) {
+              console.error("Gemini PDF parsing failed on all models:", parseFailure.message);
+              return res.json({
+                  success: true,
+                  message: "Grade file uploaded successfully, but AI failed to read the PDF directly.",
+                  data: { fileUrl, fileName }
+              });
           }
 
           let parsedGrades = [];

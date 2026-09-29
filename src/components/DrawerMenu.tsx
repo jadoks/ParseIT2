@@ -1190,9 +1190,25 @@ const DrawerMenu = ({
           return;
         }
 
-        // Handle Internal Server Errors (500) - Usually means AI Key issue or File Too Large
+        // Only blame the file's size when the server actually says so (413).
+        // The picker already rejects anything over 10MB above, and the server
+        // accepts far more than that, so a 413 here is rare.
+        if (status === 413) {
+          showToast('File is too large. Try a smaller file.', 'error');
+          return;
+        }
+
+        // Rate limited (AI quota) - temporary, not the student's fault.
+        if (status === 429) {
+          showToast('Service is busy. Try uploading your grade again later.', 'error');
+          return;
+        }
+
+        // Any other server error (500): an AI / verification / storage problem
+        // on our side. It has nothing to do with the file's size - the server
+        // logs the real reason - so don't tell the student to shrink the file.
         if (status === 500) {
-          showToast('Failed to process your file. Try a smaller file.', 'error');
+          showToast('Something went wrong while processing your file. Please try again in a moment.', 'error');
           return;
         }
 
