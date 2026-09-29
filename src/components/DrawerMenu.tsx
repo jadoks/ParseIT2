@@ -539,7 +539,19 @@ function GradeDropdown({
 }
 
 const GRADE_YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-const GRADE_SECTION_OPTIONS = ['Section A', 'Section B', 'Section C'];
+// Display-only section names (same as SECTION_OPTIONS in TeacherDashboard.tsx).
+// The value stored/sent to the backend is still just 'A' | 'B' | 'C'.
+const GRADE_SECTION_LETTERS: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
+const GRADE_SECTION_NAMES: Record<number, Record<'A' | 'B' | 'C', string>> = {
+  1: { A: 'Microsoft', B: 'Google', C: 'Amazon' },
+  2: { A: 'Algorithm', B: 'Pseudocode', C: 'Binary' },
+  3: { A: 'Python', B: 'Java', C: 'C++' },
+  4: { A: 'Xamarin', B: 'Laravel', C: 'Flutter' },
+};
+const getGradeSectionLabel = (yearLevel: number | null, letter: 'A' | 'B' | 'C'): string =>
+  yearLevel && GRADE_SECTION_NAMES[yearLevel]
+    ? `${yearLevel}${letter} ${GRADE_SECTION_NAMES[yearLevel][letter]}`
+    : `Section ${letter}`;
 
 const DrawerMenu = ({
   isFixed,
@@ -1757,16 +1769,26 @@ const DrawerMenu = ({
             <Text style={styles.gradeInfoLabel}>Section</Text>
             <View style={[styles.gradeDropdownField, openGradeDropdown === 'section' && styles.gradeDropdownFieldOpen]}>
               <GradeDropdown
-                value={selectedSection ? `Section ${selectedSection}` : null}
-                options={GRADE_SECTION_OPTIONS}
-                placeholder="Select section"
+                value={selectedSection ? getGradeSectionLabel(selectedYearLevel, selectedSection) : null}
+                options={GRADE_SECTION_LETTERS.map((letter) => getGradeSectionLabel(selectedYearLevel, letter))}
+                placeholder={selectedYearLevel ? 'Select section' : 'Select year level first'}
                 label="Select Section"
                 onSelect={(option) => {
-                  setSelectedSection(option.replace('Section ', '') as 'A' | 'B' | 'C');
+                  const index = GRADE_SECTION_LETTERS.findIndex(
+                    (letter) => getGradeSectionLabel(selectedYearLevel, letter) === option,
+                  );
+                  if (index >= 0) setSelectedSection(GRADE_SECTION_LETTERS[index]);
                   setOpenGradeDropdown(null);
                 }}
                 visible={openGradeDropdown === 'section'}
-                onToggle={() => setOpenGradeDropdown((prev) => (prev === 'section' ? null : 'section'))}
+                onToggle={() => {
+                  // Section names depend on the year level, so pick that first.
+                  if (!selectedYearLevel) {
+                    showToast('Please select your year level first.', 'error');
+                    return;
+                  }
+                  setOpenGradeDropdown((prev) => (prev === 'section' ? null : 'section'));
+                }}
                 isMobile={isMobile}
               />
             </View>
@@ -1808,7 +1830,7 @@ const DrawerMenu = ({
               <View style={styles.gradeConfirmDivider} />
               <View style={styles.gradeConfirmRow}>
                 <Text style={styles.gradeConfirmRowLabel}>Section</Text>
-                <Text style={styles.gradeConfirmRowValue}>{selectedSection ? `Section ${selectedSection}` : '-'}</Text>
+                <Text style={styles.gradeConfirmRowValue}>{selectedSection ? getGradeSectionLabel(selectedYearLevel, selectedSection) : '-'}</Text>
               </View>
               <View style={styles.gradeConfirmDivider} />
               <View style={styles.gradeConfirmRow}>
