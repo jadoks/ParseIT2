@@ -144,6 +144,41 @@ const displaySection = (yearLevel: string, sectionName: string): string => {
   return [yearLevel, raw].filter(Boolean).join(' - ');
 };
 
+// Year number (1-4) and section letter (A=1, B=2, C=3) used to sort sections
+// as 1A, 1B, 1C, 2A ... 4C. Handles "A", "Section B", "1C Amazon", "3B", or the
+// real section name ("Microsoft", "Java", ...). Anything unmatched sorts last.
+const sectionSortKey = (yearLevel: string, sectionName: string): [number, number] => {
+  const raw = String(sectionName || '').trim();
+  let year = yearLevelToNumber(yearLevel);
+  let letterRank = 99;
+
+  // "1C Amazon" / "3B" / "2a"
+  const combined = raw.match(/^([1-4])\s*([abc])\b/i);
+  // "A" / "Section B"
+  const plain = raw.match(/^(?:section\s+)?([abc])$/i);
+
+  if (combined) {
+    year = year ?? Number(combined[1]);
+    letterRank = combined[2].toUpperCase().charCodeAt(0) - 64;
+  } else if (plain) {
+    letterRank = plain[1].toUpperCase().charCodeAt(0) - 64;
+  } else {
+    // real section name, e.g. "Amazon" or "Java"
+    const years = year ? [year] : [1, 2, 3, 4];
+    for (const y of years) {
+      const names = SECTION_NAMES_BY_YEAR[y];
+      const letter = Object.keys(names).find((l) => names[l].toLowerCase() === raw.toLowerCase());
+      if (letter) {
+        year = year ?? y;
+        letterRank = letter.charCodeAt(0) - 64;
+        break;
+      }
+    }
+  }
+
+  return [year ?? 99, letterRank];
+};
+
 // How a student's year level + section is shown in the Highest GWA table
 // (which mixes every year level), e.g. "3B Java".
 const formatYearSection = (student: Student) => displaySection(student.yearLevel, student.section);
@@ -817,26 +852,14 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         throw new Error(data?.error || 'Failed to load the Deans List.');
       }
 
-      const orderedYearLevels = [
-        'First Year',
-        'Second Year',
-        'Third Year',
-        'Fourth Year',
-        '1st Year',
-        '2nd Year',
-        '3rd Year',
-        '4th Year',
-      ];
-
+      // Sort by year level, then section letter: 1A, 1B, 1C, 2A ... 4C.
       const orderedSections = (Array.isArray(data?.data) ? data.data : []).sort(
         (a: GeneratedSection, b: GeneratedSection) => {
-          const aIndex = orderedYearLevels.indexOf(a.yearLevel);
-          const bIndex = orderedYearLevels.indexOf(b.yearLevel);
+          const [aYear, aLetter] = sectionSortKey(a.yearLevel, a.sectionName);
+          const [bYear, bLetter] = sectionSortKey(b.yearLevel, b.sectionName);
 
-          const yearCompare =
-            (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-
-          if (yearCompare !== 0) return yearCompare;
+          if (aYear !== bYear) return aYear - bYear;
+          if (aLetter !== bLetter) return aLetter - bLetter;
 
           return String(a.sectionName).localeCompare(String(b.sectionName));
         }

@@ -15568,6 +15568,63 @@ app.get(
   // GWA are all kept. They are listed again in a separate "Highest GWA — all
   // year levels" table (and still stay in their own year level / section
   // table too). GWAs are compared at the 3-decimal precision shown on screen.
+  // Sort key for Deans List sections so they come out 1A, 1B, 1C, 2A ... 4C.
+  // Sorting by the real section name alphabetically (Amazon, Google, Microsoft)
+  // gave C -> B -> A, so map each section to its year number + letter instead.
+  // Handles "1st Year"/"First Year", "A" / "Section B", "1C Amazon" / "3B", and
+  // the real names ("Microsoft", "Java", ...). Unmatched sections sort last.
+  const DEANS_LIST_SECTION_NAMES = {
+    1: { A: "Microsoft", B: "Google", C: "Amazon" },
+    2: { A: "Algorithm", B: "Pseudocode", C: "Binary" },
+    3: { A: "Python", B: "Java", C: "C++" },
+    4: { A: "Xamarin", B: "Laravel", C: "Flutter" },
+  };
+
+  const deansListSectionSortKey = (yearLevel, sectionName) => {
+    const yearText = String(yearLevel || "").toLowerCase();
+    let year = null;
+    if (/\b(1st|first)\b/.test(yearText)) year = 1;
+    else if (/\b(2nd|second)\b/.test(yearText)) year = 2;
+    else if (/\b(3rd|third)\b/.test(yearText)) year = 3;
+    else if (/\b(4th|fourth)\b/.test(yearText)) year = 4;
+
+    const raw = String(sectionName || "").trim();
+    let letterRank = 99;
+
+    const combined = raw.match(/^([1-4])\s*([abc])\b/i); // "1C Amazon", "3B"
+    const plain = raw.match(/^(?:section\s+)?([abc])$/i); // "A", "Section B"
+
+    if (combined) {
+      if (year === null) year = Number(combined[1]);
+      letterRank = combined[2].toUpperCase().charCodeAt(0) - 64;
+    } else if (plain) {
+      letterRank = plain[1].toUpperCase().charCodeAt(0) - 64;
+    } else {
+      const years = year ? [year] : [1, 2, 3, 4];
+      for (const y of years) {
+        const names = DEANS_LIST_SECTION_NAMES[y];
+        const letter = Object.keys(names).find(
+          (l) => names[l].toLowerCase() === raw.toLowerCase()
+        );
+        if (letter) {
+          if (year === null) year = y;
+          letterRank = letter.charCodeAt(0) - 64;
+          break;
+        }
+      }
+    }
+
+    return [year === null ? 99 : year, letterRank];
+  };
+
+  const compareDeansListSections = (a, b) => {
+    const [aYear, aLetter] = deansListSectionSortKey(a.yearLevel, a.sectionName);
+    const [bYear, bLetter] = deansListSectionSortKey(b.yearLevel, b.sectionName);
+    if (aYear !== bYear) return aYear - bYear;
+    if (aLetter !== bLetter) return aLetter - bLetter;
+    return String(a.sectionName || "").localeCompare(String(b.sectionName || ""));
+  };
+
   const pickHighestGwaStudents = (students = []) => {
     const gwas = students
       .map((student) => Number(student?.gpa ?? student?.gwa))
@@ -15748,18 +15805,8 @@ app.get(
         });
       });
 
-      const orderedYearLevels = [
-        "First Year", "Second Year", "Third Year", "Fourth Year",
-        "1st Year", "2nd Year", "3rd Year", "4th Year",
-      ];
-
-      const data = Object.values(groupedMap).sort((a, b) => {
-        const aIndex = orderedYearLevels.indexOf(a.yearLevel);
-        const bIndex = orderedYearLevels.indexOf(b.yearLevel);
-        const yearCompare = (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-        if (yearCompare !== 0) return yearCompare;
-        return String(a.sectionName).localeCompare(String(b.sectionName));
-      });
+      // Year level first, then section letter: 1A, 1B, 1C, 2A ... 4C.
+      const data = Object.values(groupedMap).sort(compareDeansListSections);
 
       // The student(s) with the best GWA across every year level & section.
       // `data` is already ordered by year level, section, then name, so this
@@ -15881,7 +15928,8 @@ app.get(
               },
             ]
           : [],
-        sections: sections.map((section) => {
+        // Same 1A -> 4C order as the screen, even if the client sent them unsorted.
+        sections: [...sections].sort(compareDeansListSections).map((section) => {
           const students = Array.isArray(section.students) ? section.students : [];
           return {
             yearLevel: section.yearLevel || "",
