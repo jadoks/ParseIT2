@@ -1670,7 +1670,7 @@ function SasDocMenuButton({
               <View>
                 <Text style={styles.sasDocMenuText}>Print to PDF</Text>
                 <Text style={styles.sasDocMenuHint}>
-                  {Platform.OS === 'web' ? 'Opens the print dialog' : 'Opens in the Word viewer'}
+                  {Platform.OS === 'web' ? 'Opens in the Word viewer' : 'Opens in the Word viewer'}
                 </Text>
               </View>
             </TouchableOpacity>
