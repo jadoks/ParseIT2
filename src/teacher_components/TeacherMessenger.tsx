@@ -367,6 +367,7 @@ const Messenger = ({
   currentUser,
   currentUserUid,
   currentUserName,
+  liveRefreshToken = 0,
 }: {
   searchQuery?: string;
   onConversationActiveChange?: (isActive: boolean) => void;
@@ -377,6 +378,10 @@ const Messenger = ({
   currentUser: string;
   currentUserUid: string;
   currentUserName: string;
+  // Bumped by the parent each time the server pushes a "messenger" signal
+  // (new message, room/member change, read on another device). Replaces the
+  // old 5s conversation poll and 15s message poll.
+  liveRefreshToken?: number;
 }) => {
   const { width, height } = useWindowDimensions();
   const flatListRef = useRef<FlatList<Message>>(null);
@@ -605,6 +610,10 @@ const Messenger = ({
   // LOAD CONVERSATIONS
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // A newer run (live signal) supersedes an older in-flight one, so a slow
+    // response can never overwrite fresher data.
+    let cancelled = false;
+
     const loadConversations = async () => {
       try {
         const response = await apiFetch(
@@ -613,6 +622,7 @@ const Messenger = ({
           )}&userUid=${encodeURIComponent(currentUserUid)}`
         );
         const data = await response.json();
+        if (cancelled) return;
         if (!response.ok)
           throw new Error(data?.error || 'Failed to load conversations.');
 
@@ -769,9 +779,10 @@ const Messenger = ({
     };
 
     if (currentUser) loadConversations();
-    const interval = setInterval(loadConversations, 5000);
-    return () => clearInterval(interval);
-  }, [currentUser, currentUserName]);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, currentUserName, liveRefreshToken]);
 
   // ---------------------------------------------------------------------------
   // MESSAGE POLLING
@@ -853,18 +864,16 @@ const Messenger = ({
     };
 
     loadMessages();
-    // 🔧 FIX: Don't force an avatar cache-bust on every poll — that was
-    // causing the conversation avatar image to re-fetch/re-render every
-    // 15s even when the signed URL was still perfectly valid. The cache
+    // 🔧 FIX: Don't force an avatar cache-bust on every refresh — that was
+    // causing the conversation avatar image to re-fetch/re-render on every
+    // reload even when the signed URL was still perfectly valid. The cache
     // buster is now only bumped when we actually obtain a fresh signed
     // URL (see handleAvatarLoadError below), which only happens when the
     // image fails to load (i.e. the previous signed URL expired).
-    const interval = setInterval(loadMessages, 15000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
-  }, [selected?.id, normalizeMessages]);
+  }, [selected?.id, normalizeMessages, liveRefreshToken]);
 
   // ---------------------------------------------------------------------------
   // FILE URL REFRESH — used for message file/image attachments AND for

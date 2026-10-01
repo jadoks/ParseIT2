@@ -64,10 +64,10 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
   const isPopover = mode === 'popover';
 
+  // Live pushes replace the list in place. Only the data is synced here; the
+  // "See all" toggle and the open menu belong to the user and must survive an update.
   useEffect(() => {
     setNotifications(incomingNotifications);
-    setShowAllNotifications(false);
-    setMenuVisible(false);
   }, [incomingNotifications]);
 
   const unreadCount = useMemo(

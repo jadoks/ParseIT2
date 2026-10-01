@@ -2080,6 +2080,7 @@ const TeacherCourseDetail2 = ({
   onInitialAssignmentHandled,
   initialCommentStudentId,
   onInitialCommentStudentHandled,
+  liveRefreshToken,
 }: {
   onBack?: () => void;
   course?: CourseDetailData;
@@ -2095,6 +2096,8 @@ const TeacherCourseDetail2 = ({
   // submissions screen opens (used for "assignment-comment" notifications).
   initialCommentStudentId?: string | null;
   onInitialCommentStudentHandled?: () => void;
+  // ✅ LIVE: bumped by TeacherApp when the server pushes a change (see useLiveEvents).
+  liveRefreshToken?: number;
 }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -2713,16 +2716,34 @@ useEffect(() => {
     !!confirmation?.visible;
 });
 
-// Silent background refresh — picks up new student submissions, new
-// materials/assignments/modules, etc. while the teacher stays on this screen.
+// ✅ LIVE (replaces the old 12s poll): TeacherApp bumps `liveRefreshToken` when the
+// server pushes "something changed" for this teacher's classes (new submission,
+// student comment, member joined/left, lesson/module edits from another device...).
+// If a modal/edit is open, the refresh waits (up to ~30s) rather than being dropped.
+const lastLiveRefreshTokenRef = useRef(liveRefreshToken ?? 0);
 useEffect(() => {
   if (!course?.id) return;
-  const intervalId = setInterval(() => {
-    if (isOverlayOpenRef.current) return; // paused — something's open
-    loadCourseContent(true);
-  }, 12000); // every 12s, tweak to taste
-  return () => clearInterval(intervalId);
-}, [course?.id]);
+  if (liveRefreshToken === undefined || liveRefreshToken === lastLiveRefreshTokenRef.current) return;
+  lastLiveRefreshTokenRef.current = liveRefreshToken;
+  // The submissions screen refreshes itself (comments + submissions) while it is open.
+  if (showSubmissions) return;
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const run = (tries: number) => {
+    if (cancelled) return;
+    if (isOverlayOpenRef.current && tries < 10) {
+      timer = setTimeout(() => run(tries + 1), 3000);
+      return;
+    }
+    void loadCourseContent(true);
+  };
+  run(0);
+  return () => {
+    cancelled = true;
+    if (timer) clearTimeout(timer);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [liveRefreshToken]);
 
   const handleGenerateLessonContent = async () => {
     if (!selectedGenModule || !selectedGenTopic) {
@@ -7212,7 +7233,8 @@ useEffect(() => {
         classId={course?.id}
         currentTeacher={currentTeacher}
         onRefreshSubmissions={() => loadCourseContent(true)}
-        autoRefreshIntervalMs={10000}
+        autoRefreshIntervalMs={0}
+        liveRefreshToken={liveRefreshToken}
         initialStudentId={initialCommentStudentId}
         onInitialStudentHandled={onInitialCommentStudentHandled}
       />

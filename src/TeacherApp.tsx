@@ -20,6 +20,7 @@ type ToastType = 'success' | 'error' | 'info';
 // 🔥 UPDATED: use the shared, auto-refreshing apiFetch instead of a local createSecureFetch
 import { API_BASE_URL, apiFetch } from './services/api'; // adjust path if your folder layout differs
 
+import { useLiveEvents } from './hooks/useLiveEvents';
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
 import TeacherAnalytics from './teacher_components/TeacherAnalytics';
@@ -211,6 +212,15 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
   const safeAreaEdges = ['top', 'right', 'bottom', 'left'] as const;
 
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
+  // Bumped whenever the server pushes a course/submission/comment change, so the open
+  // course screen refreshes itself (see useLiveEvents below).
+  const [liveRefreshToken, setLiveRefreshToken] = useState(0);
+  // Separate tokens so a chat or community signal never re-fetches course screens (and vice versa).
+  const [messengerLiveToken, setMessengerLiveToken] = useState(0);
+  const [communityLiveToken, setCommunityLiveToken] = useState(0);
+  // Set when a community change arrives while neither Community nor Profile is open;
+  // the next time one of them opens we fetch once instead of fetching for nobody.
+  const communityDirtyRef = useRef(false);
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
 
   // 👇 NEW: the Notification screen's own back button should never leave
@@ -726,21 +736,6 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     loadTeacherNotifications();
   }, [loadTeacherNotifications]);
 
-  // 🔥 Silent background refresh — same "live" polling pattern used in
-  // TeacherCommunity: silently re-fetch notifications on an interval so new
-  // ones (e.g. a student's assignment comment) show up without the teacher
-  // needing to navigate away and back. Paused while the notification
-  // popover/screen is actually open so an incoming refresh never resets
-  // scroll position or collapses "see all" mid-read.
-  const isNotificationViewOpen = isNotificationOpen || activeScreen === 'notification';
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (isNotificationViewOpen) return; // paused — user is looking at it
-      loadTeacherNotifications();
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [loadTeacherNotifications, isNotificationViewOpen]);
-
   useEffect(() => {
     loadTeacherClasses();
   }, [loadTeacherClasses]);
@@ -756,42 +751,90 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     }
   }, [activeScreen, loadTeacherClasses, loadTeacherAnalytics]);
 
-  // 🔥 Silent background refresh — same "live" polling pattern used for
-  // announcements/notifications above. Keeps class averages, risk levels and
-  // per-student rows live while the teacher has the Analytics tab open, so a
-  // grade entered elsewhere (or on another device) shows up without a manual
-  // reload. Only runs while actively on the analytics screen: this endpoint
-  // aggregates every student across every one of the teacher's classes, so
-  // polling it in the background from every other screen would be wasteful.
-  // 20s (vs. 8s elsewhere) because grades change far less often than chat/
-  // notifications, and each tick is a much heavier read.
-  useEffect(() => {
-    if (activeScreen !== 'analytics') return;
-    const interval = setInterval(() => {
-      void loadTeacherAnalytics({ silent: true });
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [activeScreen, loadTeacherAnalytics]);
-
   useEffect(() => {
     loadTeacherAnnouncements();
   }, [loadTeacherAnnouncements]);
 
-  // 🔥 Silent background refresh — same "live" polling pattern used for
-  // notifications above. Keeps the announcement banner (and anywhere else
-  // teacherAnnouncements is used) live when the teacher creates, edits, or
-  // deletes an announcement, without needing to leave and return to Home.
-  // Paused while the teacher is actually on the announcement screen, since
-  // ShareAnnouncement already fetches and displays its own live list there
-  // ("See All My Announcements") — polling here too would just be a
-  // redundant background request.
+  const loadMessengerUnreadCount = useCallback(async () => {
+    try {
+      const response = await apiFetch(
+        `/messenger-unread-count?role=teacher&userId=${encodeURIComponent(
+          activeProfile?.teacherId || ''
+        )}&userUid=${encodeURIComponent(
+          activeProfile?.authUid || ''
+        )}`
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessengerUnreadCount(Number(data?.count || 0));
+      }
+    } catch (error) {
+      console.log('LOAD MESSENGER UNREAD ERROR =>', error);
+    }
+  }, [activeProfile?.teacherId, activeProfile?.authUid]);
+
+  // Community/Profile show the same feed. Refresh it only while one of them is on screen;
+  // otherwise remember that it is stale and fetch once when the person opens it.
+  const isCommunityVisible = activeScreen === 'community' || activeScreen === 'profile';
+  const requestCommunityRefresh = () => {
+    if (isCommunityVisible) setCommunityLiveToken((n) => n + 1);
+    else communityDirtyRef.current = true;
+  };
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (activeScreen === 'announcement') return; // paused — managed screen fetches its own data
-      void loadTeacherAnnouncements({ silent: true });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [loadTeacherAnnouncements, activeScreen]);
+    if (isCommunityVisible && communityDirtyRef.current) {
+      communityDirtyRef.current = false;
+      void loadCommunityPosts();
+    }
+  }, [isCommunityVisible, loadCommunityPosts]);
+
+  // 🔥 LIVE UPDATES (Server-Sent Events) — one open stream replaces the 8s notification,
+  // 8s announcement and 20s analytics pollers. The server only says "something changed";
+  // each handler re-runs the loader the screen already had. A safety sync (reconnect +
+  // every 2 min) catches anything missed. Notification.tsx / TeacherNotification keep
+  // their own UI state, so there is no longer a "pause while the notification view is open".
+  useLiveEvents({
+    baseUrl: API_BASE_URL,
+    userId: normalizeText(activeProfile?.teacherId) || normalizeText(currentTeacher?.teacherId),
+    role: 'teacher',
+    debounceMs: { default: 300, notifications: 300, 'course-content': 1500, announcements: 1500, submissions: 800, 'assignment-comments': 500, messenger: 200, community: 800 },
+    handlers: {
+      notifications: () => void loadTeacherNotifications(),
+      // Lessons/modules/materials/assignments edited elsewhere, or a student joined/left.
+      'course-content': () => {
+        void loadTeacherClasses();
+        setLiveRefreshToken((n) => n + 1);
+      },
+      announcements: () => {
+        if (activeScreen === 'announcement') return; // that screen fetches its own live list
+        void loadTeacherAnnouncements({ silent: true });
+      },
+      // A student submitted / unsubmitted: refresh the open course and, on Analytics, the stats.
+      submissions: () => {
+        if (activeScreen === 'analytics') void loadTeacherAnalytics({ silent: true });
+        setLiveRefreshToken((n) => n + 1);
+      },
+      'assignment-comments': () => setLiveRefreshToken((n) => n + 1),
+      // New message / room or member change / read on another device. Keeps the unread badge
+      // current everywhere; the Messenger screen (if open) reloads its list and open chat.
+      messenger: () => {
+        void loadMessengerUnreadCount();
+        setMessengerLiveToken((n) => n + 1);
+      },
+      // Community post / answer created, edited, deleted or hidden by anyone.
+      community: () => requestCommunityRefresh(),
+    },
+    onSync: () => {
+      void loadTeacherNotifications();
+      void loadMessengerUnreadCount();
+      setMessengerLiveToken((n) => n + 1);
+      requestCommunityRefresh();
+      if (activeScreen !== 'announcement') void loadTeacherAnnouncements({ silent: true });
+      if (activeScreen === 'analytics') void loadTeacherAnalytics({ silent: true });
+      setLiveRefreshToken((n) => n + 1);
+    },
+  });
 
   const handleSearchChange = (query: string) => {
     setGlobalSearchQuery(query);
@@ -1286,30 +1329,8 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     }, 500);
   };
 
-  const loadMessengerUnreadCount = useCallback(async () => {
-    try {
-      const response = await apiFetch(
-        `/messenger-unread-count?role=teacher&userId=${encodeURIComponent(
-          activeProfile?.teacherId || ''
-        )}&userUid=${encodeURIComponent(
-          activeProfile?.authUid || ''
-        )}`
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setMessengerUnreadCount(Number(data?.count || 0));
-      }
-    } catch (error) {
-      console.log('LOAD MESSENGER UNREAD ERROR =>', error);
-    }
-  }, [activeProfile?.teacherId, activeProfile?.authUid]);
-
   useEffect(() => {
-    loadMessengerUnreadCount();
-    const interval = setInterval(loadMessengerUnreadCount, 10000); // poll every 10 seconds
-    return () => clearInterval(interval);
+    void loadMessengerUnreadCount();
   }, [loadMessengerUnreadCount]);
 
   return (
@@ -1402,7 +1423,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             onChangeProfileImage={handleChangeProfileImage}
             onChangeBannerImage={handleChangeBannerImage}
             onRefresh={loadCommunityPosts}
-            refreshIntervalMs={8000}
+            liveRefreshToken={communityLiveToken}
             initialPostId={pendingCommunityPostId}
             onInitialPostHandled={() => setPendingCommunityPostId(null)}
           />
@@ -1456,7 +1477,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             onSetAnswerHidden={handleSetCommunityAnswerHidden}
             onSetPostHidden={handleSetCommunityPostHidden}
             onRefresh={loadCommunityPosts}
-            refreshIntervalMs={8000}
+            liveRefreshToken={communityLiveToken}
           />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
@@ -1468,6 +1489,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
               currentUserName={teacherFullName}
               courses={messengerCourses}
               onUnreadCountChanged={loadMessengerUnreadCount}
+              liveRefreshToken={messengerLiveToken}
             />
           ) : activeScreen === 'coursedetail' ? (
             <Coursedetail2
@@ -1479,6 +1501,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
               onInitialAssignmentHandled={() => setPendingAssignmentId(null)}
               initialCommentStudentId={pendingCommentStudentId}
               onInitialCommentStudentHandled={() => setPendingCommentStudentId(null)}
+              liveRefreshToken={liveRefreshToken}
             />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification

@@ -34,6 +34,7 @@ import UploadProgressToast, { UploadToastStage } from './components/UploadProgre
 // Dashboard/CourseDetail all share it) so game-completion feedback here looks
 // and behaves the same as everywhere else.
 import Toast from './Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useLiveEvents } from './hooks/useLiveEvents';
 import Analytics from './screens/Analytics';
 import Assignments, {
   AssignmentComment,
@@ -713,6 +714,15 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
+  // Bumped whenever the server pushes a course/submission/comment change, so the
+  // open Assignments / CourseDetail screen refreshes itself (see useLiveEvents below).
+  const [liveRefreshToken, setLiveRefreshToken] = useState(0);
+  // Separate tokens so a chat or community signal never re-fetches course screens (and vice versa).
+  const [messengerLiveToken, setMessengerLiveToken] = useState(0);
+  const [communityLiveToken, setCommunityLiveToken] = useState(0);
+  // Set when a community change arrives while neither Community nor Profile is open;
+  // the next time one of them opens we fetch once instead of fetching for nobody.
+  const communityDirtyRef = useRef(false);
   const [isVerificationErrorModalVisible, setVerificationErrorModalVisible] = useState(false);
   const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
   const [isUploadSuccessModalVisible, setUploadSuccessModalVisible] = useState(false);
@@ -1210,46 +1220,15 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   useEffect(() => { loadJoinedClasses(); }, [currentStudent?.studentId]);
 
-  // 🔥 Silent background refresh — same "live" polling pattern used for
-  // notifications/messenger unread count below. Keeps the announcement
-  // banner live so a teacher's newly created, edited, or deleted
-  // announcement shows up automatically, without the student needing to
-  // reload the app. Uses a ref (rather than depending on joinedCourses
-  // directly) so the interval doesn't get torn down/recreated every time
-  // course enrichment patches joinedCourses in place.
+  // Latest joinedCourses for code that must not re-run when enrichment patches
+  // joinedCourses in place (announcements are refreshed live via useLiveEvents below).
   const joinedCoursesForPollingRef = useRef<CourseDetailData[]>([]);
   useEffect(() => {
     joinedCoursesForPollingRef.current = joinedCourses;
   }, [joinedCourses]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const courses = joinedCoursesForPollingRef.current;
-      if (!courses.length) return;
-      void loadStudentAnnouncements(courses, { silent: true });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // 🔥 NEW: silently refresh joinedCourses (assignments/materials/modules)
-  // on the same 8s cadence as notification polling below. Without this,
-  // notifications kept arriving live every 8s (e.g. "New Assignment"), but
-  // the actual assignment/lesson/announcement data that a tapped
-  // notification navigates into only ever loaded once on mount — so a
-  // brand-new assignment/module lesson referenced by a just-arrived
-  // notification wouldn't exist yet in joinedCourses/joinedAssignmentCourses,
-  // and handleNotificationItemClick's `course.assignments.find(...)` (or
-  // the course lookup itself, for a class joined after the last load) would
-  // silently fail to match anything — so tapping the notification appeared
-  // to do nothing. Runs silently (no loading spinners, no wiping state on a
-  // transient error) so it never disrupts whatever screen the student is
-  // currently looking at.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void loadJoinedClasses({ silent: true });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [currentStudent?.studentId]);
+  // joinedCourses (assignments/materials/modules/announcements) now refresh from the
+  // live "course-content" / "announcements" signals instead of an 8s poll.
 
   const handleJoinClass = async (classCode: string) => {
     const trimmedCode = String(classCode || '').trim().toUpperCase();
@@ -1459,22 +1438,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   useEffect(() => { setHasLoadedAssignmentState(false); void loadStudentSubmissionState(); }, [loadStudentSubmissionState]);
 
-  // 🔥 Silent background refresh — same "live" polling pattern used for
-  // announcements/joinedClasses above. loadStudentSubmissionState already
-  // merges new data into existing state on success and simply skips updating
-  // on a failed fetch (see its catch block), so it's safe to re-run silently:
-  // there's no loading flag to toggle and no risk of blanking scores on a
-  // transient error. This is what makes newly-graded work (and its gradedAt/
-  // submittedAt timestamps used by Analytics) show up without the student
-  // needing to leave and reopen the Assignments/Analytics screen. 20s (vs.
-  // the 8s used for announcements/classes) since grades change far less
-  // often and this fetch does more work per call.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void loadStudentSubmissionState();
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [loadStudentSubmissionState]);
+  // Submission/grade state refreshes from the live "submissions" signal (a teacher
+  // grading, or this student submitting elsewhere) instead of a 20s poll.
 
   useEffect(() => {
     if (!currentStudent?.studentId || !hasLoadedAssignmentState) return;
@@ -2083,20 +2048,76 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   useEffect(() => { void loadStudentNotifications(); }, [loadStudentNotifications]);
 
-  // 🔥 Silent background refresh — same "live" polling pattern used in
-  // TeacherCommunity: silently re-fetch notifications on an interval so new
-  // ones (e.g. a teacher's assignment comment) show up without the student
-  // needing to navigate away and back. Paused while the notification
-  // popover/screen is actually open so an incoming refresh never resets
-  // scroll position or collapses "see all" mid-read.
-  const isNotificationViewOpen = isNotificationOpen || activeScreen === 'notification';
+  const loadMessengerUnreadCount = useCallback(async () => {
+    if (!currentStudent?.studentId) return;
+    try {
+      const response = await apiFetch(
+        `${API_BASE_URL}/messenger-unread-count?userId=${encodeURIComponent(currentStudent.studentId)}&userUid=${encodeURIComponent(currentStudent.authUid || '')}&role=student`
+      );
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setMessengerUnreadCount(data.count || 0);
+      }
+    } catch (error) {
+      console.log('LOAD MESSENGER UNREAD COUNT ERROR =>', error);
+    }
+  }, [currentStudent?.studentId]);
+
+  // Community/Profile show the same feed. Refresh it only while one of them is on screen;
+  // otherwise remember that it is stale and fetch once when the person opens it.
+  const isCommunityVisible = activeScreen === 'community' || activeScreen === 'profile';
+  const requestCommunityRefresh = () => {
+    if (isCommunityVisible) setCommunityLiveToken((n) => n + 1);
+    else communityDirtyRef.current = true;
+  };
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (isNotificationViewOpen) return; // paused — user is looking at it
+    if (isCommunityVisible && communityDirtyRef.current) {
+      communityDirtyRef.current = false;
+      void loadCommunityPosts();
+    }
+  }, [isCommunityVisible, loadCommunityPosts]);
+
+  // 🔥 LIVE UPDATES (Server-Sent Events) — one open stream replaces the 8s/20s pollers.
+  // The server only says "something changed"; each handler simply re-runs the loader
+  // the screen already had. A safety sync (reconnect + every 2 min) catches anything missed.
+  // No "pause while the notification view is open" any more: Notification.tsx now keeps
+  // its own UI state (See all / menu) when new data arrives.
+  useLiveEvents({
+    baseUrl: API_BASE_URL,
+    userId: currentStudent?.studentId,
+    role: 'student',
+    debounceMs: { default: 300, notifications: 300, 'course-content': 1500, announcements: 1500, submissions: 800, 'assignment-comments': 500, messenger: 200, community: 800 },
+    handlers: {
+      notifications: () => void loadStudentNotifications(),
+      // Course materials / assignments / modules / lessons / syllabus / membership changed.
+      'course-content': () => {
+        void loadJoinedClasses({ silent: true });
+        setLiveRefreshToken((n) => n + 1);
+      },
+      announcements: () => void loadJoinedClasses({ silent: true }),
+      // A grade, or this student's own submit/unsubmit from another device.
+      submissions: () => void loadStudentSubmissionState(),
+      // New / edited / deleted assignment comment (open assignment refreshes its thread).
+      'assignment-comments': () => setLiveRefreshToken((n) => n + 1),
+      // New message / room or member change / read on another device. Keeps the unread badge
+      // current everywhere; the Messenger screen (if open) reloads its list and open chat.
+      messenger: () => {
+        void loadMessengerUnreadCount();
+        setMessengerLiveToken((n) => n + 1);
+      },
+      // Community post / answer created, edited, deleted or hidden by anyone.
+      community: () => requestCommunityRefresh(),
+    },
+    onSync: () => {
       void loadStudentNotifications();
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [loadStudentNotifications, isNotificationViewOpen]);
+      void loadMessengerUnreadCount();
+      setMessengerLiveToken((n) => n + 1);
+      requestCommunityRefresh();
+      void loadJoinedClasses({ silent: true });
+      void loadStudentSubmissionState();
+      setLiveRefreshToken((n) => n + 1);
+    },
+  });
 
   const handleMarkNotificationAsRead = async (notificationId: string) => {
     const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}/read`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' } });
@@ -2131,25 +2152,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   const unreadNotificationCount = useMemo(() => visibleStudentNotifications.filter((item) => !item.read).length, [visibleStudentNotifications]);
 
-  const loadMessengerUnreadCount = useCallback(async () => {
-    if (!currentStudent?.studentId) return;
-    try {
-      const response = await apiFetch(
-        `${API_BASE_URL}/messenger-unread-count?userId=${encodeURIComponent(currentStudent.studentId)}&userUid=${encodeURIComponent(currentStudent.authUid || '')}&role=student`
-      );
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setMessengerUnreadCount(data.count || 0);
-      }
-    } catch (error) {
-      console.log('LOAD MESSENGER UNREAD COUNT ERROR =>', error);
-    }
-  }, [currentStudent?.studentId]);
-
   useEffect(() => {
-    loadMessengerUnreadCount();
-    const interval = setInterval(loadMessengerUnreadCount, 10000);
-    return () => clearInterval(interval);
+    void loadMessengerUnreadCount();
   }, [loadMessengerUnreadCount]);
 
   const cleanVideoSearchText = (value = '') => String(value || '').replace(/_/g, ' ').replace(/[^a-zA-Z0-9\s+#.()-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -2913,7 +2917,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         onChangeProfileImage={handleChangeProfileImage}
         onChangeBannerImage={handleChangeBannerImage}
         onRefresh={loadCommunityPosts}
-        refreshIntervalMs={8000}
+        liveRefreshToken={communityLiveToken}
       />;
       case 'home':
         return <Dashboard
@@ -3169,6 +3173,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         // ✅ NEW
         onRefreshComments={refreshAssignmentComments}
         onRefreshCourseContent={refreshAssignmentCourseContent}
+        autoRefreshIntervalMs={0}
+        liveRefreshToken={liveRefreshToken}
         currentStudent={currentStudent} 
         isGeneratingActivity={isGeneratingActivity} 
         completedActivityScores={completedActivityScores} 
@@ -3195,10 +3201,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onSetAnswerHidden={handleSetCommunityAnswerHidden}
           onSetPostHidden={handleSetCommunityPostHidden}
           initialPostId={communityInitialPostId} 
-          // 🔥 NEW — silent background refresh, polled from inside Community
-          // (paused automatically while a modal/dropdown is open there)
+          // Silent refresh, triggered by the live "community" signal (held back inside
+          // Community while a modal/dropdown is open, then run once it closes).
           onRefresh={loadCommunityPosts}
-          refreshIntervalMs={8000}
+          liveRefreshToken={communityLiveToken}
         />;
       case 'messenger': 
         return <Messenger 
@@ -3215,6 +3221,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           currentUserName={currentUserName} 
           courses={messengerCourses} 
           onUnreadCountChanged={loadMessengerUnreadCount}
+          liveRefreshToken={messengerLiveToken}
         />;
       case 'notification': 
         return <Notification 
@@ -3253,9 +3260,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
           onPlayGame={handlePlayGame} 
           onViewGameAttempts={handleViewGameAttempts}
-          // ✅ NEW: match Community's 8s "live" polling cadence, now that
-          // silentRefresh (in CourseDetail) also covers modules/lessons + syllabus.
-          autoRefreshIntervalMs={5000}
+          // ✅ LIVE: polling is off; CourseDetail refreshes (content, modules, syllabus,
+          // submissions, comments) whenever liveRefreshToken is bumped by a server push.
+          autoRefreshIntervalMs={0}
+          liveRefreshToken={liveRefreshToken}
         />;
       case 'generateactivity': 
         return <GenerateActivity 

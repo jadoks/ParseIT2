@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -400,6 +400,8 @@ interface AssignmentsProps {
   // ✅ NEW: how often (ms) to silently poll for new grades/comments while
   // this screen — or an assignment's detail modal — is open. 0 disables.
   autoRefreshIntervalMs?: number;
+  // ✅ LIVE: bumped by the parent when the server pushes a change (see useLiveEvents).
+  liveRefreshToken?: number;
   // ✅ NEW: refetches comments for ONE assignment (mirrors TeacherSubmissionsSection's
   // fetchComments). Called on open, on poll, and on pull-to-refresh so a new
   // teacher comment shows up without the student leaving the screen.
@@ -728,6 +730,7 @@ const Assignments = ({
   onConsumedAutoOpenAssignment,
   onOpenRelatedMaterial,
   autoRefreshIntervalMs = 15000,
+  liveRefreshToken,
   // ✅ NEW
   onRefreshComments,
   onRefreshCourseContent,
@@ -1158,6 +1161,17 @@ const Assignments = ({
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAssignment?.id, autoRefreshIntervalMs]);
+
+  // ✅ LIVE: the parent bumps `liveRefreshToken` whenever the server signals that
+  // course content, submissions or comments changed. This replaces the interval
+  // above (parents pass autoRefreshIntervalMs={0} to switch polling off).
+  const lastLiveRefreshTokenRef = useRef(liveRefreshToken ?? 0);
+  useEffect(() => {
+    if (liveRefreshToken === undefined || liveRefreshToken === lastLiveRefreshTokenRef.current) return;
+    lastLiveRefreshTokenRef.current = liveRefreshToken;
+    void silentRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRefreshToken]);
 
   // ✅ NEW: Manual pull-to-refresh handler shown on the assignment list and
   // the detail modal's ScrollView.

@@ -768,6 +768,8 @@ interface CourseDetailProps {
   // while this screen — or an assignment's detail modal — is open. 0 disables.
    onLoadClassComments?: (courseId: string) => Promise<void> | void;
   autoRefreshIntervalMs?: number;
+  // ✅ LIVE: bumped by the parent when the server pushes a change (see useLiveEvents).
+  liveRefreshToken?: number;
 }
 
 const EMPTY_COURSE: AssignmentCourse = {
@@ -1290,6 +1292,7 @@ const CourseDetail = ({
   onRefreshCourseContent,
   onLoadClassComments,
   autoRefreshIntervalMs = 15000,
+  liveRefreshToken,
 }: CourseDetailProps) => {
   const formatSafeDate = (value: any) => {
     if (!value) return 'Recently';
@@ -2243,6 +2246,33 @@ const fetchModules = useCallback(async (silent = false) => {
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAssignment?.id, autoRefreshIntervalMs]);
+
+  // ✅ LIVE: the parent bumps `liveRefreshToken` whenever the server signals that
+  // course content, submissions or comments changed. This replaces the interval
+  // above (parents pass autoRefreshIntervalMs={0} to switch polling off). If a
+  // modal/edit is open the refresh waits (up to ~30s) instead of being dropped,
+  // so a push is never lost just because the user was mid-interaction.
+  const lastLiveRefreshTokenRef = useRef(liveRefreshToken ?? 0);
+  useEffect(() => {
+    if (liveRefreshToken === undefined || liveRefreshToken === lastLiveRefreshTokenRef.current) return;
+    lastLiveRefreshTokenRef.current = liveRefreshToken;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const run = (tries: number) => {
+      if (cancelled) return;
+      if (isOverlayOpenRef.current && tries < 10) {
+        timer = setTimeout(() => run(tries + 1), 3000);
+        return;
+      }
+      void silentRefresh();
+    };
+    run(0);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRefreshToken]);
 
 
   // ✅ NEW: Manual pull-to-refresh handler shown on the main screen scroll

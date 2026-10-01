@@ -81,7 +81,8 @@ interface CommunityProps {
   // whenever the user has a modal/dropdown open (see isOverlayOpenRef
   // below) so nothing shifts under their tap mid-interaction.
   onRefresh?: () => void | Promise<void>;
-  refreshIntervalMs?: number; // default 8s for a "live" feel
+  // Bumped by the parent whenever the server pushes a "community" signal.
+  liveRefreshToken?: number;
 }
 
 type PostDropdownState =
@@ -183,7 +184,7 @@ const Community: React.FC<CommunityProps> = ({
   searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
   onRefresh, // 🔥 NEW
-  refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
+  liveRefreshToken = 0,
 }) => {
   // ✅ Optimistic local copy of posts — mirrors the pattern used in Profile.
   // Handlers below update this immediately so the UI reacts right away instead
@@ -304,9 +305,7 @@ const Community: React.FC<CommunityProps> = ({
   // the latest value without needing to be recreated every time a modal
   // opens or closes. Updated on every render — cheap, since it's just a
   // boolean assignment with no re-render triggered.
-  const isOverlayOpenRef = useRef(false);
-  useEffect(() => {
-    isOverlayOpenRef.current =
+  const isOverlayOpen =
       modalVisible ||
       answersModalVisible ||
       editPostModalVisible ||
@@ -315,24 +314,34 @@ const Community: React.FC<CommunityProps> = ({
       deleteAnswerConfirmVisible ||
       !!postDropdownState ||
       !!answerDropdownState;
+  const isOverlayOpenRef = useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current = isOverlayOpen;
   });
 
-  // 🔥 Silent background refresh — asks the parent to silently re-fetch
-  // posts every `refreshIntervalMs`. New posts from other users flow back
-  // in through the `posts` prop above and get merged in. Paused while the
-  // user has any modal/dropdown open, so an incoming refresh never shifts
-  // a list or dropdown anchor out from under an in-progress tap — it just
-  // resumes on the next tick once everything is closed again.
+  // 🔥 Live refresh — the server pushes a "community" signal (post/answer created,
+  // edited, deleted, hidden) and the parent bumps `liveRefreshToken`. We then ask the
+  // parent to silently re-fetch posts; fresh data flows back in through the posts prop.
+  // If a modal/dropdown is open the refresh is held back and runs the moment everything
+  // closes, so nothing shifts under an in-progress tap (and nothing is dropped).
+  const lastLiveTokenRef = useRef(liveRefreshToken);
+  const pendingLiveRefreshRef = useRef(false);
   useEffect(() => {
+    if (liveRefreshToken === lastLiveTokenRef.current) return;
+    lastLiveTokenRef.current = liveRefreshToken;
     if (!onRefresh) return;
+    if (isOverlayOpenRef.current) {
+      pendingLiveRefreshRef.current = true;
+      return;
+    }
+    void onRefresh();
+  }, [liveRefreshToken, onRefresh]);
 
-    const interval = setInterval(() => {
-      if (isOverlayOpenRef.current) return; // paused — user has something open
-      onRefresh();
-    }, refreshIntervalMs);
-
-    return () => clearInterval(interval);
-  }, [onRefresh, refreshIntervalMs]);
+  useEffect(() => {
+    if (isOverlayOpen || !pendingLiveRefreshRef.current) return;
+    pendingLiveRefreshRef.current = false;
+    void onRefresh?.();
+  }, [isOverlayOpen, onRefresh]);
 
   useEffect(() => {
     let isMounted = true;

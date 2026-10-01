@@ -21,6 +21,16 @@ import { createRequire } from "module";
 import multer from "multer";
 import analyticsShared from "./analyticsShared.cjs";
 import { createAvatarThumbs } from "./avatarThumbs.js";
+import {
+  getLiveStreamStats,
+  hasLiveStream,
+  openLiveStream,
+  publishLiveEvent,
+  publishToAll,
+  publishToClass,
+  publishToPeople,
+  setLiveClassIds,
+} from "./liveEvents.js";
 import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster.js";
 
   import officeparser from "officeparser";
@@ -342,13 +352,115 @@ import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster
   const STUDENT_JOINED_CLASSES_CACHE_TTL_MS = 60_000; // 1 min — membership changes more often
   const studentJoinedClassesCache = createShortTTLCache(STUDENT_JOINED_CLASSES_CACHE_TTL_MS);
 
+  // Every module / lesson / syllabus write already calls this, so it is the one
+  // place that tells connected students and teachers "course structure changed".
   function invalidateCourseStructureCache(classId) {
-    if (classId) courseStructureByClassIdCache.delete(String(classId).trim());
+    if (!classId) return;
+    const cid = String(classId).trim();
+    courseStructureByClassIdCache.delete(cid);
+    publishToClass("course-content", cid, { kind: "structure" });
   }
 
+  // Called on join / leave / remove. Also tells that student's open streams that
+  // their class list changed and re-reads which classes their stream belongs to.
   function invalidateStudentJoinedClassesCache(studentId) {
-    if (studentId) studentJoinedClassesCache.delete(String(studentId).trim());
+    if (!studentId) return;
+    const sid = String(studentId).trim();
+    studentJoinedClassesCache.delete(sid);
+    publishLiveEvent("course-content", { userId: sid, role: "student" }, { kind: "membership" });
+    // Their chat list changed too (class chat added / removed).
+    publishLiveEvent("messenger", { userId: sid, role: "student" }, { kind: "conversation" });
+    void refreshLiveClassIds(sid, "student");
   }
+
+  // ============================================================
+  // LIVE EVENTS (SSE) helpers
+  // ============================================================
+  // Which classes does this user belong to right now? Students and teachers
+  // both have classMembers rows; teachers also own classes via assignedTeacherId.
+  async function loadLiveClassIds(userId, role) {
+    const uid = String(userId || "").trim();
+    const ids = new Set();
+    if (!uid) return [];
+    try {
+      const memberSnap = await db
+        .collection("classMembers")
+        .where("userId", "==", uid)
+        .where("status", "==", "active")
+        .get();
+      memberSnap.docs.forEach((d) => {
+        const cid = d.data()?.classId;
+        if (cid) ids.add(String(cid).trim());
+      });
+      if (role === "teacher") {
+        const taughtSnap = await db.collection("classes").where("assignedTeacherId", "==", uid).get();
+        taughtSnap.docs.forEach((d) => ids.add(d.id));
+      }
+    } catch (error) {
+      console.error("loadLiveClassIds error:", error?.message || error);
+    }
+    return [...ids];
+  }
+
+  // Re-read a user's classes and push them onto their open streams (no-op, and
+  // no Firestore reads, when they are not connected).
+  async function refreshLiveClassIds(userId, role) {
+    try {
+      if (!userId || !hasLiveStream(userId, role)) return;
+      setLiveClassIds(userId, role, await loadLiveClassIds(userId, role));
+    } catch (error) {
+      console.error("refreshLiveClassIds error:", error?.message || error);
+    }
+  }
+
+  // For routes that only know a document id (e.g. PUT /update-class-material/:id):
+  // look up its classId and signal that class. One small read, writes are rare.
+  async function signalClassByDoc(topic, collectionName, docId, payload = {}, filter) {
+    try {
+      if (!docId) return;
+      const snap = await db.collection(collectionName).doc(String(docId)).get();
+      const cid = snap.exists ? snap.data()?.classId : null;
+      if (cid) publishToClass(topic, cid, payload, filter);
+    } catch (error) {
+      console.error("signalClassByDoc error:", error?.message || error);
+    }
+  }
+
+  // Tell everyone in a chat that something happened in it (new message, members
+  // changed, renamed...). Chats list their people in `participants` (+ owner), so we
+  // target those people directly. `extraPeople` covers someone who was just removed
+  // and is no longer in the saved list. Never throws; no read when nobody is online.
+  async function signalConversation(conversationId, kind, { data = null, extraPeople = [] } = {}) {
+    try {
+      if (!conversationId || getLiveStreamStats().connections === 0) return;
+      let conv = data;
+      if (!conv) {
+        const snap = await db.collection("messengerConversations").doc(String(conversationId)).get();
+        conv = snap.exists ? snap.data() || {} : null;
+      }
+      if (!conv && !extraPeople.length) return;
+      const people = [
+        ...(Array.isArray(conv?.participants) ? conv.participants : []).map((p) => ({
+          userId: p?.userId,
+          userUid: p?.userUid,
+        })),
+        { userId: conv?.ownerId, userUid: conv?.ownerUid },
+        ...extraPeople,
+      ];
+      publishToPeople("messenger", people, { conversationId: String(conversationId), kind });
+    } catch (error) {
+      console.error("signalConversation error:", error?.message || error);
+    }
+  }
+
+  // The community board is one app-wide feed, so every connected student/teacher is told.
+  function signalCommunity(kind) {
+    publishToAll("community", { kind });
+  }
+
+  // A student's own thread/submission is only signalled to teachers and to that student.
+  const teachersOrStudent = (studentId) => (client) =>
+    client.role !== "student" || !studentId || client.userId === String(studentId).trim();
   // ============================================================
   // END PERFORMANCE / COST OPTIMIZATION LAYER (utilities)
   // ============================================================
@@ -3089,6 +3201,9 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    // Live: tell the recipient's open app(s) to refetch. Never throws.
+    publishLiveEvent("notifications", { userId: normalizedUserId, role: normalizedRole }, { id: ref.id });
 
     return ref.id;
   }
@@ -8047,6 +8162,12 @@ app.post("/create-admin", async (req, res) => {
         });
       }
 
+      // Live: the assigned teacher's open stream now belongs to the new class.
+      if (resolvedAssignedTeacherId) {
+        void refreshLiveClassIds(String(resolvedAssignedTeacherId).trim(), "teacher");
+        publishLiveEvent("messenger", { userId: String(resolvedAssignedTeacherId).trim(), role: "teacher" }, { kind: "conversation" });
+      }
+
       res.json({
         success: true,
         message: "Class created successfully.",
@@ -8317,6 +8438,7 @@ app.post("/create-admin", async (req, res) => {
         }
       }
 
+      publishToClass("messenger", id, { kind: "conversation" });
       res.json({
         success: true,
         message: "Class updated successfully.",
@@ -9431,6 +9553,8 @@ app.post("/create-admin", async (req, res) => {
 
       // Student's class list just changed — their cached joined-classes is stale now.
       invalidateStudentJoinedClassesCache(memberData.userId);
+      publishToClass("course-content", targetClassId, { kind: "members" });
+      publishToClass("messenger", targetClassId, { kind: "conversation" });
 
       // 2. Decrement class memberCount & Clean up Messenger
       if (targetClassId) {
@@ -9555,6 +9679,11 @@ app.post("/create-admin", async (req, res) => {
         });
       }
   
+      // Class list changed: drop the cache, refresh the stream membership, tell the class.
+      invalidateStudentJoinedClassesCache(studentId);
+      publishToClass("course-content", classId, { kind: "members" });
+      publishToClass("messenger", classId, { kind: "conversation" });
+      
       // ── 2. Decrement class memberCount ───────────────────────────────────────
       const classRef = db.collection("classes").doc(classId);
       const classDoc = await classRef.get();
@@ -9706,6 +9835,8 @@ app.post("/create-admin", async (req, res) => {
 
       // Student's class list just changed — their cached joined-classes is stale now.
       invalidateStudentJoinedClassesCache(student.studentId || normalizedStudentId);
+      publishToClass("course-content", classId, { kind: "members" });
+      publishToClass("messenger", classId, { kind: "conversation" });
 
       // Join the MAIN class conversation (type "class") — never a discussion room.
       const mainConversationDoc = await findMainClassConversationDoc(classId);
@@ -10026,6 +10157,7 @@ app.post("/create-admin", async (req, res) => {
         }
       }
 
+      publishToClass("assignment-comments", classId, { assignmentId, studentId }, teachersOrStudent(studentId));
       return res.json({
         success: true,
         message: "Comment added successfully.",
@@ -10087,6 +10219,12 @@ app.post("/create-admin", async (req, res) => {
       };
 
       await commentRef.update(updatedFields);
+      publishToClass(
+        "assignment-comments",
+        commentData.classId,
+        { assignmentId: commentData.assignmentId, studentId: commentData.studentId },
+        teachersOrStudent(commentData.studentId)
+      );
       
       const updatedSnap = await commentRef.get();
       const updatedData = updatedSnap.data() || {};
@@ -10140,6 +10278,12 @@ app.post("/create-admin", async (req, res) => {
       }
 
       await commentRef.delete();
+      publishToClass(
+        "assignment-comments",
+        commentData.classId,
+        { assignmentId: commentData.assignmentId, studentId: commentData.studentId },
+        teachersOrStudent(commentData.studentId)
+      );
       
       res.json({ 
         success: true, 
@@ -10646,6 +10790,8 @@ app.get(
 
       // Student's class list just changed — their cached joined-classes is stale now.
       invalidateStudentJoinedClassesCache(memberData?.userId);
+      publishToClass("course-content", memberData?.classId, { kind: "members" });
+      publishToClass("messenger", memberData?.classId, { kind: "conversation" });
 
       if (memberData?.classId) {
         await db.collection("classes").doc(memberData.classId).update({
@@ -10899,6 +11045,7 @@ app.get(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      void signalConversation(conversationId, "message", { data: conversationSnap.data() });
       res.json({
         success: true,
         message: "Message sent successfully.",
@@ -11090,6 +11237,7 @@ app.get(
         createdByRole: "system",
       });
 
+      void signalConversation(conversationRef.id, "conversation");
       res.json({
         success: true,
         data: { id: conversationRef.id },
@@ -11410,6 +11558,7 @@ app.get(
         return { added: toAdd, alreadyMembers, notInClass };
       });
 
+      void signalConversation(conversationId, "conversation");
       return res.json({
         success: true,
         data: {
@@ -11513,6 +11662,7 @@ app.get(
         return { userId: target.userId || targetUserId, name: targetName };
       });
 
+      void signalConversation(conversationId, "conversation", { extraPeople: [{ userId: removed?.userId || targetUserId }] });
       return res.json({ success: true, data: removed });
     } catch (error) {
       if (!error.status) console.error("Room remove member error:", error); // 4xx = expected rejection, not worth a stack trace
@@ -11587,6 +11737,7 @@ app.get(
         });
       });
 
+      void signalConversation(conversationId, "conversation", { extraPeople: [{ userId: caller?.userId, userUid: caller?.authUid }] });
       return res.json({ success: true });
     } catch (error) {
       if (!error.status) console.error("Room leave error:", error); // 4xx = expected rejection, not worth a stack trace
@@ -11835,6 +11986,7 @@ app.get(
         actorName: postedByName || classData.instructorName || "Teacher",
       });
 
+      publishToClass("course-content", classId, { kind: "material" });
       res.json({
         success: true,
         message: "Class material created successfully.",
@@ -11870,6 +12022,7 @@ app.get(
         
         updatedAt: FieldValue.serverTimestamp(),
       });
+      void signalClassByDoc("course-content", "classMaterials", id, { kind: "material" });
       res.json({
         success: true,
         message: "Class material updated successfully.",
@@ -11896,6 +12049,7 @@ app.get(
       const materialData = materialSnap.data();
       await deleteStorageFileIfExists(materialData?.storagePath);
       await materialRef.delete();
+      publishToClass("course-content", materialData?.classId, { kind: "material" });
 
       res.json({
         success: true,
@@ -12055,6 +12209,7 @@ app.get(
         actorName: postedByName || classData.instructorName || "Teacher",
       });
 
+      publishToClass("course-content", classId, { kind: "assignment" });
       res.json({
         success: true,
         message: "Class assignment created successfully.",
@@ -12172,6 +12327,7 @@ app.get(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      void signalClassByDoc("course-content", "classAssignments", id, { kind: "assignment" });
       res.json({
         success: true,
         message: "Class assignment updated successfully.",
@@ -12219,6 +12375,8 @@ app.get(
       const batch = db.batch();
       submissionsSnapshot.forEach((doc) => batch.delete(doc.ref));
       await batch.commit();
+      publishToClass("course-content", assignmentData?.classId, { kind: "assignment" });
+      publishToClass("submissions", assignmentData?.classId, { assignmentId: id });
 
       res.json({
         success: true,
@@ -12324,6 +12482,7 @@ app.get(
       });
     }
 
+    publishToClass("submissions", classId, { assignmentId, studentId }, teachersOrStudent(studentId));
     return res.json({ success: true });
   } catch (error) {
     console.error("Remove submission item error:", error);
@@ -12586,6 +12745,7 @@ app.get(
         });
       }
 
+      publishToClass("submissions", classId, { assignmentId, studentId }, teachersOrStudent(studentId));
       res.json({
         success: true,
         message: createdNew
@@ -12625,6 +12785,12 @@ app.get(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      publishToClass(
+        "submissions",
+        submissionData.classId,
+        { assignmentId: submissionData.assignmentId, studentId: submissionData.studentId },
+        teachersOrStudent(submissionData.studentId)
+      );
       const assignmentSnap = await db.collection("classAssignments").doc(submissionData.assignmentId).get();
       const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
       const classSnap = await db.collection("classes").doc(submissionData.classId).get();
@@ -12809,6 +12975,7 @@ app.get(
         )
       );
 
+      classIds.forEach((cid) => publishToClass("announcements", cid, { kind: "announcement" }));
       res.json({
         success: true,
         id: ref.id,
@@ -12880,6 +13047,10 @@ app.get(
       }
 
       await announcementRef.update(updates);
+      new Set([
+        ...(Array.isArray(announcementSnap.data()?.classIds) ? announcementSnap.data().classIds : []),
+        ...(Array.isArray(updates.classIds) ? updates.classIds : []),
+      ]).forEach((cid) => publishToClass("announcements", cid, { kind: "announcement" }));
 
       res.json({
         success: true,
@@ -12897,7 +13068,11 @@ app.get(
     try {
       const { id } = req.params;
 
+      const announcementToDelete = await db.collection("announcements").doc(id).get();
       await db.collection("announcements").doc(id).delete();
+      (Array.isArray(announcementToDelete.data()?.classIds) ? announcementToDelete.data().classIds : []).forEach(
+        (cid) => publishToClass("announcements", cid, { kind: "announcement" })
+      );
 
       res.json({
         success: true,
@@ -12983,6 +13158,7 @@ app.get(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      publishToClass("submissions", classId, { assignmentId, studentId }, teachersOrStudent(studentId));
       return res.json({
         success: true,
         message: "Assignment unsubmitted successfully.",
@@ -12995,6 +13171,43 @@ app.get(
       });
     }
   });
+  // ============================================================
+  // LIVE EVENTS STREAM (Server-Sent Events)
+  // One long-lived GET per signed-in user. Signals carry no real data; the
+  // client re-fetches through the endpoints it already uses.
+  // ============================================================
+  app.get("/events/stream", requireAuth, async (req, res) => {
+    try {
+      const requestedId = normalizeOptionalText(req.query.userId);
+      const role = normalizeOptionalText(req.query.role);
+      if (!requestedId || !role) {
+        return res.status(400).json({ error: "userId and role are required." });
+      }
+
+      const profile = await findUserProfileByAuthUid(req.user?.uid);
+      if (!profile) return res.status(403).json({ error: "User profile not found." });
+      if (profile.role !== role) {
+        return res.status(403).json({ error: "Role does not match your account." });
+      }
+
+      const canonicalId = String(
+        profile.data?.studentId || profile.data?.teacherId || profile.data?.adminId || profile.id
+      ).trim();
+      const ownIds = [profile.id, profile.data?.studentId, profile.data?.teacherId, profile.data?.adminId, req.user?.uid]
+        .filter(Boolean)
+        .map((v) => String(v).trim());
+      if (!ownIds.includes(requestedId)) {
+        return res.status(403).json({ error: "You can only subscribe to your own events." });
+      }
+
+      const classIds = await loadLiveClassIds(canonicalId, role);
+      return openLiveStream(req, res, { userId: canonicalId, role, classIds, authUid: req.user?.uid });
+    } catch (error) {
+      console.error("Live stream error:", error);
+      if (!res.headersSent) return res.status(500).json({ error: "Failed to open live stream." });
+    }
+  });
+
   app.get("/notifications", async (req, res) => {
     try {
       const userId = normalizeOptionalText(req.query.userId);
@@ -13012,6 +13225,7 @@ app.get(
         .where("userId", "==", userId)
         .where("role", "==", role)
         .orderBy("createdAt", "desc")
+        .limit(50)
         .get();
 
       let notifications = snapshot.docs.map(buildNotificationResponse);
@@ -16048,6 +16262,7 @@ app.get(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: "Post updated successfully.",
@@ -17922,6 +18137,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const createdDoc = await postRef.get();
       const createdData = createdDoc.data() || {};
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: "Community post created successfully.",
@@ -18016,6 +18232,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         });
       }
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: "Answer posted successfully.",
@@ -18059,6 +18276,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       await batch.commit();
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: "Post deleted successfully.",
@@ -18098,6 +18316,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: "Answer updated successfully.",
@@ -18169,6 +18388,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
                   hiddenAt: FieldValue.delete(),
                 }
           );
+          // Hiding on the post owner's side changes what EVERYONE sees, so tell the board.
+          // (The per-viewer "hide for me" branch below only affects the caller.)
+          signalCommunity("post");
         } else {
           const viewerKey = `${profile.role}:${profile.id}`;
           await answerRef.update({
@@ -18234,6 +18456,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           : FieldValue.arrayRemove(viewerKey),
       });
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: hidden ? "Post hidden." : "Post unhidden.",
@@ -18266,6 +18489,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      signalCommunity("post");
       return res.json({
         success: true,
         message: "Answer deleted successfully.",
@@ -19026,6 +19250,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+      void signalConversation(conversationId, "message");
       return res.json({
         success: true,
         message: "File sent successfully.",
@@ -19285,6 +19510,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         participants: updatedParticipants,
       });
 
+      // Only the reader's own devices need this (unread badge / list on another device).
+      publishToPeople("messenger", [{ userId, userUid }], { conversationId, kind: "read" });
       return res.json({
         success: true,
       });
@@ -19525,6 +19752,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      void signalConversation(conversationId, "conversation");
       return res.json({
         success: true,
         message: "Conversation picture updated successfully.",
