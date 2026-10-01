@@ -1578,10 +1578,15 @@ function SasDocMenuButton({
   docUrl,
   downloadUrl,
   title,
+  lessonId,
+  draft,
 }: {
   docUrl: string | null;
   downloadUrl: string | null;
   title?: string | null;
+  // Saved lesson id, or an unsaved draft — used to ask the server for a real PDF.
+  lessonId?: string;
+  draft?: { classId?: string; moduleId?: string; lesson: any };
 }) {
   const { width: winW } = useWindowDimensions();
   const btnRef = useRef<any>(null);
@@ -1615,27 +1620,33 @@ function SasDocMenuButton({
 
   const printToPdf = async () => {
     setOpen(false);
-    if (!docUrl || preparingPrint) return;
+    if (preparingPrint || (!lessonId && !draft)) return;
 
-    // Mobile: open the Word viewer (its own Print / PDF tools).
-    if (Platform.OS !== 'web') {
-      try {
-        await Linking.openURL(getMicrosoftOfficeFullViewerUrl(docUrl));
-      } catch (err) {
-        console.warn('Could not open the Word viewer:', err);
-      }
-      return;
-    }
-
-    // Web: browser print dialog.
+    // Asks the server for a real PDF (DOCX → PDF via LibreOffice) and saves it.
     setPreparingPrint(true);
     try {
-      await printDocxInBrowser(docUrl, title, () => setPreparingPrint(false));
+      const response = lessonId
+        ? await fetch(`${API_BASE_URL}/course-lessons/${lessonId}/pdf`, {
+            method: 'POST',
+            credentials: 'include',
+          })
+        : await fetch(`${API_BASE_URL}/course-lessons/pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(draft),
+          });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.downloadUrl) throw new Error(data?.error || 'PDF export failed');
+      await openDownloadUrl(data.downloadUrl);
     } catch (err) {
-      console.warn('Browser print failed, opening the Word viewer instead:', err);
-      try {
-        (window as any).open(getMicrosoftOfficeFullViewerUrl(docUrl), '_blank', 'noopener');
-      } catch {}
+      console.warn('PDF export failed, falling back to the Word viewer:', err);
+      if (docUrl) {
+        try {
+          if (Platform.OS === 'web') (window as any).open(getMicrosoftOfficeFullViewerUrl(docUrl), '_blank', 'noopener');
+          else await Linking.openURL(getMicrosoftOfficeFullViewerUrl(docUrl));
+        } catch {}
+      }
     } finally {
       setPreparingPrint(false);
     }
@@ -1670,7 +1681,7 @@ function SasDocMenuButton({
               <View>
                 <Text style={styles.sasDocMenuText}>Print to PDF</Text>
                 <Text style={styles.sasDocMenuHint}>
-                  {Platform.OS === 'web' ? 'Opens the print dialog' : 'Opens in the Word viewer'}
+                  Saves a PDF copy
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1683,7 +1694,7 @@ function SasDocMenuButton({
         <View style={styles.printPrepBackdrop}>
           <View style={styles.printPrepCard}>
             <ActivityIndicator size="small" color="#8B0000" />
-            <Text style={styles.printPrepText}>Preparing print preview…</Text>
+            <Text style={styles.printPrepText}>Creating PDF…</Text>
           </View>
         </View>
       </Modal>
@@ -8963,7 +8974,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
             {selectedLesson ? (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {selectedLesson.type !== 'manual_file' && sasPreviewFailedFor !== selectedLesson.id ? (
-                  <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} title={selectedLesson.title} />
+                  <SasDocMenuButton docUrl={sasDocLinks.url} downloadUrl={sasDocLinks.downloadUrl} title={selectedLesson.title} lessonId={selectedLesson.id} />
                 ) : null}
                 <TouchableOpacity
                   onPress={() => {
@@ -10246,6 +10257,15 @@ DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
               docUrl={sasDocLinks.url}
               downloadUrl={sasDocLinks.downloadUrl}
               title={draftPreviewIndex !== null ? pendingGeneratedLessons[draftPreviewIndex]?.title : undefined}
+              draft={
+                draftPreviewIndex !== null && pendingGeneratedLessons[draftPreviewIndex]
+                  ? {
+                      classId: course?.id,
+                      moduleId: targetModuleForGen?.id,
+                      lesson: pendingGeneratedLessons[draftPreviewIndex],
+                    }
+                  : undefined
+              }
             />
           </View>
           {draftPreviewIndex !== null && pendingGeneratedLessons[draftPreviewIndex] ? (
