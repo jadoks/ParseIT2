@@ -1601,7 +1601,7 @@ const handleDownloadPreview = async () => {
             placeholderTextColor="#9CA3AF"
             accessibilityLabel="Score input"
           />
-          <Text style={styles.maxScoreText}>/ {totalScoreValue}</Text>
+          <Text style={styles.maxScoreText} numberOfLines={1}>/ {totalScoreValue}</Text>
         </View>
 
         {/* ✅ NEW: Inline error message shown as soon as the score exceeds the max */}
@@ -2514,6 +2514,7 @@ const styles = StyleSheet.create({
   scoreRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   scoreInput: { fontFamily: FONT_BODY,
     flex: 1,
+    minWidth: 0,
     borderWidth: 1,
     borderColor: "#D1D5DB",
     borderRadius: 8,
@@ -2538,7 +2539,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   inputDisabled: { backgroundColor: "#F3F4F6", color: "#9CA3AF", borderColor: "#E5E7EB" },
-  maxScoreText: { fontFamily: FONT_BODY, color: "#6B7280", fontWeight: "700", fontSize: 16 },
+  maxScoreText: { fontFamily: FONT_BODY, color: "#6B7280", fontWeight: "700", fontSize: 16, flexShrink: 0 },
   saveScoreButton: {
     marginTop: 14,
     backgroundColor: "#10B981",
