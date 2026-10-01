@@ -282,7 +282,6 @@ const TeacherSubmissionsSection = ({
   const isLargeScreen = width >= 1200;
   const pagePadding = isSmallPhone ? 12 : isMobile ? 14 : isTablet ? 20 : 24;
   const mobileTopSpace = isMobile ? insets.top : 0;
-  const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
 
   // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
   const [toast, setToast] = useState<{
@@ -780,7 +779,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
               <View style={styles.fileIconContainer}>
                 <MaterialCommunityIcons
                   name={isLink ? "link-variant" : "file-document-outline"}
-                  size={16}
+                  size={22}
                   color={isLink ? "#1a73e8" : "#8B0000"}
                 />
               </View>
@@ -797,7 +796,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
                   {isLink ? "Link submission" : "Submitted file"} • {item.submittedAt || "Just now"}
                 </Text>
               </View>
-              <MaterialCommunityIcons name="eye-outline" size={16} color="#9CA3AF" />
+              <MaterialCommunityIcons name="eye-outline" size={16} color="#9CA3AF" style={{ alignSelf: "center", marginRight: 12 }} />
             </TouchableOpacity>
           );
         })}
@@ -1510,7 +1509,7 @@ const handleDownloadPreview = async () => {
         style={[
           styles.studentCard,
           fullWidth ? styles.studentCardFull : styles.studentCardGrid,
-          isSelected && isTablet && styles.studentCardSelected,
+          isSelected && styles.studentCardSelected,
         ]}
         accessibilityRole="button"
         accessibilityLabel={`View ${student.name}'s submission`}
@@ -1686,9 +1685,12 @@ const handleDownloadPreview = async () => {
                         ]}
                       >
                         <View style={styles.bubbleHeaderRow}>
-                          <Text style={styles.bubbleAuthor}>
-                            {comment.authorName || (comment.isInstructor ? "Instructor" : "Student")}
-                          </Text>
+                          <View style={styles.bubbleMetaWrap}>
+                            <Text style={styles.bubbleAuthor}>
+                              {comment.authorName || (comment.isInstructor ? "Instructor" : "Student")}
+                            </Text>
+                            <Text style={styles.bubbleTime}>{comment.timestamp}</Text>
+                          </View>
                           {canManage && !isEditing && (
                             <View style={styles.bubbleActions}>
                               <TouchableOpacity
@@ -1736,7 +1738,6 @@ const handleDownloadPreview = async () => {
                           <Text style={styles.bubbleContent}>{comment.content}</Text>
                         )}
 
-                        <Text style={styles.bubbleTime}>{comment.timestamp}</Text>
                       </View>
                     </View>
                   );
@@ -1780,24 +1781,139 @@ const handleDownloadPreview = async () => {
     );
   };
 
+  // Classroom-style detail: header on top, the student's work on the left and a
+  // side panel (grade + comments) on the right.
   const renderSelectedStudentDetail = (student: Member) => (
     <View style={styles.detailPane}>
       <View style={styles.detailHeaderRow}>
         <View style={styles.avatarCircleLarge}>
-          <MaterialCommunityIcons name="account" size={28} color="#8B0000" />
+          <MaterialCommunityIcons name="account" size={26} color="#8B0000" />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.detailName}>{student.name}</Text>
           <Text style={styles.detailHandle}>{student.handle} · {student.id}</Text>
         </View>
         {renderStatusChip(getStudentSubmissionStatus(student.id))}
       </View>
-      <View style={styles.detailMetaCard}>{renderSubmissionMeta(student)}</View>
 
-      <View style={isTablet ? styles.tabletDetailRow : undefined}>
-        <View style={isTablet ? styles.gradePanelContainer : undefined}>{renderGradePanel(student)}</View>
-        <View style={isTablet ? styles.commentsPanelContainer : { marginTop: 20 }}>{renderComments(student, false)}</View>
+      <View style={styles.detailBodyRow}>
+        <View style={styles.detailWorkCol}>{renderSubmissionMeta(student)}</View>
+        <View style={styles.detailSideCol}>
+          {renderGradePanel(student)}
+          {renderComments(student, false)}
+        </View>
       </View>
+    </View>
+  );
+
+  // Every file the teacher attached to the assignment. `files` is the source of
+  // truth; the legacy single fileName/fileUri fields are only a fallback for
+  // older assignments that predate the multi-file array.
+  const assignmentAttachments: any[] = currentAssignment?.files?.length
+    ? currentAssignment.files
+    : currentAssignment?.fileName || currentAssignment?.fileUri
+      ? [
+          {
+            id: currentAssignment.id,
+            fileName: currentAssignment.fileName,
+            fileUrl: currentAssignment.fileUri,
+            fileType: currentAssignment.fileType,
+            storagePath: (currentAssignment as any)?.storagePath || null,
+          },
+        ]
+      : [];
+
+  // Counts, progress bar and status legend. On large screens this sits at the
+  // top of the sidebar; on phones/tablets it is a card above the list.
+  const renderStatsBlock = (inSidebar: boolean) => (
+    <View style={inSidebar ? styles.statsBlockSidebar : styles.statsCard}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={[styles.summaryCardValue, isSmallPhone && styles.summaryCardValueSmall]}>{completedCount}</Text>
+          <Text style={styles.summaryCardLabel}>Completed</Text>
+        </View>
+        <View style={[styles.summaryCard, styles.summaryCardDivided]}>
+          <Text style={[styles.summaryCardValue, isSmallPhone && styles.summaryCardValueSmall]}>{Math.max(pendingCount, 0)}</Text>
+          <Text style={styles.summaryCardLabel}>Pending</Text>
+        </View>
+        <View style={[styles.summaryCard, styles.summaryCardDivided]}>
+          <Text style={[styles.summaryCardValue, isSmallPhone && styles.summaryCardValueSmall]}>{lateCount}</Text>
+          <Text style={styles.summaryCardLabel}>Late</Text>
+        </View>
+        <View style={[styles.summaryCard, styles.summaryCardDivided]}>
+          <Text style={[styles.summaryCardValue, isSmallPhone && styles.summaryCardValueSmall]}>
+            {averageScore}/{totalScoreValue}
+          </Text>
+          <Text style={styles.summaryCardLabel}>Avg. Score</Text>
+        </View>
+      </View>
+
+      <View style={styles.progressBarTrack}>
+        <View style={[styles.progressBarFill, { width: `${completionPercent}%` }]} />
+      </View>
+      <Text style={styles.progressPercentLabel}>{completionPercent}% complete</Text>
+
+      <View style={styles.chipsRow}>
+        <View style={[styles.smallChip, { backgroundColor: "#D1FAE5" }]}>
+          <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#065F46" />
+          <Text style={[styles.smallChipText, { color: "#065F46" }]}>Submitted</Text>
+        </View>
+        <View style={[styles.smallChip, { backgroundColor: "#F3F4F6" }]}>
+          <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#4B5563" />
+          <Text style={[styles.smallChipText, { color: "#4B5563" }]}>Pending</Text>
+        </View>
+        <View style={[styles.smallChip, { backgroundColor: "#FEE2E2" }]}>
+          <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#991B1B" />
+          <Text style={[styles.smallChipText, { color: "#991B1B" }]}>Late</Text>
+        </View>
+        <View style={[styles.smallChip, { backgroundColor: "#DBEAFE" }]}>
+          <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#1E40AF" />
+          <Text style={[styles.smallChipText, { color: "#1E40AF" }]}>Graded</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderSearchFilter = (inSidebar: boolean) => (
+    <View style={inSidebar ? styles.searchFilterWrapSidebar : styles.searchFilterWrap}>
+      <View style={styles.searchBar}>
+        <MaterialCommunityIcons name="magnify" size={18} color="#9CA3AF" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search student..."
+          placeholderTextColor="#9CA3AF"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          accessibilityLabel="Search students"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery("")} accessibilityLabel="Clear search">
+            <MaterialCommunityIcons name="close-circle" size={16} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={true}
+        contentContainerStyle={styles.filterChipsRow}
+      >
+        {filterChips.map((chip) => {
+          const active = activeFilter === chip.key;
+          return (
+            <TouchableOpacity
+              key={chip.key}
+              style={[styles.filterChip, active && styles.filterChipActive]}
+              onPress={() => setActiveFilter(chip.key)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                {chip.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 
@@ -1821,207 +1937,99 @@ const handleDownloadPreview = async () => {
           <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#8B0000"]} tintColor="#8B0000" />
         }
       >
-      {/* ── Header ─ */}
-      <View
-        style={[
-          styles.headerBar,
-          {
-            paddingHorizontal: pagePadding,
-            paddingTop: isMobile ? 18 : 24,
-            paddingBottom: isMobile ? 18 : 24,
-          },
-        ]}
-      >
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity
-            onPress={onBack}
-            style={styles.backBtn}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
+      {/* ── Top app bar ── */}
+      <View style={[styles.headerBar, { paddingHorizontal: pagePadding }]}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.backBtn}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <MaterialCommunityIcons name="chevron-left" size={isMobile ? 26 : 28} color="#111827" />
+        </TouchableOpacity>
+
+        <View style={styles.headerTitleWrap}>
+          <Text
+            style={[styles.headerTitle, { fontSize: isSmallPhone ? 18 : isMobile ? 20 : 22 }]}
           >
-            <MaterialCommunityIcons name="chevron-left" size={isMobile ? 26 : 28} color="#111827" />
-          </TouchableOpacity>
-
-          <View style={styles.headerTitleWrap}>
-            <Text
-              style={[styles.headerTitle, { fontSize: isSmallPhone ? 18 : isMobile ? 20 : 24 }]}
-            >
-              {currentAssignment?.header || "Assignment"}
-            </Text>
-            <Text style={styles.headerSubtitle}>
-              {completedCount} / {studentMembers.length} Submitted
-            </Text>
-          </View>
-
-          {!isMobile && (
-            <TouchableOpacity
-              style={styles.updateButtonOutlined}
-              onPress={onOpenUpdate}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Update assignment"
-            >
-              <MaterialCommunityIcons name="pencil-outline" size={16} color="#8B0000" />
-              <Text style={styles.updateButtonOutlinedText}>Update Assignment</Text>
-            </TouchableOpacity>
-          )}
+            {currentAssignment?.header || "Assignment"}
+          </Text>
+          <Text style={styles.headerSubtitle}>
+            {completedCount} / {studentMembers.length} Submitted
+          </Text>
         </View>
 
-        {/* ✅ UPDATED: Assignment attachment(s) — every file the teacher
-            uploaded when creating/updating the assignment, not just the
-            legacy first one. `files` is the source of truth (matches
-            Assignment.files in TeacherCourseDetail2.tsx); we only fall back
-            to the legacy single fileName/fileUri fields for older
-            assignments that predate the multi-file `files` array. Lets the
-            teacher preview any of them right from the submissions screen,
-            and reminds them they can be swapped out via "Update
-            Assignment". */}
-        {(currentAssignment?.files?.length
-          ? currentAssignment.files
-          : currentAssignment?.fileName || currentAssignment?.fileUri
-            ? [
-                {
-                  id: currentAssignment.id,
-                  fileName: currentAssignment.fileName,
-                  fileUrl: currentAssignment.fileUri,
-                  fileType: currentAssignment.fileType,
-                  storagePath: (currentAssignment as any)?.storagePath || null,
-                },
-              ]
-            : []
-        ).map((file: any, index: number) => (
+        {!isMobile && (
           <TouchableOpacity
-            key={file.id || file.storagePath || `${currentAssignment?.id}-attachment-${index}`}
-            style={styles.assignmentAttachmentCard}
-            onPress={() =>
-              handlePreviewAssignmentAttachment({
-                id: file.id,
-                fileName: file.fileName,
-                fileUrl: file.fileUrl,
-                fileType: file.fileType,
-                storagePath: file.storagePath,
-              })
-            }
+            style={styles.updateButtonOutlined}
+            onPress={onOpenUpdate}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel={`Preview assignment attachment ${file.fileName}`}
+            accessibilityLabel="Update assignment"
           >
-            <View style={styles.assignmentAttachmentIconWrap}>
-              <MaterialCommunityIcons name="paperclip" size={16} color="#8B0000" />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.assignmentAttachmentLabel}>
-                {currentAssignment && (currentAssignment.files?.length || 0) > 1
-                  ? `Assignment Attachment ${index + 1}`
-                  : 'Assignment Attachment'}
-              </Text>
-              <Text style={styles.assignmentAttachmentName}>
-                {file.fileName}
-              </Text>
-            </View>
-            <View style={styles.assignmentAttachmentPreviewBtn}>
-              <MaterialCommunityIcons name="eye-outline" size={14} color="#8B0000" />
-              <Text style={styles.assignmentAttachmentPreviewText}>Preview</Text>
-            </View>
+            <MaterialCommunityIcons name="pencil-outline" size={16} color="#8B0000" />
+            <Text style={styles.updateButtonOutlinedText}>Update Assignment</Text>
           </TouchableOpacity>
-        ))}
-
-        <View style={styles.progressBarTrack}>
-          <View style={[styles.progressBarFill, { width: `${completionPercent}%` }]} />
-        </View>
-        <Text style={styles.progressPercentLabel}>{completionPercent}% complete</Text>
-
-        <View style={styles.chipsRow}>
-          <View style={[styles.smallChip, { backgroundColor: "#D1FAE5" }]}>
-            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#065F46" />
-            <Text style={[styles.smallChipText, { color: "#065F46" }]}>Submitted</Text>
-          </View>
-          <View style={[styles.smallChip, { backgroundColor: "#F3F4F6" }]}>
-            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#4B5563" />
-            <Text style={[styles.smallChipText, { color: "#4B5563" }]}>Pending</Text>
-          </View>
-          <View style={[styles.smallChip, { backgroundColor: "#FEE2E2" }]}>
-            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#991B1B" />
-            <Text style={[styles.smallChipText, { color: "#991B1B" }]}>Late</Text>
-          </View>
-          <View style={[styles.smallChip, { backgroundColor: "#DBEAFE" }]}>
-            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#1E40AF" />
-            <Text style={[styles.smallChipText, { color: "#1E40AF" }]}>Graded</Text>
-          </View>
-        </View>
+        )}
       </View>
 
-      {/* ── Progress Summary Dashboard ── */}
-      <View style={[styles.summaryRow, { paddingHorizontal: pagePadding }]}>
-        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
-          <Text style={styles.summaryCardValue}>{completedCount}</Text>
-          <Text style={styles.summaryCardLabel}>Completed</Text>
-        </View>
-        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
-          <Text style={styles.summaryCardValue}>{Math.max(pendingCount, 0)}</Text>
-          <Text style={styles.summaryCardLabel}>Pending</Text>
-        </View>
-        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
-          <Text style={styles.summaryCardValue}>{lateCount}</Text>
-          <Text style={styles.summaryCardLabel}>Late</Text>
-        </View>
-        <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
-          <Text style={styles.summaryCardValue}>
-            {averageScore}/{totalScoreValue}
-          </Text>
-          <Text style={styles.summaryCardLabel}>Avg. Score</Text>
-        </View>
-      </View>
-
-      {/* ── Search + Filters ── */}
-      <View style={[styles.searchFilterWrap, { paddingHorizontal: pagePadding }]}>
-        <View style={styles.searchBar}>
-          <MaterialCommunityIcons name="magnify" size={18} color="#9CA3AF" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search student..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            accessibilityLabel="Search students"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")} accessibilityLabel="Clear search">
-              <MaterialCommunityIcons name="close-circle" size={16} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.filterChipsRow}
-        >
-          {filterChips.map((chip) => {
-            const active = activeFilter === chip.key;
-            return (
+      {/* ── Assignment attachments (every file the teacher uploaded; tap to preview) ── */}
+      {assignmentAttachments.length > 0 && (
+        <View style={[styles.attachmentsBand, { paddingHorizontal: pagePadding }]}>
+          <View style={styles.attachmentsGrid}>
+            {assignmentAttachments.map((file: any, index: number) => (
               <TouchableOpacity
-                key={chip.key}
-                style={[styles.filterChip, active && styles.filterChipActive]}
-                onPress={() => setActiveFilter(chip.key)}
+                key={file.id || file.storagePath || `${currentAssignment?.id}-attachment-${index}`}
+                style={[
+                  styles.assignmentAttachmentCard,
+                  { flexBasis: isMobile ? "100%" : 300 },
+                  !isMobile && { maxWidth: 460 },
+                ]}
+                onPress={() =>
+                  handlePreviewAssignmentAttachment({
+                    id: file.id,
+                    fileName: file.fileName,
+                    fileUrl: file.fileUrl,
+                    fileType: file.fileType,
+                    storagePath: file.storagePath,
+                  })
+                }
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`Preview assignment attachment ${file.fileName}`}
               >
-                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                  {chip.label}
-                </Text>
+                <View style={styles.assignmentAttachmentIconWrap}>
+                  <MaterialCommunityIcons name="paperclip" size={20} color="#8B0000" />
+                </View>
+                <View style={styles.assignmentAttachmentBody}>
+                  <Text style={styles.assignmentAttachmentName} numberOfLines={2}>
+                    {file.fileName}
+                  </Text>
+                  <Text style={styles.assignmentAttachmentLabel}>
+                    {currentAssignment && (currentAssignment.files?.length || 0) > 1
+                      ? `Assignment Attachment ${index + 1}`
+                      : 'Assignment Attachment'}
+                  </Text>
+                </View>
+                <View style={styles.assignmentAttachmentPreviewBtn}>
+                  <MaterialCommunityIcons name="eye-outline" size={14} color="#8B0000" />
+                  <Text style={styles.assignmentAttachmentPreviewText}>Preview</Text>
+                </View>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+            ))}
+          </View>
+        </View>
+      )}
 
-      {/* ── Main Content ── */}
+      {/* ── Student work ── */}
       {isLargeScreen ? (
-        <View style={[styles.masterDetailRow, { paddingHorizontal: pagePadding }]}>
-          <View style={styles.masterList}>
+        <View style={[styles.workspaceRow, { paddingHorizontal: pagePadding }]}>
+          <View style={styles.sidebar}>
+            {renderStatsBlock(true)}
+            {renderSearchFilter(true)}
             <Text style={styles.masterListTitle}>Student List</Text>
-            <View>
+            <View style={{ paddingBottom: 8 }}>
               {visibleStudents.map((student) => renderStudentListItem(student, "list"))}
               {visibleStudents.length === 0 && (
                 <Text style={styles.emptyText}>No students match your search.</Text>
@@ -2038,52 +2046,51 @@ const handleDownloadPreview = async () => {
           </View>
         </View>
       ) : (
-        <View
-          style={[
-            styles.scrollContent,
-            isTablet && styles.scrollContentGrid,
-            { paddingHorizontal: pagePadding },
-          ]}
-        >
-          {visibleStudents.map((student) => {
-            const isExpandedOnMobile = isMobile && selectedStudentId === student.id;
-            const isExpandedOnTablet = isTablet && selectedStudentId === student.id;
+        <View style={{ paddingHorizontal: pagePadding, paddingTop: 16 }}>
+          {renderStatsBlock(false)}
+          {renderSearchFilter(false)}
 
-            if (isTablet) {
-              return (
-                <View key={student.id} style={{ width: isExpandedOnTablet ? "100%" : cardWidth }}>
-                  {renderStudentListItem(student, "grid")}
-                  {isExpandedOnTablet && (
-                    <View style={styles.tabletExpandedDetail}>
-                      <View style={styles.tabletDetailRow}>
-                        <View style={{ flex: 1 }}>{renderGradePanel(student)}</View>
-                        <View style={{ flex: 1 }}>{renderComments(student, false)}</View>
-                      </View>
+          {visibleStudents.length > 0 ? (
+            <View style={styles.listPanel}>
+              {visibleStudents.map((student, index) => {
+                const isExpandedOnMobile = isMobile && selectedStudentId === student.id;
+                const isExpandedOnTablet = isTablet && selectedStudentId === student.id;
+                const rowWrapStyle = index < visibleStudents.length - 1 ? styles.rowDivider : undefined;
+
+                if (isTablet) {
+                  return (
+                    <View key={student.id} style={[{ width: "100%" }, rowWrapStyle]}>
+                      {renderStudentListItem(student, "grid")}
+                      {isExpandedOnTablet && (
+                        <View style={styles.tabletExpandedDetail}>
+                          <View style={styles.tabletDetailRow}>
+                            <View style={{ flex: 1 }}>{renderGradePanel(student)}</View>
+                            <View style={{ flex: 1 }}>{renderComments(student, false)}</View>
+                          </View>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
-              );
-            }
+                  );
+                }
 
-            return (
-              <View key={student.id} style={{ width: "100%" }}>
-                {renderStudentListItem(student, "card")}
-                {isExpandedOnMobile && (
-                  <View style={styles.mobileExpandedDetail}>
-                    {renderGradePanel(student)}
-                    {renderComments(student, true)}
+                return (
+                  <View key={student.id} style={[{ width: "100%" }, rowWrapStyle]}>
+                    {renderStudentListItem(student, "card")}
+                    {isExpandedOnMobile && (
+                      <View style={styles.mobileExpandedDetail}>
+                        {renderGradePanel(student)}
+                        {renderComments(student, true)}
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-            );
-          })}
-
-          {visibleStudents.length === 0 && (
+                );
+              })}
+            </View>
+          ) : (
             <Text style={styles.emptyText}>
               {studentMembers.length === 0 ? "No students found for this class." : "No students match your search."}
             </Text>
           )}
-
         </View>
       )}
       </ScrollView>
@@ -2266,209 +2273,174 @@ export default TeacherSubmissionsSection;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", paddingBottom: 15 },
-  // ── Header ──
-  headerBar: { backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
-  headerTopRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  // ── Top app bar ──
+  headerBar: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", paddingVertical: 10, minHeight: 64 },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginLeft: -8 },
-  headerTitleWrap: { flex: 1, marginLeft: 2 },
-  headerTitle: { fontWeight: "800", color: "#111827" },
-  headerSubtitle: { fontFamily: FONT_BODY, fontSize: 13, color: "#6B7280", fontWeight: "600", marginTop: 2 },
+  headerTitleWrap: { flex: 1, marginLeft: 2, minWidth: 0 },
+  headerTitle: { fontWeight: "700", color: "#111827" },
+  headerSubtitle: { fontFamily: FONT_BODY, fontSize: 13, color: "#6B7280", fontWeight: "500", marginTop: 2 },
   updateButtonOutlined: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: "#8B0000",
-    borderRadius: 16,
+    borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 10,
     minHeight: 44,
   },
   updateButtonOutlinedText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: "700", fontSize: 13 },
-  progressBarTrack: { height: 8, borderRadius: 16, backgroundColor: "#E5E7EB", overflow: "hidden" },
-  progressBarFill: { height: "100%", borderRadius: 16, backgroundColor: "#8B0000" },
-  progressPercentLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#6B7280", marginTop: 6 },
-  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  // ── ✅ NEW: Assignment Attachment card (header) ──
+  // ── Assignment attachments (cards with a thumbnail block, like Classroom) ──
+  attachmentsBand: { backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", paddingVertical: 14 },
+  attachmentsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, width: "100%", maxWidth: 1440, alignSelf: "center" },
   assignmentAttachmentCard: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#FAF5F5",
+    alignItems: "stretch",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E8CCCC",
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 12,
+    borderColor: "#E5E7EB",
+    borderRadius: 8,
+    overflow: "hidden",
   },
   assignmentAttachmentIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#FFFFFF",
+    width: 56,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#F8F0F0",
+    borderRightWidth: 1,
+    borderRightColor: "#E5E7EB",
   },
-  assignmentAttachmentLabel: { fontFamily: FONT_BODY,
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#9CA3AF",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  assignmentAttachmentName: { fontFamily: FONT_BODY,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-    marginTop: 1,
-  },
+  assignmentAttachmentBody: { flex: 1, minWidth: 0, paddingVertical: 10, paddingHorizontal: 12, justifyContent: "center" },
+  assignmentAttachmentLabel: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "500", color: "#6B7280", marginTop: 2 },
+  assignmentAttachmentName: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: "700", color: "#111827" },
   assignmentAttachmentPreviewBtn: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "center",
     gap: 4,
-    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    marginRight: 12,
   },
-  assignmentAttachmentPreviewText: { fontFamily: FONT_BODY,
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#8B0000",
-  },
-  smallChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  assignmentAttachmentPreviewText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700", color: "#8B0000" },
+  // ── Stats, progress and legend ──
+  statsCard: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, padding: 16 },
+  statsBlockSidebar: { padding: 16, borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  summaryRow: { flexDirection: "row", marginBottom: 16 },
+  summaryCard: { flex: 1, alignItems: "center", paddingHorizontal: 4 },
+  summaryCardDivided: { borderLeftWidth: 1, borderLeftColor: "#E5E7EB" },
+  summaryCardValue: { fontFamily: FONT_BODY, fontSize: 22, fontWeight: "600", color: "#111827" },
+  summaryCardValueSmall: { fontSize: 17 },
+  summaryCardLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "500", color: "#6B7280", marginTop: 2 },
+  progressBarTrack: { height: 6, borderRadius: 3, backgroundColor: "#E5E7EB", overflow: "hidden" },
+  progressBarFill: { height: "100%", borderRadius: 3, backgroundColor: "#8B0000" },
+  progressPercentLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "600", color: "#6B7280", marginTop: 6 },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  smallChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   smallChipText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700" },
-  // ── Progress Summary ──
-  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 20, marginBottom: 4 },
-  summaryCardMobile: { flexBasis: "47%", flexGrow: 1 },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  summaryCardValue: { fontFamily: FONT_BODY, fontSize: 22, fontWeight: "800", color: "#111827" },
-  summaryCardLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "600", color: "#6B7280", marginTop: 4 },
   // ── Search + Filters ──
-  searchFilterWrap: { marginTop: 20, marginBottom: 12 },
+  searchFilterWrap: { marginTop: 16, marginBottom: 16 },
+  searchFilterWrapSidebar: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     height: 44,
   },
   searchInput: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: "#111827" },
-  filterChipsRow: { flexDirection: "row", gap: 10, marginTop: 12, paddingVertical: 4 },
+  filterChipsRow: { flexDirection: "row", gap: 8, marginTop: 10, paddingVertical: 2 },
   filterChip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    minHeight: 36,
+    minHeight: 34,
     justifyContent: "center",
   },
-  filterChipActive: { backgroundColor: "#8B0000", borderColor: "#8B0000" },
-  filterChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#4B5563" },
-  filterChipTextActive: { color: "#FFFFFF" },
-  // ── Scroll containers ──
-  scrollContent: { gap: 18, paddingTop: 12 },
-  scrollContentGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  // ── Master-detail ──
-  masterDetailRow: { flexDirection: "row", alignItems: "flex-start", gap: 20, marginTop: 12 },
-  masterList: { width: 320, alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB" },
-  masterListTitle: { fontFamily: FONT_TITLE, fontSize: 13, fontWeight: "800", color: "#6B7280", textTransform: "uppercase", marginBottom: 8, paddingHorizontal: 6 },
+  filterChipActive: { backgroundColor: "#F8F0F0", borderColor: "#8B0000" },
+  filterChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "600", color: "#4B5563" },
+  filterChipTextActive: { color: "#8B0000", fontWeight: "700" },
+  // ── Large screens: sidebar + detail workspace ──
+  workspaceRow: { flexDirection: "row", alignItems: "flex-start", gap: 24, marginTop: 20, width: "100%", maxWidth: 1440, alignSelf: "center" },
+  sidebar: { width: 360, alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, overflow: "hidden" },
+  masterListTitle: { fontFamily: FONT_TITLE, fontSize: 14, fontWeight: "700", color: "#374151", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
   detailScroll: { flex: 1, minWidth: 0 },
   listItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 10,
+    gap: 12,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 16,
-    minHeight: 48,
+    minHeight: 56,
+    borderLeftWidth: 3,
+    borderLeftColor: "transparent",
   },
-  listItemActive: { backgroundColor: "#F8F0F0" },
-  listItemAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
+  listItemActive: { backgroundColor: "#F8F0F0", borderLeftColor: "#8B0000" },
+  listItemAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
   listItemTextWrap: { flex: 1, minWidth: 0 },
-  listItemName: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: "700", color: "#111827" },
+  listItemName: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: "600", color: "#111827" },
   listItemNameActive: { color: "#8B0000" },
-  listItemHandle: { fontFamily: FONT_BODY, fontSize: 11, color: "#9CA3AF", marginTop: 1 },
-  listItemScore: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700", color: "#6B7280", marginRight: 4 },
+  listItemHandle: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", marginTop: 1 },
+  listItemScore: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#374151", marginRight: 4 },
   listItemDot: { width: 8, height: 8, borderRadius: 4 },
-  detailPane: { gap: 16 },
-  detailHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatarCircleLarge: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#F8F0F0", alignItems: "center", justifyContent: "center" },
-  detailName: { fontFamily: FONT_BODY, fontSize: 20, fontWeight: "800", color: "#111827" },
-  detailHandle: { fontFamily: FONT_BODY, fontSize: 12, color: "#6B7280", fontWeight: "600", marginTop: 2 },
-  tabletDetailRow: { flexDirection: "row", gap: 20 },
-  gradePanelContainer: { flex: 1, minWidth: 0 },
-  commentsPanelContainer: { flex: 1, minWidth: 0, marginTop: 20 },
-  detailMetaCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  tabletExpandedDetail: { marginTop: 8, marginBottom: 8 },
-  mobileExpandedDetail: { gap: 16, marginTop: 10, marginBottom: 12 },
-  // ── Student Card ──
-  studentCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
+  detailPane: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, overflow: "hidden" },
+  detailHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  avatarCircleLarge: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#F8F0F0", alignItems: "center", justifyContent: "center" },
+  detailName: { fontFamily: FONT_BODY, fontSize: 20, fontWeight: "600", color: "#111827" },
+  detailHandle: { fontFamily: FONT_BODY, fontSize: 12, color: "#6B7280", fontWeight: "500", marginTop: 2 },
+  detailBodyRow: { flexDirection: "row", alignItems: "flex-start" },
+  detailWorkCol: { flex: 1, minWidth: 0, padding: 20 },
+  detailSideCol: { width: 360, gap: 16, padding: 16, backgroundColor: "#F8F9FA", borderLeftWidth: 1, borderLeftColor: "#E5E7EB" },
+  // ── Phones / tablets: one flat list ──
+  listPanel: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, overflow: "hidden" },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  tabletDetailRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+  tabletExpandedDetail: { padding: 16, backgroundColor: "#F8F9FA", borderTopWidth: 1, borderTopColor: "#E5E7EB" },
+  mobileExpandedDetail: { gap: 16, padding: 12, backgroundColor: "#F8F9FA", borderTopWidth: 1, borderTopColor: "#E5E7EB" },
+  // ── Student row ──
+  studentCard: { backgroundColor: "#FFFFFF", paddingHorizontal: 16, paddingVertical: 16, borderLeftWidth: 3, borderLeftColor: "transparent" },
   studentCardFull: { width: "100%" },
-  studentCardGrid: {},
-  studentCardSelected: { borderWidth: 1.5, borderColor: "#8B0000" },
-  studentCardTopRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
-  studentCardIdentity: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
+  studentCardGrid: { width: "100%" },
+  studentCardSelected: { backgroundColor: "#FBF6F6", borderLeftColor: "#8B0000" },
+  studentCardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  studentCardIdentity: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1, minWidth: 0 },
   avatarCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#F8F0F0", alignItems: "center", justifyContent: "center" },
   studentCardNameWrap: { flex: 1, minWidth: 0 },
-  studentCardName: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: "800", color: "#111827" },
+  studentCardName: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: "600", color: "#111827" },
   studentCardId: { fontFamily: FONT_BODY, fontSize: 12, color: "#6B7280", fontWeight: "500", marginTop: 1 },
   statusChip: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   statusChipSmall: { paddingHorizontal: 8, paddingVertical: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700" },
   statusChipTextSmall: { fontFamily: FONT_BODY, fontSize: 11 },
-  cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 18 },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 14 },
-  metaCell: { flexGrow: 1, flexBasis: 130, minWidth: 110 },
+  cardDivider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 14 },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  metaCell: { flexGrow: 1, flexBasis: 120, minWidth: 100 },
   metaCellLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 3 },
-  metaCellLabel: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", fontWeight: "600" },
-  metaCellValue: { fontFamily: FONT_BODY, fontSize: 15, color: "#111827", fontWeight: "800" },
-  // ── Submitted Files ──
+  metaCellLabel: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", fontWeight: "500" },
+  metaCellValue: { fontFamily: FONT_BODY, fontSize: 14, color: "#111827", fontWeight: "600" },
+  // ── Submitted work (attachment-style cards) ──
   noSubmissionContainer: {
     marginTop: 14,
     padding: 16,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: "#E5E7EB",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#D1D5DB",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
@@ -2479,49 +2451,43 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontStyle: "italic",
   },
-  submittedFilesContainer: {
-    marginTop: 14,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    padding: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: "#3B82F6",
-  },
+  submittedFilesContainer: { marginTop: 14 },
   submittedFilesTitle: { fontFamily: FONT_BODY,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     color: "#111827",
     marginBottom: 10,
   },
   submittedFileItem: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "stretch",
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    overflow: "hidden",
     marginBottom: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: "#8B0000",
   },
   linkSubmissionItem: {
-    borderLeftColor: "#1a73e8",
+    borderColor: "#BFD3F2",
   },
-  
   fileIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
+    width: 56,
     backgroundColor: "#F8F0F0",
+    borderRightWidth: 1,
+    borderRightColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
   },
   fileDetails: {
     flex: 1,
     minWidth: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    justifyContent: "center",
   },
   fileNameText: { fontFamily: FONT_BODY,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
     color: "#111827",
     marginBottom: 2,
@@ -2532,42 +2498,39 @@ const styles = StyleSheet.create({
   },
   fileTypeText: { fontFamily: FONT_BODY,
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#6B7280",
   },
-  // ── Grade Panel ──
+  // ── Grade (side panel) ──
   gradePanel: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
     width: "100%",
   },
-  gradePanelTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: "800", color: "#111827" },
+  gradePanelTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: "700", color: "#111827" },
   gradePanelSubtitle: { fontFamily: FONT_BODY, fontSize: 12, color: "#6B7280", marginTop: 2, marginBottom: 14 },
   scoreRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   scoreInput: { fontFamily: FONT_BODY,
     flex: 1,
     borderWidth: 1,
     borderColor: "#D1D5DB",
-    borderRadius: 16,
+    borderRadius: 8,
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#111827",
     minHeight: 48,
   },
-  // ✅ NEW: red border shown on the score input when the draft exceeds the max
+  // ✅ red border shown on the score input when the draft exceeds the max
   scoreInputError: {
     borderColor: "#EF4444",
     borderWidth: 1.5,
   },
-  // ✅ NEW: inline error text shown under the score input
+  // ✅ inline error text shown under the score input
   scoreErrorText: { fontFamily: FONT_BODY,
     color: "#EF4444",
     fontSize: 12,
@@ -2579,7 +2542,7 @@ const styles = StyleSheet.create({
   saveScoreButton: {
     marginTop: 14,
     backgroundColor: "#10B981",
-    borderRadius: 16,
+    borderRadius: 8,
     paddingVertical: 13,
     alignItems: "center",
     justifyContent: "center",
@@ -2587,44 +2550,42 @@ const styles = StyleSheet.create({
   },
   disabledButton: { backgroundColor: "#D1D5DB" },
   saveScoreText: { fontFamily: FONT_BODY, color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  // ── Comments ─
+  // ── Comments (side panel) ─
   commentsSection: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
     width: "100%",
   },
   commentsSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
-  commentsSectionTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: "800", color: "#111827" },
+  commentsSectionTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: "700", color: "#111827" },
   showCommentsBtn: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 32, paddingHorizontal: 6 },
   showCommentsBtnText: { fontFamily: FONT_BODY, color: "#8B0000", fontWeight: "700", fontSize: 12 },
-  bubbleList: { marginTop: 14, gap: 10 },
+  bubbleList: { marginTop: 12, gap: 12 },
   bubbleRow: { flexDirection: "row" },
   bubbleRowTeacher: { justifyContent: "flex-start" },
   bubbleRowStudent: { justifyContent: "flex-start" },
-  bubble: { width: "100%", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#F3F4F6" },
+  bubble: { width: "100%", borderRadius: 8, padding: 12, borderWidth: 1, borderColor: "#F3F4F6" },
   bubbleTeacher: { backgroundColor: "#FEF9E7", borderColor: "#FDE68A" },
   bubbleStudent: { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" },
-  bubbleHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  bubbleAuthor: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700", color: "#6B7280", textTransform: "uppercase" },
+  bubbleHeaderRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
+  bubbleMetaWrap: { flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", gap: 6 },
+  bubbleAuthor: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: "700", color: "#111827" },
   bubbleActions: { flexDirection: "row", gap: 12 },
   bubbleActionBtn: { padding: 4 },
-  bubbleContent: { fontFamily: FONT_BODY, fontSize: 13, color: "#111827", lineHeight: 19, marginTop: 6 },
-  bubbleTime: { fontFamily: FONT_BODY, fontSize: 10, color: "#9CA3AF", fontWeight: "600", marginTop: 8, textAlign: "right" },
+  bubbleContent: { fontFamily: FONT_BODY, fontSize: 13, color: "#111827", lineHeight: 19, marginTop: 4 },
+  bubbleTime: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", fontWeight: "500" },
   emptyCommentsText: { fontFamily: FONT_BODY, fontSize: 12, color: "#9CA3AF", textAlign: "center", marginVertical: 16 },
   commentInputContainer: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginTop: 14 },
   commentInput: { fontFamily: FONT_BODY,
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    paddingHorizontal: 14,
+    borderColor: "#D1D5DB",
+    borderRadius: 22,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     minHeight: 44,
     maxHeight: 200,
@@ -2642,7 +2603,7 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: { backgroundColor: "#D1D5DB" },
   editRow: { marginTop: 6 },
-  editInput: { fontFamily: FONT_BODY, borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, color: "#111827", backgroundColor: "#FFFFFF", fontSize: 13, lineHeight: 18 },
+  editInput: { fontFamily: FONT_BODY, borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: "#111827", backgroundColor: "#FFFFFF", fontSize: 13, lineHeight: 18 },
   editActionsRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 8 },
   editCancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "#F3F4F6", minHeight: 32 },
   editCancelText: { fontFamily: FONT_BODY, fontWeight: "600", color: "#4B5563", fontSize: 12 },
