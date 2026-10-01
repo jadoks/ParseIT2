@@ -11,9 +11,6 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
-// Runs scripts/convert_to_pdf.py (LibreOffice) for the lesson "Print to PDF" export.
-import { execFile } from "child_process";
-import { promisify } from "util";
 // Used to fill the Deans List Word (.docx) template — see the
 // /deans-list/export-docx route below.
 import Docxtemplater from "docxtemplater";
@@ -20395,117 +20392,6 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       return res.json({ success: true, url, downloadUrl });
     } catch (error) {
       return sasPreviewErrorResponse(res, error, "SAS draft preview error:");
-    }
-  });
-
-  /**
-   * SAS — PDF EXPORT ("Print to PDF" button)
-   * Renders the same filled .docx the preview uses, converts it to PDF by
-   * running scripts/convert_to_pdf.py (LibreOffice), and returns signed links.
-   *  • POST /course-lessons/:lessonId/pdf   → a saved lesson
-   *  • POST /course-lessons/pdf             → an unsaved draft, body { classId, moduleId, lesson }
-   * Returns { success, url, downloadUrl }  (url opens inline, downloadUrl saves the file).
-   * The PDF is stored next to its .docx (same fingerprint name), so an unchanged
-   * lesson is converted only once; edits produce a new name and the old files are
-   * cleaned up by renderSasDocxToStorage.
-   */
-  const execFileAsync = promisify(execFile);
-  const PDF_MAX_PARALLEL = 1; // LibreOffice is memory hungry; raise on bigger Render plans
-  let pdfActive = 0;
-  const pdfWaiters = [];
-  async function withPdfSlot(fn) {
-    if (pdfActive >= PDF_MAX_PARALLEL) await new Promise((resolve) => pdfWaiters.push(resolve));
-    else pdfActive += 1;
-    try {
-      return await fn();
-    } finally {
-      const next = pdfWaiters.shift();
-      if (next) next(); // hand the slot straight to the next waiter
-      else pdfActive -= 1;
-    }
-  }
-
-  async function ensureSasPdf(docxStoragePath) {
-    const pdfStoragePath = docxStoragePath.replace(/\.docx$/i, ".pdf");
-    const pdfFile = bucket.file(pdfStoragePath);
-    if ((await pdfFile.exists())[0]) return pdfStoragePath;
-
-    await withPdfSlot(async () => {
-      // Another request may have finished the same file while we waited.
-      if ((await pdfFile.exists())[0]) return;
-
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sas-pdf-"));
-      try {
-        const docxPath = path.join(tmp, "lesson.docx");
-        const [docxBuffer] = await bucket.file(docxStoragePath).download();
-        fs.writeFileSync(docxPath, docxBuffer);
-
-        await execFileAsync(
-          "python3",
-          [path.join(process.cwd(), "scripts", "convert_to_pdf.py"), docxPath, tmp],
-          { timeout: 90000 }
-        );
-
-        await bucket.upload(path.join(tmp, "lesson.pdf"), {
-          destination: pdfStoragePath,
-          metadata: { contentType: "application/pdf", cacheControl: "private,max-age=0,no-transform" },
-        });
-      } finally {
-        fs.rmSync(tmp, { recursive: true, force: true });
-      }
-    });
-    return pdfStoragePath;
-  }
-
-  async function sasPdfResponse({ lesson, courseName, weekLabel, storageDir, filePrefix }) {
-    const docxStoragePath = await renderSasDocxToStorage({ lesson, courseName, weekLabel, storageDir, filePrefix });
-    const pdfStoragePath = await ensureSasPdf(docxStoragePath);
-    const url = await createReadSignedUrl(pdfStoragePath);
-    const downloadUrl = await createDownloadSignedUrl(pdfStoragePath, lesson.title || "Student Activity Sheet", ".pdf");
-    return { url, downloadUrl };
-  }
-
-  app.post("/course-lessons/:lessonId/pdf", requireAuth, async (req, res) => {
-    try {
-      const { lessonId } = req.params;
-      const lessonDoc = await db.collection("courseLessons").doc(lessonId).get();
-      if (!lessonDoc.exists) return res.status(404).json({ error: "Lesson not found." });
-      const lesson = lessonDoc.data();
-      if (lesson.type === "manual_file") {
-        return res.status(400).json({ error: "This lesson is an uploaded file, not a generated Student Activity Sheet." });
-      }
-
-      const { courseName, weekLabel } = await loadSasCourseContext(lesson.classId, lesson.moduleId);
-      const links = await sasPdfResponse({
-        lesson,
-        courseName,
-        weekLabel,
-        storageDir: `sas-previews/${lesson.classId || "unknown-class"}`,
-        filePrefix: lessonId,
-      });
-      return res.json({ success: true, ...links });
-    } catch (error) {
-      return sasPreviewErrorResponse(res, error, "SAS PDF error:");
-    }
-  });
-
-  app.post("/course-lessons/pdf", requireAuth, async (req, res) => {
-    try {
-      const { classId, moduleId, lesson } = req.body || {};
-      if (!classId || !lesson || typeof lesson !== "object") {
-        return res.status(400).json({ error: "classId and lesson are required." });
-      }
-      const { courseName, weekLabel } = await loadSasCourseContext(classId, moduleId);
-      const links = await sasPdfResponse({
-        lesson,
-        courseName,
-        weekLabel,
-        storageDir: `sas-previews/${classId}/drafts`,
-        filePrefix: req.user.uid,
-      });
-      return res.json({ success: true, ...links });
-    } catch (error) {
-      return sasPreviewErrorResponse(res, error, "SAS draft PDF error:");
     }
   });
 
