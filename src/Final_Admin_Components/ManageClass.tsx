@@ -246,6 +246,9 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [isAddMemberModalVisible, setIsAddMemberModalVisible] = useState(false);
   const [newMemberStudentId, setNewMemberStudentId] = useState("");
   const [isAddingMember, setIsAddingMember] = useState(false);
+  // Inline error shown INSIDE the Add Member modal (the global Toast renders
+  // underneath a native <Modal>, so errors were invisible until it closed).
+  const [addMemberError, setAddMemberError] = useState("");
 
   // 👇 NEW STATES FOR REMOVE MEMBER MODALS & LOADING
   const [isRemoveMemberConfirmModalVisible, setIsRemoveMemberConfirmModalVisible] = useState(false);
@@ -692,10 +695,25 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const handleAddMember = async () => {
     if (!selectedClassForMembers) return;
     const studentId = newMemberStudentId.trim();
+    setAddMemberError("");
+
     if (!studentId) {
-      showToast("Enter a Student ID.", "error");
+      setAddMemberError("Enter a Student ID.");
       return;
     }
+
+    // Instant duplicate check against the already-loaded member list.
+    // (The server still validates too — this just avoids a round trip.)
+    const alreadyMember = classMembers.some(
+      (m: any) =>
+        String(m?.userId ?? m?.studentId ?? "").trim().toLowerCase() ===
+        studentId.toLowerCase()
+    );
+    if (alreadyMember) {
+      setAddMemberError("This student is already a member of this class.");
+      return;
+    }
+
     try {
       setIsAddingMember(true);
       const response = await apiFetch(`${API_BASE_URL}/join-class`, {
@@ -711,12 +729,14 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       
       showToast("Member added successfully.", "success");
       setNewMemberStudentId("");
+      setAddMemberError("");
       setIsAddMemberModalVisible(false);
       await fetchClassMembers(selectedClassForMembers.id);
       await loadClasses();
     } catch (error: any) {
       console.error("Error adding member:", error);
-      showToast(error.message || "Failed to add member.", "error");
+      // Keep the modal open and show the error inline so it is actually visible.
+      setAddMemberError(error.message || "Failed to add member.");
     } finally {
       setIsAddingMember(false);
     }
@@ -1238,7 +1258,10 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
               <TouchableOpacity
                 style={styles.addMemberFooterBtn}
                 activeOpacity={0.85}
-                onPress={() => setIsAddMemberModalVisible(true)}
+                onPress={() => {
+                  setAddMemberError("");
+                  setIsAddMemberModalVisible(true);
+                }}
               >
                 <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
                 <Text style={styles.addMemberFooterText}>Add New Member</Text>
@@ -1253,10 +1276,19 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         visible={isAddMemberModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsAddMemberModalVisible(false)}
+        onRequestClose={() => {
+          setAddMemberError("");
+          setIsAddMemberModalVisible(false);
+        }}
       >
         <View style={styles.centeredModalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsAddMemberModalVisible(false)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setAddMemberError("");
+              setIsAddMemberModalVisible(false);
+            }}
+          />
           <View style={styles.addMemberCard}>
              <View style={{ alignItems: "center", marginBottom: 20 }}>
                 <View style={[styles.confirmIconWrap, { backgroundColor: "#EFF6FF", marginBottom: 12 }]}>
@@ -1272,11 +1304,22 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
                 <Text style={styles.inputLabel}>Student ID</Text>
                 <TextInput
                   value={newMemberStudentId}
-                  onChangeText={setNewMemberStudentId}
+                  onChangeText={(text) => {
+                    setNewMemberStudentId(text);
+                    if (addMemberError) setAddMemberError("");
+                  }}
                   placeholder="e.g. 20210001"
                   placeholderTextColor="#B79A9A"
-                  style={styles.professionalInput}
+                  style={[
+                    styles.professionalInput,
+                    !!addMemberError && { borderColor: "#DC2626" },
+                  ]}
                 />
+                {!!addMemberError && (
+                  <Text style={{ color: "#DC2626", fontSize: 13, fontWeight: "600", marginTop: 6 }}>
+                    {addMemberError}
+                  </Text>
+                )}
              </View>
 
              <View style={styles.confirmActions}>
@@ -1285,6 +1328,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
                   activeOpacity={0.85}
                   onPress={() => {
                     setNewMemberStudentId("");
+                    setAddMemberError("");
                     setIsAddMemberModalVisible(false);
                   }}
                 >
