@@ -586,7 +586,7 @@ const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
   {
     icon: 'search-outline',
     badge: 'server',
-    title: 'Admin clicks "View Deans List"',
+    title: 'Teacher clicks "View Deans List"',
     subtitle: 'Loads every parsed record for the selected year & semester',
   },
   {
@@ -625,7 +625,7 @@ const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
     icon: 'trophy-outline',
     badge: 'server',
     title: 'Official Deans List',
-    subtitle: 'Shown in the app, and exportable to PDF & Excel',
+    subtitle: 'Shown in the app, and exportable to Docs & Excel',
   },
 ];
 
