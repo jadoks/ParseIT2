@@ -1462,13 +1462,13 @@ const CourseDetail = ({
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   // Backend error messages can run long and verbose — the toast only has
   // room for ~2 short lines, so trim anything past that instead of letting
   // it get visually cut off mid-sentence with no indication there's more.
-  const MAX_TOAST_MESSAGE_LENGTH = 90;
+  const MAX_TOAST_MESSAGE_LENGTH = 60;
   const shortenForToast = (message?: string | null, fallback = 'Something went wrong.') => {
     const text = (message || fallback).trim() || fallback;
     if (text.length <= MAX_TOAST_MESSAGE_LENGTH) return text;
@@ -1823,7 +1823,7 @@ const fetchModules = useCallback(async (silent = false) => {
     if (file.fileType === 'text/uri-list' || !!file.linkUrl) {
       const url = file.linkUrl?.trim();
       if (!url) {
-        showFeedback('error', 'Invalid Link', 'No URL found for this submission.');
+        showFeedback('error', 'Invalid Link', 'No URL found.');
         return;
       }
       try {
@@ -2046,7 +2046,7 @@ const fetchModules = useCallback(async (silent = false) => {
       materialIds: relatedMaterials.map((m) => m.id),
     } as any);
     if (!silent) {
-      showFeedback('success', 'Activity Generated', 'Generating from the related materials.');
+      showFeedback('success', 'Activity Generated', 'Generating activity.');
     }
   };
 
@@ -2338,7 +2338,7 @@ const fetchModules = useCallback(async (silent = false) => {
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!course?.id) {
-      showFeedback('error', 'No class', 'Assignment not connected to a class.');
+      showFeedback('error', 'No class', 'No class linked.');
       return;
     }
     try {
@@ -2379,7 +2379,7 @@ const fetchModules = useCallback(async (silent = false) => {
         });
       }
     } catch (error: any) {
-      showFeedback('error', 'Upload failed', error?.message || 'Could not upload the selected file.');
+      showFeedback('error', 'Upload failed', error?.message || 'Upload failed.');
     } finally {
       setIsUploadingFile(false);
     }
@@ -2601,7 +2601,7 @@ const fetchModules = useCallback(async (silent = false) => {
       syncSelectedAssignmentStatus(isPastDueDate(selectedAssignment.dueDate) ? "late" : "submitted");
       await onRefreshSubmissions?.();
       const totalItems = submissionItems.length + linkItems.length;
-      showFeedback('success', 'Success', `Submitted ${totalItems} item(s) successfully.`);
+      showFeedback('success', 'Success', `Submitted ${totalItems} item(s).`);
     } catch (error: any) {
       showFeedback('error', 'Submit Failed', error?.message || 'Unable to submit assignment.');
     } finally {
@@ -2635,7 +2635,7 @@ const fetchModules = useCallback(async (silent = false) => {
       if (!response.ok) throw new Error(data?.error || "Failed to unsubmit assignment.");
       syncSelectedAssignmentStatus("pending");
       await onRefreshSubmissions?.();
-      showFeedback('success', 'Unsubmitted', 'Your file is still attached. You can edit it and submit again.');
+      showFeedback('success', 'Unsubmitted', 'Unsubmitted.');
     } catch (error: any) {
       showFeedback('error', 'Unsubmit Failed', error?.message || 'Unable to unsubmit assignment.');
     } finally {
@@ -2823,19 +2823,19 @@ const fetchModules = useCallback(async (silent = false) => {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
-        showFeedback('error', 'Download failed', data?.error || 'Download failed. Try again.');
+        showFeedback('error', 'Download failed', data?.error || 'Download failed.');
         return;
       }
       await openDownloadUrl(data.url);
       const skipped: string[] = Array.isArray(data.skipped) ? data.skipped : [];
       if (skipped.length > 0) {
-        showFeedback('info', 'Some lessons were skipped', `Not included: ${skipped.join(', ')}`);
+        showFeedback('info', 'Some lessons were skipped', `${skipped.length} skipped.`);
       } else {
-        showFeedback('success', 'Download started', data.count > 1 ? `${data.count} lessons downloaded as a .zip.` : 'Lesson downloaded.');
+        showFeedback('success', 'Download started', data.count > 1 ? `${data.count} lessons downloaded.` : 'Lesson downloaded.');
       }
     } catch (err) {
       console.warn('Lesson download failed:', err);
-      showFeedback('error', 'Download failed', 'Download failed. Try again.');
+      showFeedback('error', 'Download failed', 'Download failed.');
     } finally {
       setDownloadingLessonsModuleId(null);
     }
@@ -3952,7 +3952,7 @@ const fetchModules = useCallback(async (silent = false) => {
               onLinksChange={setSasDocLinks}
               onUnavailable={() => {
                 setSasPreviewFailedFor(selectedLesson.id);
-                showFeedback('info', 'Preview unavailable', 'Showing the plain lesson view instead.');
+                showFeedback('info', 'Preview unavailable', 'Showing plain view.');
               }}
             />
           ) : (

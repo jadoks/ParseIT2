@@ -160,7 +160,7 @@ const Dashboard = ({
   const contentMaxWidth = isLargeScreen ? 1280 : 1100;
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -176,7 +176,7 @@ const Dashboard = ({
     }
 
     if (!onJoinClass) {
-      showToast('Join class action is not available.', 'error');
+      showToast('Join unavailable.', 'error');
       return;
     }
 
@@ -189,19 +189,19 @@ const Dashboard = ({
         throw new Error(
           result.error ||
             result.message ||
-            'Failed to join class. Check the class code.'
+            'Failed to join class.'
         );
       }
 
       setClassCode('');
       setJoinModalVisible(false);
       showToast(
-        result?.message || 'Class joined successfully.',
+        'Class joined.',
         'success'
       );
     } catch (error: any) {
       showToast(
-        error?.message || 'Failed to join class. Check the class code.',
+        error?.message || 'Failed to join class.',
         'error'
       );
     } finally {

@@ -606,7 +606,7 @@ const Dashboard2 = ({
   const teacherId = useMemo(() => currentTeacher?.teacherId?.trim() || '', [currentTeacher]);
 
   const showToast = (message: string, type: ToastType = 'error') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -868,7 +868,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       // comes back, so the backend's own ordering can't bump it down.
       await refreshClassesAfterStorageWrite(createdCourse.id);
       resetCreateForm(); setCreateModalVisible(false);
-      showToast(`Class created successfully. Class Code: ${data?.data?.classCode || ''}`, 'success');
+      showToast(`Class created. Code: ${data?.data?.classCode || ''}`, 'success');
     } catch (error: any) {
       console.error('Error creating class:', error);
       showToast(error?.message || 'Failed to create class.', 'error');
@@ -960,7 +960,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       onEditCourse?.(updatedCourse);
       await refreshClassesAfterStorageWrite();
       resetEditForm(); setEditModalVisible(false);
-      showToast('Class updated successfully.', 'success');
+      showToast('Class updated.', 'success');
     } catch (error: any) {
       console.error('Error updating class:', error);
       showToast(error?.message || 'Failed to update class.', 'error');
@@ -985,7 +985,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       await refreshClassesAfterStorageWrite();
       onDeleteCourse?.(courseToDelete.id);
       setDeleteConfirmVisible(false); setCourseToDelete(null);
-      showToast('Class deleted successfully.', 'success');
+      showToast('Class deleted.', 'success');
     } catch (error) {
       console.error('Error deleting class:', error);
       showToast('Failed to delete class.', 'error');

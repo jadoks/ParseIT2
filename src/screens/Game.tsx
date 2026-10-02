@@ -102,7 +102,7 @@ const MAX_QUESTIONS_PER_GENERATION = 20;
 const MAX_GENERATIONS_PER_DAY = 10;
 // Max number of lessons (materials) a student can select for one generation.
 const MAX_MODULE_LESSONS = 5;
-const MAX_MODULE_LESSONS_MESSAGE = `You can select up to ${MAX_MODULE_LESSONS} Module Lessons only.`;
+const MAX_MODULE_LESSONS_MESSAGE = `Max ${MAX_MODULE_LESSONS} lessons.`;
 
 function getTodayKey() {
   const now = new Date();
@@ -182,7 +182,7 @@ const Game = ({
     type: 'success' | 'error' | 'info';
   }>({ visible: false, message: '', type: 'success' });
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') =>
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -383,12 +383,12 @@ const Game = ({
   const generateFromMaterials = async () => {
     if (!gameType) return showToast('Select a game type first.', 'error');
     if (!selectedClassId || selectedMaterialIds.length === 0) return showToast('Select a class and a material.', 'error');
-    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) return showToast(`${MAX_MODULE_LESSONS_MESSAGE} Deselect some to continue.`, 'error');
+    if (selectedMaterialIds.length > MAX_MODULE_LESSONS) return showToast(MAX_MODULE_LESSONS_MESSAGE, 'error');
     if (!studentId) return showToast('Not logged in: Student ID missing.', 'error');
-    if (isInvalidCount) return showToast(`Enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
+    if (isInvalidCount) return showToast(`Enter 1–${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
     // 🌟 NEW: Enforce daily AI generation limit
     if (hasReachedDailyLimit) {
-      return showToast(`Daily limit reached (${MAX_GENERATIONS_PER_DAY}). Try again tomorrow.`, 'error');
+      return showToast(`Daily limit (${MAX_GENERATIONS_PER_DAY}) reached.`, 'error');
     }
 
     setIsGenerating(true);
@@ -448,7 +448,7 @@ const Game = ({
           materialIds: selectedMaterialIds,
         });
     } catch (error: any) {
-      showToast(`Generation failed: ${error.message}`, 'error');
+      showToast('Generation failed.', 'error');
     } finally {
       setIsGenerating(false);
     }

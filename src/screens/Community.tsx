@@ -295,7 +295,7 @@ const Community: React.FC<CommunityProps> = ({
   const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -502,7 +502,7 @@ const Community: React.FC<CommunityProps> = ({
   }
   onCreatePost?.(trimmed);
   setModalVisible(false);
-  showToast('Post created successfully.', 'success');
+  showToast('Post created.', 'success');
 };
 
   const handlePostAnswer = () => {
@@ -513,7 +513,7 @@ const Community: React.FC<CommunityProps> = ({
   }
   onAddAnswer?.(selectedPostId, trimmed);
   setAnswerText('');
-  showToast('Answer posted successfully.', 'success');
+  showToast('Answer posted.', 'success');
 };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -540,7 +540,7 @@ const Community: React.FC<CommunityProps> = ({
     setEditingPostId(null);
     setEditPostText('');
     setEditPostModalVisible(false);
-    showToast('Post updated successfully.', 'success');
+    showToast('Post updated.', 'success');
   };
 
   const handleCloseEditPostModal = () => {
@@ -567,7 +567,7 @@ const Community: React.FC<CommunityProps> = ({
 
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
-    showToast('Post deleted successfully.', 'success');
+    showToast('Post deleted.', 'success');
   };
 
   const cancelDeletePost = () => {
@@ -652,7 +652,7 @@ const Community: React.FC<CommunityProps> = ({
     setEditAnswerText('');
     closeAnswerDropdown();
     reopenAnswersModal();
-    showToast('Answer updated successfully.', 'success');
+    showToast('Answer updated.', 'success');
   };
 
   const handleCloseEditAnswerModal = () => {
@@ -693,7 +693,7 @@ const Community: React.FC<CommunityProps> = ({
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
     reopenAnswersModal();
-    showToast('Answer deleted successfully.', 'success');
+    showToast('Answer deleted.', 'success');
   };
 
   const cancelDeleteAnswer = () => {
@@ -737,8 +737,8 @@ const Community: React.FC<CommunityProps> = ({
     showToast(
       hidden
         ? isSelectedPostOwner
-          ? 'Answer hidden. Only you and its author can see it.'
-          : 'Answer hidden for you. Others can still see it.'
+          ? 'Answer hidden.'
+          : 'Answer hidden for you.'
         : 'Answer unhidden.',
       'info'
     );

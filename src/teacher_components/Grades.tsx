@@ -326,7 +326,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -832,7 +832,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
 
   const exportRecordsToExcel = async (exportRecords: StudentRecord[]) => {
     if (!exportRecords.length) {
-      showToast('Select at least one student to export.', 'error');
+      showToast('Select students to export.', 'error');
       return;
     }
 
@@ -943,7 +943,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showToast('Grade report saved successfully.', 'success');
+        showToast('Grade report saved.', 'success');
         return;
       }
 
@@ -953,7 +953,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      showToast('Grade report saved successfully.', 'success');
+      showToast('Grade report saved.', 'success');
     } catch (error: any) {
       showToast(error?.message || 'Failed to save Excel file.', 'error');
     } finally {
@@ -993,7 +993,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const confirmExportSelection = async () => {
     const chosen = records.filter((record) => selectedExportIds.includes(record.studentId));
     if (!chosen.length) {
-      showToast('Select at least one student to include.', 'error');
+      showToast('Select students to include.', 'error');
       return;
     }
     setShowExportPicker(false);

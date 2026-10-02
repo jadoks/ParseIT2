@@ -291,7 +291,7 @@ const TeacherSubmissionsSection = ({
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -942,7 +942,7 @@ const downloadFileToDevice = async (
       const perm = await MediaLibrary.requestPermissionsAsync();
       if (perm.granted) {
         await MediaLibrary.saveToLibraryAsync(localUri);
-        showToast('Image saved to your Photos!', 'success');
+        showToast('Image saved.', 'success');
         return;
       }
     }
@@ -954,7 +954,7 @@ const downloadFileToDevice = async (
         dialogTitle: `Save ${resolvedName}`,
       });
     } else {
-      showToast('File cached at your local storage.', 'success');
+      showToast('File saved.', 'success');
     }
     return;
   }
@@ -970,7 +970,7 @@ const downloadFileToDevice = async (
     const destUri = await FileSystem.StorageAccessFramework.createFileAsync(perms.directoryUri, resolvedName, resolvedMime);
     const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
     await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-    showToast('File saved to your selected folder!', 'success');
+    showToast('File saved.', 'success');
   } catch (error) {
     console.error("Android SAF error:", error);
     const canShare = await Sharing.isAvailableAsync();
@@ -1001,7 +1001,7 @@ const handleDownloadPreview = async () => {
 
   const handlePreviewItem = async (item: SubmissionPreviewSource) => {
   if (!item.url) {
-    showToast('No URL to open for this submission.', 'error');
+    showToast('No URL to open.', 'error');
     return;
   }
 
@@ -1012,7 +1012,7 @@ const handleDownloadPreview = async () => {
     try {
       const supported = await Linking.canOpenURL(item.url);
       if (!supported) {
-        showToast('URL not supported on this device.', 'error');
+        showToast('URL not supported.', 'error');
         return;
       }
       await Linking.openURL(item.url);
@@ -1060,7 +1060,7 @@ const handleDownloadPreview = async () => {
     setPreviewViewerUrl(viewerUrl);
   } catch (error) {
     console.error("Preview error:", error);
-    showToast('Preview unavailable. The file may no longer exist.', 'error');
+    showToast('Preview unavailable.', 'error');
     setPreviewVisible(false);
   } finally {
     setPreviewLoading(false);
@@ -1118,7 +1118,7 @@ const handleDownloadPreview = async () => {
       setPreviewViewerUrl(viewerUrl);
     } catch (error) {
       console.error("Assignment attachment preview error:", error);
-      showToast('Preview unavailable. The file may no longer exist.', 'error');
+      showToast('Preview unavailable.', 'error');
       setPreviewVisible(false);
     } finally {
       setPreviewLoading(false);
@@ -1137,7 +1137,7 @@ const handleDownloadPreview = async () => {
     try {
       const supported = await Linking.canOpenURL(previewItem.url);
       if (!supported) {
-        showToast('URL not supported on this device.', 'error');
+        showToast('URL not supported.', 'error');
         return;
       }
       await Linking.openURL(previewItem.url);
@@ -1326,14 +1326,14 @@ const handleDownloadPreview = async () => {
       return;
     }
     if (!onGradeSubmission) {
-      showToast('Grading action is not available.', 'error');
+      showToast('Grading unavailable.', 'error');
       return;
     }
 
     try {
       setSavingSubmissionId(studentId);
       await onGradeSubmission(subToGrade.id, score, "");
-      showToast('Score saved successfully.', 'success');
+      showToast('Score saved.', 'success');
     } catch (error: any) {
       showToast(error?.message || 'Failed to save score.', 'error');
     } finally {

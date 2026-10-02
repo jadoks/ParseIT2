@@ -835,7 +835,7 @@ export default function ShareAnnouncement({
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -969,7 +969,7 @@ export default function ShareAnnouncement({
 
     if (!trimmedHeader || !trimmedDesc || !editExpiryDate || !editExpiryTime) {
       showToast(
-        'Complete header, description, expiry date, and time.',
+        'Complete all fields.',
         'error'
       );
       return;
@@ -978,7 +978,7 @@ export default function ShareAnnouncement({
     const expiresAt = buildExpiryIso(editExpiryDate, editExpiryTime);
 
     if (!expiresAt) {
-      showToast('Enter a valid expiry date and time.', 'error');
+      showToast('Enter a valid expiry.', 'error');
       return;
     }
 
@@ -987,7 +987,7 @@ export default function ShareAnnouncement({
       : editSelectedClassIds;
 
     if (!targetClassIds.length) {
-      showToast('Select at least one class, or choose All Classes.', 'error');
+      showToast('Select a class.', 'error');
       return;
     }
 
@@ -1016,7 +1016,7 @@ export default function ShareAnnouncement({
         throw new Error(data?.error || 'Failed to update announcement.');
       }
 
-      showToast('Announcement updated successfully!', 'success');
+      showToast('Announcement updated.', 'success');
       setEditTarget(null);
       setShowEditAudienceModal(false);
       await fetchMyAnnouncements();
@@ -1057,7 +1057,7 @@ export default function ShareAnnouncement({
         throw new Error(data?.error || 'Failed to delete announcement.');
       }
 
-      showToast('Announcement deleted successfully!', 'success');
+      showToast('Announcement deleted.', 'success');
       setDeleteTarget(null);
       await fetchMyAnnouncements();
     } catch (error: any) {
@@ -1087,7 +1087,7 @@ export default function ShareAnnouncement({
 
     if (!trimmedHeader || !trimmedDesc || !expiryDate || !expiryTime) {
       showToast(
-        'Complete header, description, expiry date, and time.',
+        'Complete all fields.',
         'error'
       );
       return;
@@ -1096,12 +1096,12 @@ export default function ShareAnnouncement({
     const expiresAt = buildExpiryIso(expiryDate, expiryTime);
 
     if (!expiresAt) {
-      showToast('Enter a valid expiry date and time.', 'error');
+      showToast('Enter a valid expiry.', 'error');
       return;
     }
 
     if (new Date(expiresAt).getTime() <= Date.now()) {
-      showToast('Choose a future date and time.', 'error');
+      showToast('Choose a future date.', 'error');
       return;
     }
 
@@ -1141,7 +1141,7 @@ export default function ShareAnnouncement({
       const expiresAt = buildExpiryIso(expiryDate, expiryTime);
 
       if (!expiresAt) {
-        showToast('Enter a valid expiry date and time.', 'error');
+        showToast('Enter a valid expiry.', 'error');
         return;
       }
 
@@ -1150,7 +1150,7 @@ export default function ShareAnnouncement({
         : selectedClassIds;
 
       if (!targetClassIds.length) {
-        showToast('Select a class or choose All Classes.', 'error');
+        showToast('Select a class.', 'error');
         return;
       }
 
@@ -1181,8 +1181,8 @@ export default function ShareAnnouncement({
 
       showToast(
         selectAllClasses || targetClassIds.length > 1
-          ? `Announcement shared successfully to ${targetClassIds.length} classes!`
-          : `Announcement shared successfully to ${selectedClasses[0]?.label || 'the selected class'}!`,
+          ? `Shared to ${targetClassIds.length} classes.`
+          : `Shared to ${selectedClasses[0]?.label || 'class'}.`,
         'success'
       );
 
@@ -1791,7 +1791,7 @@ export default function ShareAnnouncement({
                 activeOpacity={0.8}
                 onPress={() => {
                   if (!editSelectAllClasses && !editSelectedClassIds.length) {
-                    showToast('Select a class or choose All Classes.', 'error');
+                    showToast('Select a class.', 'error');
                     return;
                   }
                   setShowEditAudienceModal(false);

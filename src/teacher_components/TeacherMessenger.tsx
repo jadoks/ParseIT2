@@ -421,7 +421,7 @@ const Messenger = ({
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
     toastTimeoutRef.current = setTimeout(() => {
       setToast((prev) => ({ ...prev, visible: false }));
       toastTimeoutRef.current = null;
@@ -1194,7 +1194,7 @@ const Messenger = ({
       }
 
       if (asset.size && asset.size > MAX_FILE_SIZE_BYTES) {
-        showToast(`File must be smaller than ${MAX_FILE_SIZE_MB}MB.`, 'error');
+        showToast(`Max file size ${MAX_FILE_SIZE_MB}MB.`, 'error');
         return;
       }
 
@@ -1318,7 +1318,7 @@ const Messenger = ({
       const asset = result.assets[0];
 
       if (asset.size && asset.size > MAX_FILE_SIZE_BYTES) {
-        showToast(`File must be smaller than ${MAX_FILE_SIZE_MB}MB.`, 'error');
+        showToast(`Max file size ${MAX_FILE_SIZE_MB}MB.`, 'error');
         return;
       }
 
@@ -1589,7 +1589,7 @@ const Messenger = ({
           return;
         }
         await MediaLibrary.saveToLibraryAsync(localUri);
-        showToast('Image saved to your Photos!', 'success');
+        showToast('Image saved.', 'success');
       } else {
         // Android: SAF folder picker
         const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
@@ -1620,7 +1620,7 @@ const Messenger = ({
         await FileSystem.writeAsStringAsync(destUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        showToast('Image saved to your selected folder!', 'success');
+        showToast('Image saved.', 'success');
       }
     } catch (err: any) {
       console.error('Download image error:', err);
@@ -1691,7 +1691,7 @@ const Messenger = ({
             dialogTitle: `Save ${fileName}`,
           });
         } else {
-          showToast(`File cached at: ${localUri}`, 'success');
+          showToast('File saved.', 'success');
         }
       } else {
         // Android: SAF folder picker
@@ -1715,7 +1715,7 @@ const Messenger = ({
         await FileSystem.writeAsStringAsync(destUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        showToast('File saved to your selected folder!', 'success');
+        showToast('File saved.', 'success');
       }
     } catch (err: any) {
       console.error('Download file error:', err);
@@ -1864,8 +1864,8 @@ const Messenger = ({
 
       showToast(
         added.length === 1
-          ? `${added[0].name} was added to the room.`
-          : `${added.length} members were added to the room.`,
+          ? `${added[0].name} added.`
+          : `${added.length} members added.`,
         'success'
       );
       setMembersToAdd([]);
@@ -1908,7 +1908,7 @@ const Messenger = ({
         return { ...c, memberDetails: nextDetails, members: nextDetails.map((d) => d.name) };
       });
 
-      showToast(`${name} was removed from the room.`, 'success');
+      showToast(`${name} removed.`, 'success');
     } catch (error: any) {
       console.error('Remove room member error:', error);
       showToast(error?.message || 'Failed to remove member.', 'error');
@@ -1947,7 +1947,7 @@ const Messenger = ({
       setConversations((prev) => prev.filter((c) => c.id !== roomId));
       setSelected(null);
       onConversationActiveChange?.(false);
-      showToast('You left the discussion room.', 'success');
+      showToast('You left the room.', 'success');
     } catch (error: any) {
       console.error('Leave room error:', error);
       setShowLeaveConfirm(false);

@@ -805,7 +805,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => {
@@ -815,7 +815,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   // Thin wrapper so every existing call site below can keep passing a
   // title alongside the message — the toast just folds them into one line.
   const showFeedback = (type: ToastType, title: string, message: string) => {
-    showToast(`${title}: ${message}`, type);
+    showToast(message, type);
   };
 
   const adviser = 'Tristan Mondisico';
@@ -888,10 +888,10 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       setOpenDropdown(null);
 
       if (rankedSections.length === 0) {
-        showFeedback('info', 'No Results', `No Deans List students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
+        showFeedback('info', 'No Results', 'No students found.');
       }
     } catch (error: any) {
-      showFeedback('error', 'Load Failed', error?.message || 'Failed to load.');
+      showFeedback('error', 'Load Failed', 'Failed to load.');
     } finally {
       setIsGenerating(false);
     }
@@ -1203,7 +1203,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   // returned .docx binary. Replaces the old HTML-in-a-.doc approach.
   const downloadDeansListForm = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Deans List', 'Generate the Deans List first.');
+      showFeedback('error', 'No Deans List', 'Generate the list first.');
       return;
     }
 
@@ -1262,7 +1262,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showFeedback('success', 'Downloaded', 'Deans List form downloaded successfully.');
+        showFeedback('success', 'Downloaded', 'Form downloaded.');
         return;
       }
 
@@ -1300,7 +1300,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showFeedback('success', 'Downloaded', 'Deans List form saved successfully.');
+        showFeedback('success', 'Downloaded', 'Form saved.');
         return;
       }
 
@@ -1310,9 +1310,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      showFeedback('success', 'Downloaded', `Deans List form saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', 'Form saved.');
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', error?.message || 'Failed to save.');
+      showFeedback('error', 'Download Failed', 'Failed to save form.');
     } finally {
       setIsExportingForm(false);
     }
@@ -1562,7 +1562,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const downloadHonorPdf = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Deans List', 'Generate the Deans List first.');
+      showFeedback('error', 'No Deans List', 'Generate the list first.');
       return;
     }
 
@@ -1604,7 +1604,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showFeedback('success', 'Downloaded', 'Deans List PDF saved successfully.');
+        showFeedback('success', 'Downloaded', 'PDF saved.');
         return;
       }
 
@@ -1615,15 +1615,15 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         to: savedUri,
       });
 
-      showFeedback('success', 'Downloaded', `Deans List PDF saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', 'PDF saved.');
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', error?.message || 'Failed to save PDF.');
+      showFeedback('error', 'Download Failed', 'Failed to save PDF.');
     }
   };
 
   const downloadHonorExcel = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Deans List', 'Generate the Deans List first.');
+      showFeedback('error', 'No Deans List', 'Generate the list first.');
       return;
     }
 
@@ -1804,7 +1804,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       if (Platform.OS === 'web') {
         XLSX.writeFile(workbook, fileName);
-        showFeedback('success', 'Downloaded', 'Deans List Excel file downloaded successfully.');
+        showFeedback('success', 'Downloaded', 'Excel downloaded.');
         return;
       }
 
@@ -1831,7 +1831,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showFeedback('success', 'Downloaded', 'Deans List Excel file saved successfully.');
+        showFeedback('success', 'Downloaded', 'Excel saved.');
         return;
       }
 
@@ -1841,9 +1841,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      showFeedback('success', 'Downloaded', `Deans List Excel file saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', 'Excel saved.');
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', error?.message || 'Failed to save Excel.');
+      showFeedback('error', 'Download Failed', 'Failed to save Excel.');
     } finally {
       setIsExportingExcel(false);
     }

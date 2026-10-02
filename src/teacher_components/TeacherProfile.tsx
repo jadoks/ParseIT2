@@ -252,7 +252,7 @@ const Profile: React.FC<ProfileProps> = ({
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
@@ -682,7 +682,7 @@ const Profile: React.FC<ProfileProps> = ({
         return;
       }
       if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
-        showToast(`Image must be smaller than ${MAX_IMAGE_SIZE_MB}MB.`, 'error');
+        showToast(`Max image size ${MAX_IMAGE_SIZE_MB}MB.`, 'error');
         return;
       }
       await openCropModal(selected.uri, type);
@@ -762,10 +762,10 @@ const Profile: React.FC<ProfileProps> = ({
       );
       if (cropModal.type === 'profile') {
         onChangeProfileImage({ uri: result.uri });
-        showToast('Profile photo updated successfully.', 'success');
+        showToast('Profile photo updated.', 'success');
       } else {
         onChangeBannerImage({ uri: result.uri });
-        showToast('Banner photo updated successfully.', 'success');
+        showToast('Banner photo updated.', 'success');
       }
       setCropModal(null);
       resetCropState();
@@ -807,7 +807,7 @@ const Profile: React.FC<ProfileProps> = ({
   }
   onCreatePost?.(trimmed);
   setQueryModalVisible(false);
-  showToast('Post created successfully.', 'success');
+  showToast('Post created.', 'success');
 };
 
   const handlePostAnswer = () => {
@@ -818,7 +818,7 @@ const Profile: React.FC<ProfileProps> = ({
   }
   onAddAnswer?.(selectedPostId, trimmed);
   setAnswerText('');
-  showToast('Answer posted successfully.', 'success');
+  showToast('Answer posted.', 'success');
 };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -843,7 +843,7 @@ const Profile: React.FC<ProfileProps> = ({
     setEditingPostId(null);
     setEditPostText('');
     setEditPostModalVisible(false);
-    showToast('Post updated successfully.', 'success');
+    showToast('Post updated.', 'success');
   };
 
   const handleCloseEditPostModal = () => {
@@ -867,7 +867,7 @@ const Profile: React.FC<ProfileProps> = ({
     }
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
-    showToast('Post deleted successfully.', 'success');
+    showToast('Post deleted.', 'success');
   };
 
   const cancelDeletePost = () => {
@@ -912,7 +912,7 @@ const Profile: React.FC<ProfileProps> = ({
     setEditAnswerText('');
     closeAnswerDropdown();
     reopenAnswersModal();
-    showToast('Answer updated successfully.', 'success');
+    showToast('Answer updated.', 'success');
   };
 
   const handleCloseEditAnswerModal = () => {
@@ -950,7 +950,7 @@ const Profile: React.FC<ProfileProps> = ({
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
     reopenAnswersModal();
-    showToast('Answer deleted successfully.', 'success');
+    showToast('Answer deleted.', 'success');
   };
 
   const cancelDeleteAnswer = () => {
@@ -994,8 +994,8 @@ const Profile: React.FC<ProfileProps> = ({
     showToast(
       hidden
         ? isSelectedPostOwner
-          ? 'Answer hidden. Only you and its author can see it.'
-          : 'Answer hidden for you. Others can still see it.'
+          ? 'Answer hidden.'
+          : 'Answer hidden for you.'
         : 'Answer unhidden.',
       'info'
     );

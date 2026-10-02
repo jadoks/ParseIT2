@@ -569,7 +569,7 @@ const MAX_QUESTIONS_PER_GENERATION = 45;
 // Max number of Module Lessons a teacher can select when creating / editing /
 // updating an assignment (also the cap enforced before AI Generate runs).
 const MAX_MODULE_LESSONS = 5;
-const MAX_MODULE_LESSONS_MESSAGE = `You can select up to ${MAX_MODULE_LESSONS} Module Lessons only.`;
+const MAX_MODULE_LESSONS_MESSAGE = `Max ${MAX_MODULE_LESSONS} lessons.`;
 const GENERATION_USAGE_KEY = 'teacher_question_gen_usage_v1';
 
 const getTodayDateKey = () => {
@@ -1035,7 +1035,7 @@ const CUSTOM_SECTION_MAX = 5;
 const CUSTOM_SECTION_TITLE_MAX = 60;
 const IMAGE_GEN_BLOCK_TITLE = 'Image generation not supported';
 const IMAGE_GEN_BLOCK_MESSAGE =
-  'Lessons are text-only. Remove the image request and try again.';
+  'Lessons are text-only. Remove image request.';
 // Explicit AI-image wording — always blocked.
 const IMAGE_GEN_STRONG =
   /\b(?:image[\s-]*generat(?:ion|or|ing)|text[\s-]*to[\s-]*image|ai[\s-]*(?:generated[\s-]*)?(?:images?|art|pictures?|photos?)|image[\s-]*prompt|midjourney|dall[\s-]*e|stable[\s-]*diffusion)\b/i;
@@ -2128,6 +2128,16 @@ const TeacherCourseDetail2 = ({
     setToastState((prev) => ({ ...prev, visible: false }));
   };
 
+  // Keep toasts short: drop generic titles, cap the length.
+  const formatToastText = (title: string, message?: string) => {
+    const MAX = 60;
+    if (!message) return title.length > MAX ? `${title.slice(0, MAX - 1)}…` : title;
+    const generic = ['error', 'success', 'saved', 'updated', 'deleted'].includes(title.trim().toLowerCase());
+    const combined = `${title}: ${message}`;
+    if (!generic && combined.length <= MAX) return combined;
+    return message.length > MAX ? `${message.slice(0, MAX - 1)}…` : message;
+  };
+
   const toast = {
     show: (type: 'success' | 'error' | 'info' | 'warning', title: string, message?: string) => {
       // The shared Toast component supports success/error/info, so a
@@ -2135,7 +2145,7 @@ const TeacherCourseDetail2 = ({
       const mappedType: 'success' | 'error' | 'info' = type === 'warning' ? 'error' : type;
       setToastState({
         visible: true,
-        message: message ? `${title}: ${message}` : title,
+        message: formatToastText(title, message),
         type: mappedType,
       });
     },
@@ -2574,9 +2584,9 @@ const TeacherCourseDetail2 = ({
       setLessonDetailModalVisible(false);
       setShowDeleteLessonModal(false);
       await loadCourseContent();
-      toast.show('success', 'Deleted', 'Lesson deleted successfully.');
+      toast.show('success', 'Deleted', 'Lesson deleted.');
     } catch (error: any) {
-      toast.show('error', 'Delete Failed', error?.message || 'Unable to delete lesson.');
+      toast.show('error', 'Delete Failed', error?.message || 'Delete failed.');
     } finally {
       setIsDeletingLesson(false);
     }
@@ -2771,13 +2781,13 @@ useEffect(() => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      toast.show('success', 'Generated!', 'Lesson content generated successfully.');
+      toast.show('success', 'Generated!', 'Lesson generated.');
       setShowGenerateModal(false);
       setSelectedGenModule(null);
       setSelectedGenTopic(null);
       setSelectedGenSubtopic(null);
     } catch (error: any) {
-      toast.show('error', 'Generation Failed', error?.message || 'Failed to generate content.');
+      toast.show('error', 'Generation Failed', error?.message || 'Generation failed.');
     } finally {
       setIsGeneratingContent(false);
     }
@@ -2828,19 +2838,19 @@ useEffect(() => {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.url) {
-        toast.show('error', 'Download failed', data?.error || 'Download failed. Try again.');
+        toast.show('error', 'Download failed', data?.error || 'Download failed.');
         return;
       }
       await openDownloadUrl(data.url);
       const skipped: string[] = Array.isArray(data.skipped) ? data.skipped : [];
       if (skipped.length > 0) {
-        toast.show('info', 'Some lessons were skipped', `Not included: ${skipped.join(', ')}`);
+        toast.show('info', 'Some lessons were skipped', `${skipped.length} skipped.`);
       } else {
-        toast.show('success', 'Download started', data.count > 1 ? `${data.count} lessons downloaded as a .zip.` : 'Lesson downloaded.');
+        toast.show('success', 'Download started', data.count > 1 ? `${data.count} lessons downloaded.` : 'Lesson downloaded.');
       }
     } catch (err) {
       console.warn('Lesson download failed:', err);
-      toast.show('error', 'Download failed', 'Download failed. Try again.');
+      toast.show('error', 'Download failed', 'Download failed.');
     } finally {
       setDownloadingLessonsModuleId(null);
     }
@@ -2999,21 +3009,21 @@ useEffect(() => {
         if (failedCount > 0 || skippedCount > 0) {
           const parts = [`${generatedCount} lesson(s) generated`];
           if (skippedCount > 0) parts.push(`${skippedCount} already existed`);
-          if (failedCount > 0) parts.push(`${failedCount} failed — you can retry those individually`);
-          toast.show('info', 'Generated with some issues', `${parts.join(', ')}. Review and edit before saving.`);
+          if (failedCount > 0) parts.push(`${failedCount} failed`);
+          toast.show('info', 'Generated with some issues', `${parts.join(', ')}.`);
         } else {
           toast.show(
             'success',
             'Generated!',
-            generatedCount > 1 ? `${generatedCount} lessons generated. Review and edit before saving.` : 'Review and edit the content before saving.'
+            generatedCount > 1 ? `${generatedCount} lessons generated.` : 'Lesson generated.'
           );
         }
       } else {
-        toast.show('info', 'No New Content', 'No new lessons were generated or they already exist.');
+        toast.show('info', 'No New Content', 'No new lessons generated.');
       }
       setShowNextLessonModal(false);
     } catch (error: any) {
-      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate lessons.');
+      toast.show('error', 'Generation Failed', error?.message || 'Generation failed.');
     } finally {
       setIsGeneratingNextLessons(false);
     }
@@ -3113,9 +3123,9 @@ useEffect(() => {
       await loadCourseContent();
       setShowLessonPreviewModal(false);
       setPendingGeneratedLessons([]);
-      toast.show('success', 'Saved!', `${pendingGeneratedLessons.length} lesson(s) saved successfully.`);
+      toast.show('success', 'Saved!', `${pendingGeneratedLessons.length} lesson(s) saved.`);
     } catch (error: any) {
-      toast.show('error', 'Save Failed', error?.message || 'Failed to save some lessons.');
+      toast.show('error', 'Save Failed', error?.message || 'Save failed.');
     } finally {
       setIsSavingGeneratedLessons(false);
     }
@@ -3149,7 +3159,7 @@ useEffect(() => {
       return;
     }
     if (isDuplicateModuleTitle) {
-      toast.show('error', 'Duplicate Title', 'A module with this title already exists.');
+      toast.show('error', 'Duplicate Title', 'Module title already exists.');
       return;
     }
     if (isNaN(num) || num < 1) {
@@ -3179,7 +3189,7 @@ useEffect(() => {
       setNewModuleDesc('');
       setNewModuleWeek('');
       await loadCourseContent();
-      toast.show('success', 'Success', `Module ${num} created successfully!`);
+      toast.show('success', 'Success', `Module ${num} created.`);
     } catch (e: any) {
       console.error("Create Manual Module Error:", e);
       toast.show('error', 'Error', e.message);
@@ -3221,7 +3231,7 @@ useEffect(() => {
       return;
     }
     if (isDuplicateModuleDisplayTitle) {
-      toast.show('error', 'Duplicate Title', 'Another module already uses this title.');
+      toast.show('error', 'Duplicate Title', 'Module title already exists.');
       return;
     }
     setIsSavingModuleTitle(true);
@@ -3233,7 +3243,7 @@ useEffect(() => {
         body: JSON.stringify({ displayTitle: trimmed }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to update module title.');
+      if (!response.ok) throw new Error(data.error || 'Update failed.');
       setModules((prev) =>
         prev.map((m) => (m.id === moduleBeingEdited.id ? { ...m, displayTitle: trimmed } : m))
       );
@@ -3242,7 +3252,7 @@ useEffect(() => {
       setEditModuleTitleValue('');
       toast.show('success', 'Saved', 'Module title updated.');
     } catch (e: any) {
-      toast.show('error', 'Error', e?.message || 'Failed to update module title.');
+      toast.show('error', 'Error', e?.message || 'Update failed.');
     } finally {
       setIsSavingModuleTitle(false);
     }
@@ -3293,9 +3303,9 @@ useEffect(() => {
             delete next[mod.id];
             return next;
           });
-          toast.show('success', 'Deleted', 'Module and its lessons were deleted.');
+          toast.show('success', 'Deleted', 'Module deleted.');
         } catch (e: any) {
-          toast.show('error', 'Delete Failed', e?.message || 'Unable to delete module.');
+          toast.show('error', 'Delete Failed', e?.message || 'Delete failed.');
         } finally {
           setDeletingModuleId(null);
         }
@@ -3309,7 +3319,7 @@ useEffect(() => {
       return;
     }
     if (isDuplicateLessonTitle) {
-      toast.show('error', 'Duplicate Title', 'A lesson with this title already exists.');
+      toast.show('error', 'Duplicate Title', 'Lesson title already exists.');
       return;
     }
     // ─── Text-mode lessons: the letterhead fields are always required; each optional
@@ -3423,7 +3433,7 @@ useEffect(() => {
         });
         data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to update lesson');
-        toast.show('success', 'Updated', 'Lesson updated successfully.');
+        toast.show('success', 'Updated', 'Lesson updated.');
       } else {
         response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
           method: 'POST',
@@ -3433,7 +3443,7 @@ useEffect(() => {
         });
         data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to create lesson');
-        toast.show('success', 'Success', 'Lesson created successfully.');
+        toast.show('success', 'Success', 'Lesson created.');
       }
       setShowManualLessonModal(false);
       resetLessonForm();
@@ -3491,7 +3501,7 @@ useEffect(() => {
       setAiPreviewType(tool);
       setSelectedModule(module);
     } catch (error: any) {
-      toast.show('error', 'AI Error', error?.message || 'Failed to generate AI content.');
+      toast.show('error', 'AI Error', error?.message || 'Generation failed.');
     } finally {
       setIsAiLoading(false);
       setAiLoadingType('');
@@ -3515,9 +3525,9 @@ useEffect(() => {
       const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, { credentials: 'include' });
       setModules(await modulesRes.json());
       setAiPreviewData(null); setAiPreviewType(''); setSelectedModule(null);
-      toast.show('success', 'Saved', 'Module updated successfully.');
+      toast.show('success', 'Saved', 'Module updated.');
     } catch (error: any) {
-      toast.show('error', 'Save Failed', error?.message || 'Failed to save module.');
+      toast.show('error', 'Save Failed', error?.message || 'Save failed.');
     }
   };
 
@@ -3534,7 +3544,7 @@ useEffect(() => {
       }
       const asset = result.assets[0];
       if (asset.size && asset.size > MAX_SYLLABUS_FILE_SIZE_BYTES) {
-        toast.show('error', 'File Too Large', `Max file size is ${formatFileSizeMB(MAX_SYLLABUS_FILE_SIZE_BYTES)}.`);
+        toast.show('error', 'File Too Large', `Max ${formatFileSizeMB(MAX_SYLLABUS_FILE_SIZE_BYTES)}.`);
         setIsEditingSyllabus(false);
         return;
       }
@@ -3549,7 +3559,7 @@ useEffect(() => {
         ? ALLOWED_SYLLABUS_FILE_EXTENSIONS.includes(ext)
         : !!asset.mimeType && ALLOWED_SYLLABUS_FILE_MIME_TYPES.includes(asset.mimeType);
       if (!formatAllowed) {
-        toast.show('error', 'Unsupported File', `Unsupported file type (${ALLOWED_SYLLABUS_FILE_LABEL}).`);
+        toast.show('error', 'Unsupported File', `Use ${ALLOWED_SYLLABUS_FILE_LABEL}.`);
         setIsEditingSyllabus(false);
         return;
       }
@@ -3610,7 +3620,7 @@ useEffect(() => {
           toast.show(
             'error',
             'Invalid Syllabus',
-            data.error || 'Invalid syllabus — no weekly schedule found.'
+            'No weekly schedule found.'
           );
           return;
         }
@@ -3623,21 +3633,21 @@ useEffect(() => {
           'success',
           wasEdit ? 'Syllabus Replaced' : 'Syllabus Uploaded',
           wasEdit
-            ? 'Syllabus updated successfully! New "Generate Module" clicks will use the updated syllabus.'
-            : 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.'
+            ? 'Syllabus updated.'
+            : 'Syllabus uploaded.'
         );
       } else {
         toast.show(
           'info',
           'Upload Complete',
           wasEdit
-            ? 'Syllabus replaced. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.'
-            : 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.'
+            ? 'Syllabus replaced. Could not read structure.'
+            : 'Syllabus uploaded. Could not read structure.'
         );
       }
     } catch (error: any) {
       console.error('Syllabus upload error:', error);
-      toast.show('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
+      toast.show('error', 'Upload Failed', error?.message || 'Upload failed.');
     } finally {
       setIsUploadingSyllabus(false);
       setIsEditingSyllabus(false);
@@ -3665,12 +3675,12 @@ useEffect(() => {
             credentials: 'include',
           });
           const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Failed to delete syllabus.');
+          if (!response.ok) throw new Error(data.error || 'Delete failed.');
           setCurrentSyllabus(null);
-          toast.show('success', 'Deleted', 'Syllabus deleted successfully.');
+          toast.show('success', 'Deleted', 'Syllabus deleted.');
         } catch (error: any) {
           console.error('Syllabus delete error:', error);
-          toast.show('error', 'Delete Failed', error?.message || 'Failed to delete syllabus.');
+          toast.show('error', 'Delete Failed', error?.message || 'Delete failed.');
         } finally {
           setIsDeletingSyllabus(false);
         }
@@ -3705,7 +3715,7 @@ useEffect(() => {
         setSyllabusViewerUrl(googleDocsUrl);
       }
     } catch (e) {
-      toast.show('error', 'Error', 'Failed to load syllabus preview.');
+      toast.show('error', 'Error', 'Preview failed.');
     }
   };
 
@@ -3803,13 +3813,13 @@ useEffect(() => {
       if (failed.length === 0) {
         toast.show(
           'success',
-          'Modules Created',
-          succeeded.length > 1 ? `${succeeded.length} modules created successfully.` : `Module "${succeeded[0]}" created successfully.`
+          'Created',
+          succeeded.length > 1 ? `${succeeded.length} modules created.` : 'Module created.'
         );
       } else if (succeeded.length > 0) {
-        toast.show('info', 'Created with some issues', `${succeeded.length} created, ${failed.length} failed: ${failed.join(', ')}`);
+        toast.show('info', 'Partly created', `${succeeded.length} created, ${failed.length} failed.`);
       } else {
-        toast.show('error', 'Generation Failed', `Failed to create: ${failed.join(', ')}`);
+        toast.show('error', 'Generation Failed', `${failed.length} failed.`);
       }
     } finally {
       setIsGeneratingModules(false);
@@ -3874,9 +3884,9 @@ useEffect(() => {
       setShowStructurePreviewModal(false);
       setGeneratedStructure(null);
       await loadCourseContent();
-      toast.show('success', 'Approved', 'Course structure saved and modules created!');
+      toast.show('success', 'Approved', 'Course structure saved.');
     } catch (error: any) {
-      toast.show('error', 'Save Failed', error?.message || 'Unable to save course structure.');
+      toast.show('error', 'Save Failed', error?.message || 'Save failed.');
     } finally {
       setIsGeneratingStructure(false);
     }
@@ -4006,13 +4016,13 @@ useEffect(() => {
         }
       );
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to update material.');
+      if (!response.ok) throw new Error(data.error || 'Update failed.');
       await loadCourseContent();
       setShowEditMaterialModal(false);
       setViewerMaterial(null);
-      toast.show('success', 'Updated', 'Material updated successfully.');
+      toast.show('success', 'Updated', 'Material updated.');
     } catch (error: any) {
-      toast.show('error', 'Update Failed', error?.message || 'Failed to update material.');
+      toast.show('error', 'Update Failed', error?.message || 'Update failed.');
     } finally {
       setIsSavingMaterial(false);
     }
@@ -4032,13 +4042,13 @@ useEffect(() => {
             { credentials: 'include', method: 'DELETE' }
           );
           const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Failed to delete material.');
+          if (!response.ok) throw new Error(data.error || 'Delete failed.');
           await loadCourseContent();
           setShowEditMaterialModal(false);
           setViewerMaterial(null);
-          toast.show('success', 'Deleted', 'Material deleted successfully.');
+          toast.show('success', 'Deleted', 'Material deleted.');
         } catch (error: any) {
-          toast.show('error', 'Delete Failed', error?.message || 'Failed to delete material.');
+          toast.show('error', 'Delete Failed', error?.message || 'Delete failed.');
         } finally {
           setIsDeletingMaterial(false);
         }
@@ -4066,7 +4076,7 @@ useEffect(() => {
         if (storagePath && course?.id) {
           downloadUrl = `${API_BASE_URL}/course-material-download/${course.id}?storagePath=${encodeURIComponent(storagePath)}`;
         } else {
-          toast.show('error', 'Download Unavailable', "Can't download this file directly.");
+          toast.show('error', 'Download Unavailable', 'Download unavailable.');
           return;
         }
       } else {
@@ -4096,11 +4106,11 @@ useEffect(() => {
         if (canShare) {
           await Sharing.shareAsync(result.uri, { mimeType, dialogTitle: `Save ${fileName}` });
         } else {
-          toast.show('info', 'Saved', `File downloaded to:\n${result.uri}`);
+          toast.show('info', 'Saved', 'File downloaded.');
         }
       }
     } catch (error: any) {
-      toast.show('error', 'Download Failed', error?.message || 'Unable to download file.');
+      toast.show('error', 'Download Failed', error?.message || 'Download failed.');
     } finally {
       setIsDownloading(false);
     }
@@ -4349,8 +4359,8 @@ useEffect(() => {
           'error',
           'File Too Large',
           oversized.length === 1
-            ? `"${oversized[0].name}" exceeds the maximum size of ${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)}.`
-            : `${oversized.length} files exceed the maximum size of ${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)} and were skipped.`
+            ? `File exceeds ${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)}.`
+            : `${oversized.length} files exceed ${formatFileSizeMB(MAX_ASSIGNMENT_FILE_SIZE_BYTES)}.`
         );
       }
       if (validAssets.length === 0) return;
@@ -4377,10 +4387,7 @@ useEffect(() => {
         toast.show(
           'error',
           'Total Attachment Limit Reached',
-          `Attachments on one assignment can't exceed ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} in total. ` +
-            (rejectedForTotalLimit.length === 1
-              ? `"${rejectedForTotalLimit[0].name}" wasn't added.`
-              : `${rejectedForTotalLimit.length} files weren't added.`)
+          `Max ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} total attachments.`
         );
       }
       if (acceptedAssets.length === 0) return;
@@ -4495,7 +4502,7 @@ useEffect(() => {
         asset.mimeType &&
         !ALLOWED_TEMPLATE_IMAGE_MIME_TYPES.includes(asset.mimeType.toLowerCase())
       ) {
-        toast.show('error', 'Invalid File Type', 'Only PNG, JPG/JPEG, and WEBP images are allowed.');
+        toast.show('error', 'Invalid File Type', 'Only PNG, JPG, or WEBP.');
         return;
       }
 
@@ -4503,7 +4510,7 @@ useEffect(() => {
         toast.show(
           'error',
           'File Too Large',
-          `Image must be smaller than ${formatFileSizeMB(MAX_TEMPLATE_IMAGE_SIZE_BYTES)}.`
+          `Max image size ${formatFileSizeMB(MAX_TEMPLATE_IMAGE_SIZE_BYTES)}.`
         );
         return;
       }
@@ -4546,7 +4553,7 @@ useEffect(() => {
 
   const handleSaveCourseTemplate = async () => {
     if (!templateHeaderPick && !templateFooterPick) {
-      toast.show('info', 'Nothing to Save', 'Choose a new header or footer image first.');
+      toast.show('info', 'Nothing to Save', 'Choose an image first.');
       return;
     }
     setIsSavingTemplate(true);
@@ -4579,9 +4586,9 @@ useEffect(() => {
       setTemplateHeaderPick(null);
       setTemplateFooterPick(null);
       setShowManageTemplateModal(false);
-      toast.show('success', 'Template Updated', 'The school-wide header & footer are now live for every class.');
+      toast.show('success', 'Template Updated', 'Header & footer updated.');
     } catch (error: any) {
-      toast.show('error', 'Save Failed', error?.message || 'Unable to save the template.');
+      toast.show('error', 'Save Failed', error?.message || 'Save failed.');
     } finally {
       setIsSavingTemplate(false);
     }
@@ -4656,7 +4663,7 @@ useEffect(() => {
         toast.show(
           'info',
           'Nothing to Export',
-          'There are no graded scores yet for this class, so there is nothing to export.'
+          'No graded scores yet.'
         );
         return;
       }
@@ -4843,7 +4850,7 @@ useEffect(() => {
         });
         await Linking.openURL(fileUri);
       }
-      toast.show('success', 'Export Successful', 'Excel exported successfully.');
+      toast.show('success', 'Export Successful', 'Excel exported.');
     } catch (error: any) {
       toast.show('error', 'Export Failed', error?.message || 'Failed to export Excel.');
     } finally {
@@ -4948,7 +4955,7 @@ useEffect(() => {
       return;
     }
     if (selectedMaterialIds.length > MAX_MODULE_LESSONS) {
-      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Deselect some to continue.`);
+      toast.show('error', 'Too Many Lessons', MAX_MODULE_LESSONS_MESSAGE);
       return;
     }
     const parsedCount = parseInt(numberOfQuestions, 10) || 0;
@@ -4956,7 +4963,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Invalid Count',
-        `Enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+        `Enter 1–${MAX_QUESTIONS_PER_GENERATION} questions.`
       );
       return;
     }
@@ -4966,7 +4973,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Daily Limit Reached',
-        `You've used all ${DAILY_GENERATION_LIMIT} generations for today. Try again tomorrow.`
+        `Daily limit (${DAILY_GENERATION_LIMIT}) reached.`
       );
       return;
     }
@@ -5058,7 +5065,7 @@ useEffect(() => {
       toast.show(
         'success',
         'Generated',
-        `Questions generated successfully! (${nextCount}/${DAILY_GENERATION_LIMIT} generations used today) You can edit them before saving.`
+        `Questions generated. (${nextCount}/${DAILY_GENERATION_LIMIT} today)`
       );
     } catch (error: any) {
       toast.show('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
@@ -5120,7 +5127,7 @@ useEffect(() => {
       return;
     }
     if (selectedMaterialIds.length > MAX_MODULE_LESSONS) {
-      toast.show('error', 'Too Many Lessons', `${MAX_MODULE_LESSONS_MESSAGE} Deselect some to continue.`);
+      toast.show('error', 'Too Many Lessons', MAX_MODULE_LESSONS_MESSAGE);
       return;
     }
     const parsedCount = parseInt(extraQuestionsCount, 10) || 0;
@@ -5128,7 +5135,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Invalid Count',
-        `Enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+        `Enter 1–${MAX_QUESTIONS_PER_GENERATION} questions.`
       );
       return;
     }
@@ -5138,7 +5145,7 @@ useEffect(() => {
       toast.show(
         'error',
         'Daily Limit Reached',
-        `You've used all ${DAILY_GENERATION_LIMIT} generations for today. Try again tomorrow.`
+        `Daily limit (${DAILY_GENERATION_LIMIT}) reached.`
       );
       return;
     }
@@ -5210,7 +5217,7 @@ useEffect(() => {
         toast.show(
           'error',
           'No New Questions',
-          'AI returned only duplicates. Add one manually.'
+          'Only duplicates generated.'
         );
         return;
       }
@@ -5225,7 +5232,7 @@ useEffect(() => {
       toast.show(
         'success',
         'Added',
-        `${newUnique.length} new question(s) added. (${nextCount}/${DAILY_GENERATION_LIMIT} generations used today)`
+        `${newUnique.length} question(s) added. (${nextCount}/${DAILY_GENERATION_LIMIT} today)`
       );
     } catch (error: any) {
       toast.show('error', 'Generation Failed', error?.message || 'Unable to generate more questions.');
@@ -5276,7 +5283,7 @@ useEffect(() => {
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
-        toast.show('success', 'Success', 'Material uploaded successfully.');
+        toast.show('success', 'Success', 'Material uploaded.');
       } catch (error: any) {
         toast.show('error', 'Upload Failed', error?.message || 'Failed to create material.');
       } finally {
@@ -5345,7 +5352,7 @@ useEffect(() => {
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
-      toast.show('success', 'Success', 'Assignment uploaded successfully.');
+      toast.show('success', 'Success', 'Assignment uploaded.');
     } catch (error: any) {
       toast.show('error', 'Upload Failed', error?.message || 'Failed to create assignment.');
     } finally {
@@ -5571,7 +5578,7 @@ useEffect(() => {
         placeholder="Lesson Title"
       />
       {isDuplicateLessonTitle &&
-        renderInputError('A lesson with this title already exists.')}
+        renderInputError('Lesson title already exists.')}
       <Text style={styles.sectionLabel}>Description</Text>
       <TextInput placeholderTextColor="#999" style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
       {lessonMode === 'text' ? (
@@ -5714,7 +5721,7 @@ useEffect(() => {
                 toast.show(
                   'error',
                   'File Too Large',
-                  `"${asset.name}" exceeds the maximum size of ${formatFileSizeMB(MAX_LESSON_FILE_SIZE_BYTES)}.`
+                  `File exceeds ${formatFileSizeMB(MAX_LESSON_FILE_SIZE_BYTES)}.`
                 );
                 return;
               }
@@ -7534,13 +7541,13 @@ the button looked completely dead.
                     'error',
                     'Invalid Questions',
                     gameType === 'memory_match'
-                      ? 'Every term and definition needs text.'
-                      : 'Every item needs text and a correct option.'
+                      ? 'Fill every term and definition.'
+                      : 'Fill every item and correct option.'
                   );
                   return;
                 }
                 setShowGeneratedPreview(false);
-                toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
+                toast.show('success', 'Saved', 'Questions saved.');
               }}
               style={[styles.lessonPreviewIconBtn, { backgroundColor: '#8B0000' }]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -8679,13 +8686,13 @@ GENERATED QUESTIONS PREVIEW MODAL
                     'error',
                     'Invalid Questions',
                     gameType === 'memory_match'
-                      ? 'Every term and definition needs text.'
-                      : 'Every item needs text and a correct option.'
+                      ? 'Fill every term and definition.'
+                      : 'Fill every item and correct option.'
                   );
                   return;
                 }
                 setShowGeneratedPreview(false);
-                toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
+                toast.show('success', 'Saved', 'Questions saved.');
               }}
               style={[styles.lessonPreviewIconBtn, { backgroundColor: '#8B0000' }]}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -9336,7 +9343,7 @@ MANUAL MODULE CREATION MODAL
                 placeholderTextColor="#999"
               />
               {isDuplicateModuleTitle &&
-                renderInputError('A module with this title already exists.')}
+                renderInputError('Module title already exists.')}
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
@@ -9401,7 +9408,7 @@ the underlying `title` used by Lesson Generation is never touched)
                 placeholderTextColor="#999"
               />
               {isDuplicateModuleDisplayTitle &&
-                renderInputError('Another module already uses this title.')}
+                renderInputError('Module title already exists.')}
               <Text style={{ fontSize: 11, color: '#999', marginTop: 8, lineHeight: 15 }}>
                 This changes how the module's title is displayed here and to students only. It won't affect
                 what's stored for Lesson Generation.
@@ -10261,7 +10268,7 @@ DRAFT DOCX PREVIEW — full-screen preview of an unsaved generated lesson
               onLinksChange={setSasDocLinks}
               onUnavailable={() => {
                 setDraftPreviewIndex(null);
-                toast.show('error', 'Preview unavailable', 'Preview unavailable. You can still save.');
+                toast.show('error', 'Preview unavailable', 'Preview unavailable.');
               }}
             />
           ) : null}

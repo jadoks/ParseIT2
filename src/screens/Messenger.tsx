@@ -447,7 +447,7 @@ const Messenger = ({
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
     toastTimeoutRef.current = setTimeout(() => {
       setToast((prev) => ({ ...prev, visible: false }));
       toastTimeoutRef.current = null;
@@ -1532,7 +1532,7 @@ const Messenger = ({
       if (Platform.OS === 'web') {
         // ── Web: backend proxy ────────────────────────────────────────────────
         if (!imagePreviewStoragePath) {
-          showToast('Cannot download: file path missing.', 'error');
+          showToast('File path missing.', 'error');
           return;
         }
         const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
@@ -1580,7 +1580,7 @@ const Messenger = ({
           return;
         }
         await MediaLibrary.saveToLibraryAsync(localUri);
-        showToast('Image saved to your Photos!', 'success');
+        showToast('Image saved.', 'success');
 
       } else {
         // ── Android: save directly to a user-chosen folder via SAF ───────────
@@ -1613,7 +1613,7 @@ const Messenger = ({
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showToast('Image saved to your selected folder!', 'success');
+        showToast('Image saved.', 'success');
       }
     } catch (err: any) {
       console.error('Download image error:', err);
@@ -1655,7 +1655,7 @@ const Messenger = ({
     try {
       if (Platform.OS === 'web') {
         // ── Web: backend proxy ────────────────────────────────────────────────
-        if (!item.storagePath) { showToast('Cannot download: file path missing.', 'error'); return; }
+        if (!item.storagePath) { showToast('File path missing.', 'error'); return; }
         const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
         const res = await fetch(proxyUrl, { credentials: 'include' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1686,7 +1686,7 @@ const Messenger = ({
             dialogTitle: `Save ${fileName}`,
           });
         } else {
-          showToast(`File cached at: ${localUri}`, 'success');
+          showToast('File saved.', 'success');
         }
 
       } else {
@@ -1714,7 +1714,7 @@ const Messenger = ({
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showToast('File saved to your selected folder!', 'success');
+        showToast('File saved.', 'success');
       }
     } catch (err: any) {
       console.error('Download file error:', err);
@@ -1863,8 +1863,8 @@ const Messenger = ({
 
       showToast(
         added.length === 1
-          ? `${added[0].name} was added to the room.`
-          : `${added.length} members were added to the room.`,
+          ? `${added[0].name} added.`
+          : `${added.length} members added.`,
         'success'
       );
       setMembersToAdd([]);
@@ -1907,7 +1907,7 @@ const Messenger = ({
         return { ...c, memberDetails: nextDetails, members: nextDetails.map((d) => d.name) };
       });
 
-      showToast(`${name} was removed from the room.`, 'success');
+      showToast(`${name} removed.`, 'success');
     } catch (error: any) {
       console.error('Remove room member error:', error);
       showToast(error?.message || 'Failed to remove member.', 'error');
@@ -1946,7 +1946,7 @@ const Messenger = ({
       setConversations((prev) => prev.filter((c) => c.id !== roomId));
       setSelected(null);
       onConversationActiveChange?.(false);
-      showToast('You left the discussion room.', 'success');
+      showToast('You left the room.', 'success');
     } catch (error: any) {
       console.error('Leave room error:', error);
       setShowLeaveConfirm(false);

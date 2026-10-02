@@ -790,13 +790,13 @@ const Assignments = ({
   }>({ visible: false, message: '', type: 'success' });
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
+    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
   };
 
   // Backend error messages can run long and verbose — the toast only has
   // room for ~2 short lines, so trim anything past that instead of letting
   // it get visually cut off mid-sentence with no indication there's more.
-  const MAX_TOAST_MESSAGE_LENGTH = 90;
+  const MAX_TOAST_MESSAGE_LENGTH = 60;
   const shortenForToast = (message?: string | null, fallback = 'Something went wrong.') => {
     const text = (message || fallback).trim() || fallback;
     if (text.length <= MAX_TOAST_MESSAGE_LENGTH) return text;
@@ -1444,7 +1444,7 @@ const Assignments = ({
     if (file.fileType === 'text/uri-list' || !!file.linkUrl) {
       const url = file.linkUrl?.trim();
       if (!url) {
-        showToast('No URL found for this submission.', 'error');
+        showToast('No URL found.', 'error');
         return;
       }
       try {
@@ -1605,7 +1605,7 @@ const Assignments = ({
       syncSelectedAssignmentStatus('pending');
       await onRefreshSubmissions?.();
 
-      showToast('Unsubmitted. You can edit and resubmit.', 'success');
+      showToast('Unsubmitted.', 'success');
     } catch (error: any) {
       showToast(shortenForToast(error?.message, 'Unable to unsubmit.'), 'error');
     } finally {
