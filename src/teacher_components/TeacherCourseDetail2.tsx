@@ -2131,11 +2131,17 @@ const TeacherCourseDetail2 = ({
   // Keep toasts short: drop generic titles, cap the length.
   const formatToastText = (title: string, message?: string) => {
     const MAX = 60;
-    if (!message) return title.length > MAX ? `${title.slice(0, MAX - 1)}…` : title;
-    const generic = ['error', 'success', 'saved', 'updated', 'deleted'].includes(title.trim().toLowerCase());
+    const cut = (t: string) => (t.length > MAX ? `${t.slice(0, MAX - 1)}…` : t);
+    if (!message) return cut(title);
+    // Skip the title when it only repeats the message
+    // (e.g. "Created" + "Module created.") or is a generic label.
+    const generic = ['error', 'success', 'saved', 'updated', 'deleted', 'created', 'added', 'generated', 'approved'];
+    const stem = (w: string) => w.toLowerCase().replace(/[^a-z]/g, '').slice(0, 5);
+    const msgStems = message.split(/\s+/).map(stem).filter((w) => w.length >= 4);
+    const repeats = title.split(/\s+/).map(stem).some((w) => w.length >= 4 && msgStems.includes(w));
+    if (generic.includes(title.trim().toLowerCase().replace(/[^a-z ]/g, '')) || repeats) return cut(message);
     const combined = `${title}: ${message}`;
-    if (!generic && combined.length <= MAX) return combined;
-    return message.length > MAX ? `${message.slice(0, MAX - 1)}…` : message;
+    return combined.length <= MAX ? combined : cut(message);
   };
 
   const toast = {
@@ -3819,7 +3825,7 @@ useEffect(() => {
       } else if (succeeded.length > 0) {
         toast.show('info', 'Partly created', `${succeeded.length} created, ${failed.length} failed.`);
       } else {
-        toast.show('error', 'Generation Failed', `${failed.length} failed.`);
+        toast.show('error', 'Generation Failed', 'Module creation failed.');
       }
     } finally {
       setIsGeneratingModules(false);
