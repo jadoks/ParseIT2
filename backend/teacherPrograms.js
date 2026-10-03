@@ -255,6 +255,61 @@ function normalizeSchoolYear(raw) {
   return m && Number(m[2]) === Number(m[1]) + 1 ? `${m[1]}-${m[2]}` : null;
 }
 
+// ----------------------- tolerant JSON parsing ------------------------------
+// Gemini occasionally returns almost-JSON (trailing commas, a cut-off tail,
+// stray control characters). Try progressively more forgiving repairs before
+// giving up, so one stray comma doesn't fail the whole upload.
+function closeOpenJson(text) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") stack.push(ch === "{" ? "}" : "]");
+    else if ((ch === "}" || ch === "]") && stack.length) stack.pop();
+  }
+  let out = text;
+  if (inString) out += '"';
+  out = out.replace(/[,:\s]+$/, ""); // dangling comma / colon from a cut-off tail
+  return out + stack.reverse().join("");
+}
+
+export function parseLooseJson(raw) {
+  let text = String(raw || "").replace(/```json|```/gi, "").trim();
+  const first = text.indexOf("{");
+  if (first === -1) throw new Error("The model did not return JSON.");
+  text = text.slice(first);
+  const last = text.lastIndexOf("}");
+  const body = last >= 0 ? text.slice(0, last + 1) : text;
+
+  const stripNoise = (s) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/,\s*([}\]])/g, "$1");
+  const quoteKeys = (s) => s.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
+
+  const candidates = [
+    body,
+    stripNoise(body),
+    quoteKeys(stripNoise(body)),
+    closeOpenJson(stripNoise(body)), // cut-off tail: close at the last complete object
+    closeOpenJson(stripNoise(text)),
+    closeOpenJson(quoteKeys(stripNoise(text))),
+  ];
+  let firstError = null;
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch (e) {
+      firstError = firstError || e;
+    }
+  }
+  throw firstError;
+}
+
 // ----------------------- section-config validation --------------------------
 
 export function validateSectionConfig(years) {
@@ -379,44 +434,75 @@ Return JSON with:
     return { error: "You do not have access to this data.", status: 403 };
   }
 
+  // Shape reminder used on retries that run WITHOUT the response schema.
+  const JSON_SHAPE = `Respond with ONLY valid JSON (no markdown, no comments, no trailing commas) shaped exactly like:
+{"teacherName": string|null, "semester": string|null, "schoolYear": string|null,
+ "summary": [{"courseCode": string|null, "title": string, "units": number|null, "section": string|null, "students": number|null}],
+ "blocks": [{"courseCode": string|null, "title": string|null, "section": string|null, "day": string, "startTime": string, "endTime": string, "room": string|null}]}`;
+
   async function extractWithGemini({ buffer, mimeType, fileName }) {
     if (!geminiAI) throw new Error("GEMINI_API_KEY is missing on the server.");
-    const model = geminiAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json",
-        responseSchema: programSchema,
-      },
-    });
 
     const lower = (fileName || "").toLowerCase();
     const isDocx = mimeType === DOCX_MIME || lower.endsWith(".docx");
-    const parts = [{ text: PROMPT }];
+    const content = [];
 
     if (isDocx) {
       // mammoth keeps tables as <table>, which preserves the time grid layout.
       const { value: html } = await mammoth.convertToHtml({ buffer });
       if (!html || html.length < 20) throw new Error("The Word file appears to be empty.");
-      parts.push({ text: `DOCUMENT (HTML):\n${html.slice(0, 200000)}` });
+      content.push({ text: `DOCUMENT (HTML):\n${html.slice(0, 200000)}` });
     } else {
-      parts.push({ inlineData: { mimeType, data: buffer.toString("base64") } });
+      content.push({ inlineData: { mimeType, data: buffer.toString("base64") } });
     }
 
+    // Attempt 1 uses the strict schema. If the model still emits broken JSON,
+    // later attempts drop the schema (it can trigger malformed output on
+    // busy grids), add a little temperature so a retry isn't identical, and
+    // spell the shape out in the prompt instead.
+    const attempts = [
+      { schema: true, temperature: 0.1 },
+      { schema: false, temperature: 0.2 },
+      { schema: false, temperature: 0.4 },
+    ];
+
     let lastError = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let i = 0; i < attempts.length; i++) {
+      const { schema, temperature } = attempts[i];
       try {
+        const model = geminiAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            temperature,
+            maxOutputTokens: 16384,
+            responseMimeType: "application/json",
+            ...(schema ? { responseSchema: programSchema } : {}),
+          },
+        });
+        const parts = [{ text: schema ? PROMPT : `${PROMPT}\n\n${JSON_SHAPE}` }, ...content];
         const result = await model.generateContent(parts);
-        const text = result.response.text().replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(text);
-        if (parsed && Array.isArray(parsed.blocks)) return parsed;
+        const raw = result.response.text();
+        const finish = result.response.candidates?.[0]?.finishReason;
+        if (finish && finish !== "STOP") console.warn(`Program extraction finishReason: ${finish}`);
+
+        let parsed;
+        try {
+          parsed = parseLooseJson(raw);
+        } catch (parseError) {
+          // Log the area around the failure so bad output can be diagnosed.
+          console.warn("Unparseable model output (first 600 chars):", String(raw).slice(0, 600));
+          throw parseError;
+        }
+        if (parsed && (Array.isArray(parsed.blocks) || Array.isArray(parsed.summary))) {
+          return { ...parsed, summary: parsed.summary || [], blocks: parsed.blocks || [] };
+        }
+        throw new Error("Model output was missing summary/blocks.");
       } catch (e) {
         lastError = e;
-        console.warn(`Program extraction attempt ${attempt} failed:`, e?.message);
+        console.warn(`Program extraction attempt ${i + 1} failed:`, e?.message);
       }
     }
-    throw lastError || new Error("Could not read the program.");
+    throw new Error("Couldn't read this program. Try a clearer photo, or upload the PDF/Word version.");
   }
 
   // ---------------------------- POST upload ---------------------------------
