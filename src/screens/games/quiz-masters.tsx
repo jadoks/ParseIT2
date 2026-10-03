@@ -625,66 +625,25 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   };
 
   const goToGameScreen = async () => {
-    const scoreSnapshotMode = mode;
-    const triviaScoreSnapshot = triviaScore;
-    const fillScoreSnapshot = fillScore;
-    const matchingScoreSnapshot = matchingScore;
-    const userAnswersSnapshot = userAnswers;
-    // 🆕 LEADERBOARD: capture this BEFORE resetAll() (which resets it back to
-    // false for the next attempt). If the results-screen effect already
-    // saved this attempt (summary screen, or matching results), don't save
-    // it again here — that would create a duplicate leaderboard row, and on
-    // the 'summary' screen it'd submit a bogus 0/0 score (there's no case
-    // for 'summary' in the switch below since that screen has its own,
-    // already-correct save).
-    const alreadySavedByResultsScreen = hasSavedScoreRef.current;
-
-    resetAll();
-    // 🆕 RESUME SUPPORT: leaving the quiz this way submits whatever progress
-    // was made as the final attempt, so there's nothing left to resume.
-    // 🐛 FIX: must be awaited — onBack() below immediately navigates back to
-    // Game.tsx, which re-reads the active-session key from storage on
-    // mount. If we don't wait for the removal to actually finish writing
-    // first, Game can still see the stale (not-yet-deleted) session and
-    // incorrectly pop the "Resume" banner right after the student backed
-    // out.
-    await clearSavedProgress();
-
-    if (onComplete && !alreadySavedByResultsScreen) {
-        let score = 0;
-        let total = 0;
-
-        switch (scoreSnapshotMode) {
-            case 'trivia':
-                score = triviaScoreSnapshot;
-                total = questions.length;
-                break;
-
-            case 'fillBlank':
-                score = fillScoreSnapshot;
-                total = fillBlankItems.length;
-                break;
-
-            case 'matchingCards':
-                score = matchingScoreSnapshot;
-                total = terms.length;
-                break;
-
-            case 'flashcards':
-                score = userAnswersSnapshot.filter(a => a.isCorrect).length;
-                total = flashcardItems.length > 0
-                    ? flashcardItems.length
-                    : questions.length;
-                break;
-        }
-
-        // Nothing attempted yet (e.g. backing out from the menu, or a game
-        // mode with no progress) — don't submit an empty 0/0 attempt.
-        if (total > 0) onComplete(score, total, userAnswersSnapshot);
+    // 🆕 RESUME SUPPORT: the top back button is now a "pause", not a
+    // "finish". Progress is already saved to storage after every change
+    // (see the persist effect above) and the active-session entry written
+    // by Game.tsx is still in place, so we deliberately do NOT clear
+    // anything, reset state, or submit a partial score here. Game.tsx will
+    // find the saved session on return and offer the "Resume" banner, and
+    // the attempt is submitted once the student actually finishes it.
+    //
+    // The one exception is the results screen (summary / matching results):
+    // that attempt is complete and its score was already recorded by the
+    // results-screen effect, so there is nothing to resume — clear it just
+    // like the "Back to Games" / "Save & Back" buttons do. Awaited so Game.tsx
+    // doesn't re-read a stale session from storage when it remounts.
+    if (isOnResultsScreen) {
+      await clearSavedProgress();
     }
 
     onBack();
-};
+  };
 
   const openMode = (nextMode: GameMode) => {
     if (nextMode === 'matchingCards') resetMatchingCards();
