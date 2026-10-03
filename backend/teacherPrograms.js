@@ -255,6 +255,32 @@ function normalizeSchoolYear(raw) {
   return m && Number(m[2]) === Number(m[1]) + 1 ? `${m[1]}-${m[2]}` : null;
 }
 
+// ----------------------- PDF -> page images ---------------------------------
+// A PDF's embedded text layer is often scrambled on timetables (cells come out
+// in arbitrary order), which makes the model mis-read or produce broken JSON.
+// Rendering the page to an image lets it read the grid the way a person does.
+// Needs `npm install mupdf` (pure WASM, no system packages). If it isn't
+// installed or rendering fails, the caller falls back to sending the raw PDF.
+async function renderPdfToPngs(buffer, maxPages = 3) {
+  try {
+    const mupdf = await import("mupdf");
+    const doc = mupdf.Document.openDocument(buffer, "application/pdf");
+    const total = Math.min(doc.countPages(), maxPages);
+    const images = [];
+    for (let i = 0; i < total; i++) {
+      const page = doc.loadPage(i);
+      const [x0, y0, x1, y1] = page.getBounds();
+      const scale = Math.min(3, 2400 / Math.max(x1 - x0, y1 - y0, 1));
+      const pixmap = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true);
+      images.push(Buffer.from(pixmap.asPNG()));
+    }
+    return images;
+  } catch (e) {
+    console.warn("PDF render unavailable, sending raw PDF:", e?.message);
+    return null;
+  }
+}
+
 // ----------------------- tolerant JSON parsing ------------------------------
 // Gemini occasionally returns almost-JSON (trailing commas, a cut-off tail,
 // stray control characters). Try progressively more forgiving repairs before
@@ -410,7 +436,8 @@ Return JSON with:
     * Layout A: courseCode and section as printed.
     * Layout B: title (the subject name WITHOUT the section or room), section, room; courseCode null.
   If a cell has no section printed (e.g. "Capstone Proj. & Res. 2 CL 2"), set section to null - never guess one. Keep the room as printed ("CL1", "CTLAB 2"); if the cell says TBA / Async instead of a room, set room to null.
-- A cell that visually spans several hourly rows is ONE block (start of its first row to end of its last row); repeating hourly cells of the same class are fine too, they get merged later.
+- Merged cells: in Layout A the text of a tall cell is spread vertically (code at the top, section in the middle, room at the bottom). A cell is bounded by the horizontal grid lines above and below it, so one such cell is ONE block from its first row's start to its last row's end (for example a cell running from the 7:00 line to the 11:00 line is 07:00-11:00). Never split it per hour. Two touching cells with the SAME code, section and room may be reported as one or as two blocks; cells with a different room or section are always separate blocks.
+- Every Layout A block's code + section should match a row of the summary table.
 - Skip "LUNCH BREAK" rows and empty cells.
 - Times are 24-hour "HH:MM". Class hours run 7:00 to 18:00, so 1:00-2:00 means 13:00-14:00 and 5:00-6:00 means 17:00-18:00.
 - The time column can contain typos (for example the 8:00 row labeled "7:00-"). Rows are consecutive hours, so use the row's position, not a mistyped label.
@@ -452,6 +479,13 @@ Return JSON with:
       const { value: html } = await mammoth.convertToHtml({ buffer });
       if (!html || html.length < 20) throw new Error("The Word file appears to be empty.");
       content.push({ text: `DOCUMENT (HTML):\n${html.slice(0, 200000)}` });
+    } else if (mimeType === "application/pdf") {
+      const pages = await renderPdfToPngs(buffer);
+      if (pages && pages.length > 0) {
+        pages.forEach((png) => content.push({ inlineData: { mimeType: "image/png", data: png.toString("base64") } }));
+      } else {
+        content.push({ inlineData: { mimeType, data: buffer.toString("base64") } });
+      }
     } else {
       content.push({ inlineData: { mimeType, data: buffer.toString("base64") } });
     }
