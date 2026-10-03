@@ -32,6 +32,8 @@ import {
   setLiveClassIds,
 } from "./liveEvents.js";
 import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster.js";
+// Teacher program upload + admin-configurable sections (see teacherPrograms.js)
+import { registerTeacherProgramRoutes } from "./teacherPrograms.js";
 
   import officeparser from "officeparser";
 
@@ -22972,6 +22974,19 @@ ${spec.rules}
       res.status(500).json({ error: error.message || "Failed to delete lesson." });
     }
   });
+
+  // ====================== TEACHER PROGRAM + SECTION CONFIG ======================
+  registerTeacherProgramRoutes(app, {
+    db,
+    admin,
+    bucket,
+    requireAuth,
+    findUserProfileByAuthUid,
+    findTeacherByIdentifier,
+    geminiAI: geminiGameAI,
+    SchemaType,
+  });
+  // ==================== END TEACHER PROGRAM + SECTION CONFIG ====================
 
   const PORT = process.env.PORT || 5000;
 

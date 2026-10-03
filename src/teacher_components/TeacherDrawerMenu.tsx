@@ -33,6 +33,7 @@ import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/t
 // Chatbot/Register/Community/Dashboard/ClassesScreen/SignIn) instead of
 // Alert, so feedback looks and behaves consistently across roles.
 import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import TeacherProgramModal from './TeacherProgramModal';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -293,6 +294,7 @@ const TeacherDrawerMenu = ({
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [isProgramModalVisible, setProgramModalVisible] = useState(false);
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
 
@@ -787,6 +789,9 @@ const TeacherDrawerMenu = ({
         <MenuItem ionIconName="person" label="Profile" onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }} active={activeScreen === 'profile'} />
         <MenuItem ionIconName="people" label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
         <MenuItem iconName="chart-line" label="Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
+        {userRole === 'teacher' && (
+          <MenuItem ionIconName="document-text" label="Upload My Program" onPress={() => setProgramModalVisible(true)} />
+        )}
         <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
       </ScrollView>
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
@@ -1410,6 +1415,16 @@ const TeacherDrawerMenu = ({
           </View>
         </View>
       </Modal>
+
+      {/* Upload My Program — stored only; classes are NOT created from it.
+          Subjects appear in the Create Class modal. */}
+      <TeacherProgramModal
+        visible={isProgramModalVisible}
+        onClose={() => setProgramModalVisible(false)}
+        teacherId={userId}
+        fetcher={apiFetch}
+        showToast={showToast}
+      />
 
       {/* Toast — same portal-based component used by the Admin Settings flow
           (and Chatbot/Register/Community/Dashboard/ClassesScreen/SignIn), so

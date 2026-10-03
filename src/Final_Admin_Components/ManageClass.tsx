@@ -13,11 +13,15 @@ import {
   View
 } from "react-native";
 
+import { apiFetch as authApiFetch } from "../services/api"; // adds the Bearer token (new routes use requireAuth)
 import AddClassModal, {
   AddClassModalInitialData,
   AddClassModalPayload,
   ClassScheduleEntry,
+  TeacherOption,
 } from "./AddClassModal";
+import ManageSectionsModal from "./ManageSectionsModal";
+import { useSectionConfig } from "./programHelpers";
 import Toast from "./Toast";
 
 type ManageClassProps = {
@@ -205,6 +209,8 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [classes, setClasses] = useState<TableClassItem[]>([]);
   const [rawClasses, setRawClasses] = useState<BackendClassItem[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isSectionsModalVisible, setIsSectionsModalVisible] = useState(false);
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedClass, setSelectedClass] =
     useState<AddClassModalInitialData | null>(null);
@@ -236,6 +242,25 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
+  // Path-only fetcher used by the program picker and section config.
+  const programFetcher = useCallback(
+    (path: string, init?: any) => authApiFetch(path, init),
+    []
+  );
+  const { config: sectionConfig, reload: reloadSectionConfig } = useSectionConfig(programFetcher);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/teachers`, { method: "GET" });
+        const data = await response.json();
+        if (response.ok && Array.isArray(data)) setTeachers(data);
+      } catch (error) {
+        console.warn("Could not load teachers:", error);
+      }
+    })();
+  }, []);
 
   // --- STATES FOR MEMBER MANAGEMENT ---
   const [isMemberModalVisible, setIsMemberModalVisible] = useState(false);
@@ -805,6 +830,15 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         </View>
 
         <TouchableOpacity
+          style={[styles.primaryActionButton, isMobile && styles.fullWidthButton, { marginRight: isMobile ? 0 : 10 }]}
+          activeOpacity={0.85}
+          onPress={() => setIsSectionsModalVisible(true)}
+        >
+          <Ionicons name="layers-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryActionButtonText}>Manage Sections</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.primaryActionButton, isMobile && styles.fullWidthButton]}
           activeOpacity={0.85}
           onPress={() => {
@@ -1129,7 +1163,24 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
           schoolYear: klass.schoolYear ?? null,
           semester: klass.semester,
           schedule: klass.schedule ?? null,
+          courseCode: klass.courseCode ?? null,
+          status: klass.status ?? null,
         }))}
+        teachers={teachers}
+        programFetcher={programFetcher}
+        sectionConfig={sectionConfig}
+      />
+
+      <ManageSectionsModal
+        visible={isSectionsModalVisible}
+        onClose={() => setIsSectionsModalVisible(false)}
+        config={sectionConfig}
+        fetcher={programFetcher}
+        onSaved={async () => {
+          await reloadSectionConfig();
+          await loadClasses(); // renamed sections are cascaded to classes server-side
+        }}
+        showToast={showToast}
       />
 
       {/* DELETE CONFIRMATION MODAL */}

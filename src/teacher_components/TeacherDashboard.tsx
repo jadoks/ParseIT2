@@ -28,6 +28,9 @@ import TeacherCourseCard from './TeacherCourseCard';
 
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
 import Toast from '../Final_Admin_Components/Toast';
+// Program-based Create Class + admin-configurable sections.
+import ProgramClassPicker, { useProgramPicker } from '../Final_Admin_Components/ProgramClassPicker';
+import { toFormBlocks, useSectionConfig } from '../Final_Admin_Components/programHelpers';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
@@ -431,28 +434,8 @@ const YEAR_OPTIONS: YearOption[] = [
   { id: '3rd', label: '3rd Year' }, { id: '4th', label: '4th Year' },
 ];
 
-const SECTION_OPTIONS: Record<string, SectionOption[]> = {
-  "1st": [
-    { id: "1A", label: "1A Microsoft" },
-    { id: "1B", label: "1B Google" },
-    { id: "1C", label: "1C Amazon" },
-  ],
-  "2nd": [
-    { id: "2A", label: "2A Algorithm" },
-    { id: "2B", label: "2B Pseudocode" },
-    { id: "2C", label: "2C Binary" },
-  ],
-  "3rd": [
-    { id: "3A", label: "3A Python" },
-    { id: "3B", label: "3B Java" },
-    { id: "3C", label: "3C C++" },
-  ],
-  "4th": [
-    { id: "4A", label: "4A Xamarin" },
-    { id: "4B", label: "4B Laravel" },
-    { id: "4C", label: "4C Flutter" },
-  ],
-};
+// SECTION_OPTIONS now comes from the admin-managed /section-config (see useSectionConfig
+// inside Dashboard2) instead of a hard-coded list.
 
 const SEMESTER_OPTIONS: SemesterOption[] = [
   { id: 'sem-1', label: '1st Semester' }, { id: 'sem-2', label: '2nd Semester' },
@@ -701,6 +684,38 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     return Number.isNaN(parsedStartYear) ? '' : String(parsedStartYear + 1);
   }, [editStartYear]);
 
+  // ── Admin-managed sections + program picker (must stay above the early return) ──
+  const { config: SECTION_OPTIONS } = useSectionConfig(apiFetch);
+
+  const programExistingClasses = useMemo(
+    () => localCourses.map((course) => ({
+      id: course.id, name: course.name, courseCode: course.courseCode,
+      section: course.section || course.yearSection, semester: course.semester, schoolYear: course.schoolYear,
+    })),
+    [localCourses]
+  );
+
+  const programPicker = useProgramPicker({
+    teacherId,
+    fetcher: apiFetch,
+    existingClasses: programExistingClasses,
+    sectionConfig: SECTION_OPTIONS,
+    enabled: isCreateModalVisible,
+    showToast,
+    // Writes the chosen program subject into the EXISTING Create Class fields.
+    // Nothing is created until the teacher presses Create.
+    onApply: (fill) => {
+      setSelectedYear(fill.yearId);
+      const matchedSemester = SEMESTER_OPTIONS.find((item) => item.label === fill.semester);
+      if (matchedSemester) setSelectedSemester(matchedSemester.id);
+      setSelectedSection(fill.sectionId);
+      setCourseNameInput(fill.courseName);
+      setCourseUnitsInput(fill.units ? String(fill.units) : '');
+      if (fill.startYear) setStartYear(fill.startYear);
+      if (fill.schedule.length > 0) setScheduleBlocks(toFormBlocks(fill.schedule));
+    },
+  });
+
   const isInitialLoad = isLoading && courses.length === 0 && announcements.length === 0;
 
   if (isInitialLoad) {
@@ -716,6 +731,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     setIsCreatingClass(false); setSelectedYear(null); setSelectedSemester(null); setSelectedSection(null);
     setClassBanner(''); setClassBannerFileName(null); setClassBannerMimeType(null);
     setStartYear('2025'); setSemesterDropdownVisible(false); setCourseNameInput(''); setCourseUnitsInput('');
+    programPicker.clear();
     setScheduleBlocks([createEmptyScheduleBlock()]);
   };
 
@@ -768,11 +784,19 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
   };
 
   const toggleYear = (yearId: string) => {
+    programPicker.clear(); // manual year change leaves program mode
     if (selectedYear === yearId) { setSelectedYear(null); setSelectedSemester(null); setSelectedSection(null); return; }
     setSelectedYear(yearId); setSelectedSemester(null); setSelectedSection(null);
   };
 
   const toggleSection = (sectionId: string) => {
+    // In program mode only the chosen subject's open sections are clickable,
+    // and picking one re-fills that section's schedule.
+    if (programPicker.isLocked && programPicker.active) {
+      if (!programPicker.isSectionPickable(sectionId)) return;
+      programPicker.selectSection(programPicker.active.key, sectionId);
+      return;
+    }
     if (selectedSection === sectionId) { setSelectedSection(null); return; }
     setSelectedSection(sectionId);
   };
@@ -1030,6 +1054,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               </View>
             )}
             <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
+              <ProgramClassPicker picker={programPicker} allowUpload={false} />
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
                   <MaterialCommunityIcons name="school-outline" size={18} color="#8B0000" />
@@ -1084,7 +1109,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                   <View style={styles.optionsGrid}>
                     {(selectedYear ? SECTION_OPTIONS[selectedYear] || [] : []).map((section: SectionOption) => (
                       <View key={section.id} style={optionGridItemStyle}>
-                        <TouchableOpacity style={[styles.sectionRow, selectedSection === section.id && styles.sectionRowActive]} activeOpacity={0.85} onPress={() => toggleSection(section.id)}>
+                        <TouchableOpacity style={[styles.sectionRow, selectedSection === section.id && styles.sectionRowActive, !programPicker.isSectionPickable(section.id) && { opacity: 0.4 }]} disabled={!programPicker.isSectionPickable(section.id)} activeOpacity={0.85} onPress={() => toggleSection(section.id)}>
                           <View style={[styles.checkboxBase, selectedSection === section.id && styles.checkboxChecked]}>
                             {selectedSection === section.id && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
                           </View>

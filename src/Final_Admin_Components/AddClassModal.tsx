@@ -22,6 +22,8 @@ import {
 // a native Alert. Alert.alert() is a no-op on React Native Web, which is
 // why validation errors in this modal previously never showed anything.
 import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+import ProgramClassPicker, { useProgramPicker } from "./ProgramClassPicker";
+import { DEFAULT_SECTION_CONFIG, Fetcher, SectionConfig, toFormBlocks } from "./programHelpers";
 
 type ToastType = "success" | "error" | "info";
 
@@ -159,6 +161,17 @@ export type ExistingClassScheduleInfo = {
   schoolYear?: string | null;
   semester?: string;
   schedule?: ClassScheduleEntry[] | null;
+  courseCode?: string | null; // used to hide already-created program subjects
+  status?: string | null;
+};
+
+// Teacher row for the "Select a Teacher" list.
+export type TeacherOption = {
+  id: string;
+  teacherId?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 };
 
 /**
@@ -519,29 +532,6 @@ const YEAR_OPTIONS: YearOption[] = [
   { id: "4th", label: "4th Year" },
 ];
 
-const SECTION_OPTIONS: Record<string, SectionOption[]> = {
-  "1st": [
-    { id: "1A", label: "1A Microsoft" },
-    { id: "1B", label: "1B Google" },
-    { id: "1C", label: "1C Amazon" },
-  ],
-  "2nd": [
-    { id: "2A", label: "2A Algorithm" },
-    { id: "2B", label: "2B Pseudocode" },
-    { id: "2C", label: "2C Binary" },
-  ],
-  "3rd": [
-    { id: "3A", label: "3A Python" },
-    { id: "3B", label: "3B Java" },
-    { id: "3C", label: "3C C++" },
-  ],
-  "4th": [
-    { id: "4A", label: "4A Xamarin" },
-    { id: "4B", label: "4B Laravel" },
-    { id: "4C", label: "4C Flutter" },
-  ],
-};
-
 const SEMESTER_OPTIONS: SemesterOption[] = [
   { id: "sem-1", label: "1st Semester" },
   { id: "sem-2", label: "2nd Semester" },
@@ -556,6 +546,9 @@ export default function AddClassModal({
   isEditMode = false,
   isSubmitting = false,
   existingClasses = [],
+  teachers = [],
+  programFetcher,
+  sectionConfig,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -570,7 +563,13 @@ export default function AddClassModal({
   // Teacher Dashboard's own Create Class flow does. If omitted, that one
   // cross-class check is simply skipped — everything else still validates.
   existingClasses?: ExistingClassScheduleInfo[];
+  // "Select a Teacher" + program auto-fill. Omit `programFetcher` to hide it.
+  teachers?: TeacherOption[];
+  programFetcher?: Fetcher;
+  // Admin-managed sections (falls back to the defaults while loading).
+  sectionConfig?: SectionConfig;
 }) {
+  const SECTION_OPTIONS: SectionConfig = sectionConfig || DEFAULT_SECTION_CONFIG;
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 1200;
   const isTabletUp = width >= 768;
@@ -589,6 +588,8 @@ export default function AddClassModal({
   ]);
 
   const [instructorIdentifier, setInstructorIdentifier] = useState("");
+  const [selectedTeacherKey, setSelectedTeacherKey] = useState("");
+  const [teacherSearch, setTeacherSearch] = useState("");
 
   // Course details are now free-text input (matches Teacher Dashboard Create Class flow)
   const [courseCodeInput, setCourseCodeInput] = useState("");
@@ -618,6 +619,65 @@ export default function AddClassModal({
 
   const hideToast = () => {
     setToast((prev) => ({ ...prev, visible: false }));
+  };
+
+  // ── Teacher program → auto-fill (admin picks a teacher first) ──────────────
+  const programExistingClasses = useMemo(
+    () =>
+      existingClasses
+        .filter((klass) => (klass.instructorIdentifier || "").trim() === selectedTeacherKey)
+        .map((klass) => ({
+          id: klass.id,
+          name: klass.className,
+          courseCode: klass.courseCode,
+          section: klass.section,
+          semester: klass.semester,
+          schoolYear: klass.schoolYear,
+          status: klass.status,
+        })),
+    [existingClasses, selectedTeacherKey]
+  );
+
+  const programPicker = useProgramPicker({
+    teacherId: !isEditMode && programFetcher ? selectedTeacherKey : "",
+    fetcher: programFetcher || (async () => new Response("{}")),
+    existingClasses: programExistingClasses,
+    sectionConfig: SECTION_OPTIONS,
+    enabled: visible && !isEditMode && !!programFetcher,
+    showToast,
+    // Writes the chosen subject into the existing form fields. Nothing is
+    // created until the admin presses Create Class.
+    onApply: (fill) => {
+      setSelectedYear(fill.yearId);
+      const matchedSemester = SEMESTER_OPTIONS.find((item) => item.label === fill.semester);
+      if (matchedSemester) setSelectedSemester(matchedSemester.id);
+      setSelectedSection(fill.sectionId);
+      setCourseNameInput(fill.courseName);
+      setCourseCodeInput(fill.courseCode);
+      setCourseUnitsInput(fill.units ? String(fill.units) : "");
+      if (fill.startYear) setStartYear(fill.startYear);
+      if (fill.schedule.length > 0) setScheduleBlocks(toFormBlocks(fill.schedule));
+    },
+  });
+
+  const filteredTeachers = useMemo(() => {
+    const q = teacherSearch.trim().toLowerCase();
+    const list = teachers.filter((t) =>
+      !q || `${t.firstName || ""} ${t.lastName || ""} ${t.teacherId || ""} ${t.email || ""}`.toLowerCase().includes(q)
+    );
+    return list.slice(0, 6);
+  }, [teachers, teacherSearch]);
+
+  const selectedTeacher = useMemo(
+    () => teachers.find((t) => (t.teacherId || t.id) === selectedTeacherKey) || null,
+    [teachers, selectedTeacherKey]
+  );
+
+  const handleSelectTeacher = (teacher: TeacherOption) => {
+    const key = String(teacher.teacherId || teacher.id);
+    setSelectedTeacherKey(key);
+    setInstructorIdentifier(key);
+    setTeacherSearch("");
   };
 
   const selectedSemesterLabel = useMemo(() => {
@@ -678,6 +738,7 @@ export default function AddClassModal({
     setScheduleBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, [field]: value } : b)));
 
   const toggleYear = (yearId: string) => {
+    programPicker.clear(); // manual year change leaves program mode
     if (selectedYear === yearId) {
       setSelectedYear(null);
       setSelectedSemester(null);
@@ -691,6 +752,11 @@ export default function AddClassModal({
   };
 
   const toggleSection = (sectionId: string) => {
+    if (programPicker.isLocked && programPicker.active) {
+      if (!programPicker.isSectionPickable(sectionId)) return;
+      programPicker.selectSection(programPicker.active.key, sectionId);
+      return;
+    }
     if (selectedSection === sectionId) {
       setSelectedSection(null);
       return;
@@ -749,6 +815,9 @@ export default function AddClassModal({
 
   const resetForm = () => {
     setInstructorIdentifier("");
+    setSelectedTeacherKey("");
+    setTeacherSearch("");
+    programPicker.clear();
     setDescription("");
     setStartYear("2025");
     setEndYear("2026");
@@ -1005,6 +1074,65 @@ export default function AddClassModal({
                 showsVerticalScrollIndicator={true}
                 contentContainerStyle={styles.modalContent}
               >
+                {!isEditMode && !!programFetcher && (
+                  <View style={styles.modalSection}>
+                    <View style={styles.modalSectionHeaderRow}>
+                      <Ionicons name="person-outline" size={18} color="#8B0000" />
+                      <Text style={styles.modalSectionTitle}>Select a Teacher</Text>
+                    </View>
+
+                    {selectedTeacher ? (
+                      <View style={styles.teacherChosenRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.teacherName}>
+                            {`${selectedTeacher.firstName || ""} ${selectedTeacher.lastName || ""}`.trim() || selectedTeacherKey}
+                          </Text>
+                          <Text style={styles.teacherMeta}>ID: {selectedTeacherKey}</Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedTeacherKey("");
+                            setInstructorIdentifier("");
+                            programPicker.clear();
+                          }}
+                        >
+                          <Text style={styles.teacherChange}>Change</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
+                        <PlainField
+                          value={teacherSearch}
+                          onChangeText={setTeacherSearch}
+                          placeholder="Search teacher by name, ID, or email"
+                        />
+                        {filteredTeachers.map((teacher) => (
+                          <TouchableOpacity
+                            key={teacher.id}
+                            style={styles.teacherOption}
+                            activeOpacity={0.85}
+                            onPress={() => handleSelectTeacher(teacher)}
+                          >
+                            <Text style={styles.teacherName}>
+                              {`${teacher.firstName || ""} ${teacher.lastName || ""}`.trim() || teacher.email}
+                            </Text>
+                            <Text style={styles.teacherMeta}>ID: {teacher.teacherId || teacher.id}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
+
+                    {!!selectedTeacher && (
+                      <View style={{ marginTop: 14 }}>
+                        <ProgramClassPicker
+                          picker={programPicker}
+                          emptyHint="This teacher hasn't uploaded a program yet. You can upload it for them (image, PDF, or Word)."
+                        />
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <MaterialCommunityIcons
@@ -1160,8 +1288,10 @@ export default function AddClassModal({
                               style={[
                                 styles.sectionRow,
                                 isChecked && styles.sectionRowActive,
+                                !programPicker.isSectionPickable(section.id) && { opacity: 0.4 },
                               ]}
                               activeOpacity={0.85}
+                              disabled={!programPicker.isSectionPickable(section.id)}
                               onPress={() => toggleSection(section.id)}
                             >
                               <View
@@ -1439,6 +1569,28 @@ export default function AddClassModal({
 }
 
 const styles = StyleSheet.create({
+  teacherOption: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#EBD4D4",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  teacherChosenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#8B0000",
+    borderRadius: 14,
+    backgroundColor: "#FAF5F5",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  teacherName: { fontSize: 14, fontWeight: "700", color: "#2B1111" },
+  teacherMeta: { fontSize: 12, color: "#8A6F6F", marginTop: 2 },
+  teacherChange: { fontSize: 13, fontWeight: "700", color: "#8B0000" },
   toastPortal: {
     ...StyleSheet.absoluteFillObject,
   },
