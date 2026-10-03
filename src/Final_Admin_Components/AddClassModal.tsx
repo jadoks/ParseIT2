@@ -593,9 +593,11 @@ export default function AddClassModal({
   // Teacher results sit in columns on wide modals (measured from the list itself).
   const [teacherListWidth, setTeacherListWidth] = useState(0);
   const TEACHER_GAP = 10;
-  const teacherColumns = teacherListWidth >= 900 ? 3 : teacherListWidth >= 560 ? 2 : 1;
+  const teacherColumns = Math.max(1, Math.min(3, Math.floor((teacherListWidth + TEACHER_GAP) / (240 + TEACHER_GAP))));
   const teacherCardWidth =
-    teacherListWidth > 0 ? Math.floor((teacherListWidth - TEACHER_GAP * (teacherColumns - 1)) / teacherColumns) : undefined;
+    teacherListWidth > 0
+      ? Math.floor((teacherListWidth - TEACHER_GAP * (teacherColumns - 1)) / teacherColumns) - 1
+      : undefined;
 
   // Course details are now free-text input (matches Teacher Dashboard Create Class flow)
   const [courseCodeInput, setCourseCodeInput] = useState("");
@@ -1580,7 +1582,7 @@ export default function AddClassModal({
 }
 
 const styles = StyleSheet.create({
-  teacherGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 },
+  teacherGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10, width: "100%", alignSelf: "stretch" },
   teacherOption: {
     borderWidth: 1,
     borderColor: "#EBD4D4",

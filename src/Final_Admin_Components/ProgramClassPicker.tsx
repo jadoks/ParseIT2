@@ -254,8 +254,10 @@ export default function ProgramClassPicker({
   // full-width row per subject. Phones / narrow modals stay at one column.
   const [listWidth, setListWidth] = useState(0);
   const GAP = 10;
-  const columns = listWidth >= 900 ? 3 : listWidth >= 560 ? 2 : 1;
-  const cardWidth = listWidth > 0 ? Math.floor((listWidth - GAP * (columns - 1)) / columns) : undefined;
+  const MIN_CARD = 300; // never let a card get narrower than this
+  const columns = Math.max(1, Math.min(3, Math.floor((listWidth + GAP) / (MIN_CARD + GAP))));
+  // -1px safety so sub-pixel rounding can't push the last card onto a new row.
+  const cardWidth = listWidth > 0 ? Math.floor((listWidth - GAP * (columns - 1)) / columns) - 1 : undefined;
 
   return (
     <View style={styles.card}>
@@ -432,7 +434,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     padding: 12,
   },
-  subjectGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  // width:100% + stretch: the grid must fill the card, not shrink-wrap its children,
+  // otherwise the measured width just echoes the card widths and never grows.
+  subjectGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, width: "100%", alignSelf: "stretch" },
   subjectCardActive: { borderColor: "#8B0000", backgroundColor: "#FAF5F5" },
   subjectTop: { flexDirection: "row", alignItems: "center", gap: 12 },
   subjectTitle: { fontSize: 14, fontWeight: "700", color: "#2B1111" },
