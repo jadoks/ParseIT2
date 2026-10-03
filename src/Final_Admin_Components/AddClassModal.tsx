@@ -590,6 +590,12 @@ export default function AddClassModal({
   const [instructorIdentifier, setInstructorIdentifier] = useState("");
   const [selectedTeacherKey, setSelectedTeacherKey] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
+  // Teacher results sit in columns on wide modals (measured from the list itself).
+  const [teacherListWidth, setTeacherListWidth] = useState(0);
+  const TEACHER_GAP = 10;
+  const teacherColumns = teacherListWidth >= 900 ? 3 : teacherListWidth >= 560 ? 2 : 1;
+  const teacherCardWidth =
+    teacherListWidth > 0 ? Math.floor((teacherListWidth - TEACHER_GAP * (teacherColumns - 1)) / teacherColumns) : undefined;
 
   // Course details are now free-text input (matches Teacher Dashboard Create Class flow)
   const [courseCodeInput, setCourseCodeInput] = useState("");
@@ -1106,19 +1112,24 @@ export default function AddClassModal({
                           onChangeText={setTeacherSearch}
                           placeholder="Search teacher by name, ID, or email"
                         />
-                        {filteredTeachers.map((teacher) => (
-                          <TouchableOpacity
-                            key={teacher.id}
-                            style={styles.teacherOption}
-                            activeOpacity={0.85}
-                            onPress={() => handleSelectTeacher(teacher)}
-                          >
-                            <Text style={styles.teacherName}>
-                              {`${teacher.firstName || ""} ${teacher.lastName || ""}`.trim() || teacher.email}
-                            </Text>
-                            <Text style={styles.teacherMeta}>ID: {teacher.teacherId || teacher.id}</Text>
-                          </TouchableOpacity>
-                        ))}
+                        <View
+                          style={styles.teacherGrid}
+                          onLayout={(e) => setTeacherListWidth(e.nativeEvent.layout.width)}
+                        >
+                          {filteredTeachers.map((teacher) => (
+                            <TouchableOpacity
+                              key={teacher.id}
+                              style={[styles.teacherOption, teacherCardWidth ? { width: teacherCardWidth } : null]}
+                              activeOpacity={0.85}
+                              onPress={() => handleSelectTeacher(teacher)}
+                            >
+                              <Text style={styles.teacherName}>
+                                {`${teacher.firstName || ""} ${teacher.lastName || ""}`.trim() || teacher.email}
+                              </Text>
+                              <Text style={styles.teacherMeta}>ID: {teacher.teacherId || teacher.id}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
                       </>
                     )}
 
@@ -1569,8 +1580,8 @@ export default function AddClassModal({
 }
 
 const styles = StyleSheet.create({
+  teacherGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 },
   teacherOption: {
-    marginTop: 8,
     borderWidth: 1,
     borderColor: "#EBD4D4",
     borderRadius: 14,

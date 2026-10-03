@@ -250,6 +250,13 @@ export default function ProgramClassPicker({
 }) {
   const { program, subjects, active, isLoading, isUploading } = picker;
 
+  // Wide modal (desktop): lay subject cards out in columns instead of one
+  // full-width row per subject. Phones / narrow modals stay at one column.
+  const [listWidth, setListWidth] = useState(0);
+  const GAP = 10;
+  const columns = listWidth >= 900 ? 3 : listWidth >= 560 ? 2 : 1;
+  const cardWidth = listWidth > 0 ? Math.floor((listWidth - GAP * (columns - 1)) / columns) : undefined;
+
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
@@ -322,10 +329,14 @@ export default function ProgramClassPicker({
                 Tap a subject to fill the form. The first open section is checked by default; sections already created
                 are locked.
               </Text>
+              <View style={styles.subjectGrid} onLayout={(e) => setListWidth(e.nativeEvent.layout.width)}>
               {subjects.map((subject) => {
                 const isActive = active?.key === subject.key;
                 return (
-                  <View key={subject.key} style={[styles.subjectCard, isActive && styles.subjectCardActive]}>
+                  <View
+                    key={subject.key}
+                    style={[styles.subjectCard, cardWidth ? { width: cardWidth } : null, isActive && styles.subjectCardActive]}
+                  >
                     <TouchableOpacity activeOpacity={0.85} onPress={() => picker.selectSubject(subject.key)}>
                       <View style={styles.subjectTop}>
                         <View style={[styles.radio, isActive && styles.radioActive]}>
@@ -374,6 +385,7 @@ export default function ProgramClassPicker({
                   </View>
                 );
               })}
+              </View>
             </>
           )}
         </>
@@ -419,8 +431,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "#FFFFFF",
     padding: 12,
-    marginBottom: 10,
   },
+  subjectGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   subjectCardActive: { borderColor: "#8B0000", backgroundColor: "#FAF5F5" },
   subjectTop: { flexDirection: "row", alignItems: "center", gap: 12 },
   subjectTitle: { fontSize: 14, fontWeight: "700", color: "#2B1111" },
