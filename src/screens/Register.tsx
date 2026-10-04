@@ -1800,13 +1800,6 @@ export default function Register({
                 showsVerticalScrollIndicator={true}
               >
                 <View style={styles.formWrapperLarge}>
-                  {/* App logo lives on the form side now; the left panel is reserved
-                      for the BSIT seal. */}
-                  <Image
-                    source={require('../../assets/images/logo.png')}
-                    style={styles.formLogo}
-                    resizeMode="contain"
-                  />
                   <Text style={styles.headingSplit}>Create your Account</Text>
                   <Text style={styles.subheadingSplit}>Join ParseIT Hub and start your smarter learning journey.</Text>
 
@@ -1911,8 +1904,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   leftPanelContent: { flex: 1, justifyContent: 'flex-end' },
-  // Small app logo shown above the heading in the form panel (large screens).
-  formLogo: { width: 48, height: 48, marginBottom: 20, alignSelf: 'flex-start' },
   // BSIT logo overlay: fills the panel, centered in the free space between the
   // back button (top) and the quote block (bottom).
   leftBsitWrap: {
