@@ -73,13 +73,16 @@ const COURSE_IMAGE_MAP: { [key: string]: any } = {
   'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
 };
 
+// Show the section only (e.g. "4B Laravel"), the same way classes created by
+// the admin appear. The year is already part of the section code ("4B" = 4th
+// year), so repeating it ("4th Year • 4B Laravel") was redundant. Falls back
+// to the year only for old classes that have no section saved.
 const getYearSectionLabel = (course: TeacherCourseData) => {
-  const year = course.year?.trim() || '';
   const section = (course.yearSection || course.section || '').trim();
-  if (year && section) return `${year} • ${section}`;
-  if (year) return year;
   if (section) return section;
-  return 'Year and section not set';
+  const year = course.year?.trim() || '';
+  if (year) return year;
+  return 'Section not set';
 };
 
 const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
@@ -89,31 +92,6 @@ const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
   if (semester) return semester;
   if (schoolYear) return `S.Y. ${schoolYear}`;
   return 'Semester and school year not set';
-};
-
-// Mirrors the formatting helpers in CourseDetail.tsx / TeacherCourseDetail2.tsx
-// so schedule text reads the same way everywhere it's shown.
-const pad = (n: number) => String(n).padStart(2, '0');
-
-const formatScheduleTime = (time: string) => {
-  if (!time) return '';
-  const [hourStr, minuteStr] = time.split(':');
-  let hour = parseInt(hourStr, 10);
-  if (Number.isNaN(hour)) return time;
-  const period = hour >= 12 ? 'PM' : 'AM';
-  hour = hour % 12 || 12;
-  return `${hour}:${pad(parseInt(minuteStr, 10) || 0)} ${period}`;
-};
-
-const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
-  Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
-  Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
-};
-
-const formatScheduleBlock = (entry: TeacherCourseScheduleEntry) => {
-  const days = (entry.days || []).map((d) => SCHEDULE_DAY_ABBREVIATIONS[d] || d).join(', ');
-  const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
-  return { days, time, room: entry.room || '' };
 };
 
 const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
@@ -213,10 +191,6 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
 
   const resolvedImage = getCourseImage();
 
-  const courseSchedule: TeacherCourseScheduleEntry[] = Array.isArray(item.schedule)
-    ? item.schedule
-    : [];
-
   return (
     <TouchableOpacity
       style={[styles.card, { width: cardWidth as any }]}
@@ -266,18 +240,6 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
               {getSemesterSchoolYearLabel(item)}
             </Text>
           </View>
-          {courseSchedule.map((entry, index) => {
-            const { days, time, room } = formatScheduleBlock(entry);
-            return (
-              <View key={`schedule-${index}`} style={styles.classMetaPill}>
-                <Ionicons name="time-outline" size={14} color="#8B0000" />
-                <Text style={styles.classMetaText} numberOfLines={1}>
-                  {days} · {time}
-                  {room ? ` · ${room}` : ''}
-                </Text>
-              </View>
-            );
-          })}
         </View>
 
         <View style={styles.classCodeRow}>

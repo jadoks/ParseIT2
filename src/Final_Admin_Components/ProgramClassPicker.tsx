@@ -224,6 +224,7 @@ export function useProgramPicker({
     active,
     isLoading: file.isLoading,
     isUploading: file.isUploading,
+    error: file.error,
     upload: file.upload,
     remove: file.remove,
     selectSubject,
@@ -248,7 +249,7 @@ export default function ProgramClassPicker({
   allowUpload?: boolean; // false in the teacher's Create Class modal (upload lives in the drawer menu)
   emptyHint?: string;
 }) {
-  const { program, subjects, active, isLoading, isUploading } = picker;
+  const { program, subjects, active, isLoading, isUploading, error } = picker;
 
   // Wide modal (desktop): lay subject cards out in columns instead of one
   // full-width row per subject. Phones / narrow modals stay at one column.
@@ -294,6 +295,7 @@ export default function ProgramClassPicker({
               )}
             </TouchableOpacity>
           )}
+          {!!error && <Text style={styles.errorText}>{error}</Text>}
         </>
       ) : (
         <>
@@ -322,6 +324,8 @@ export default function ProgramClassPicker({
               </TouchableOpacity>
             )}
           </View>
+
+          {!!error && <Text style={styles.errorText}>{error}</Text>}
 
           {subjects.length === 0 ? (
             <Text style={styles.muted}>Every class in this program has already been created.</Text>
@@ -467,6 +471,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: "800", color: "#7A4A4A" },
   chipTextChecked: { color: "#FFFFFF" },
   chipTextLocked: { color: "#B79A9A", textDecorationLine: "line-through" },
+  errorText: { fontSize: 13, color: "#DC2626", fontWeight: "600", marginTop: 10 },
   noSectionHint: { fontSize: 12, color: "#8B0000", marginTop: 10, marginLeft: 30, fontWeight: "600" },
   chipSub: { fontSize: 10, color: "#B79A9A", marginTop: 1 },
 });

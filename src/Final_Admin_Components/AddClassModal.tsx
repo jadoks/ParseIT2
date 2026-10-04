@@ -22,6 +22,7 @@ import {
 // a native Alert. Alert.alert() is a no-op on React Native Web, which is
 // why validation errors in this modal previously never showed anything.
 import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+import { CreateMode, CreateModeToggle, SelectionSummary } from "./ClassCreateModeParts";
 import ProgramClassPicker, { useProgramPicker } from "./ProgramClassPicker";
 import { DEFAULT_SECTION_CONFIG, Fetcher, SectionConfig, toFormBlocks } from "./programHelpers";
 
@@ -590,6 +591,11 @@ export default function AddClassModal({
   const [instructorIdentifier, setInstructorIdentifier] = useState("");
   const [selectedTeacherKey, setSelectedTeacherKey] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
+  // "From Program" (pick a teacher + subject; details hidden until "Edit class
+  // details") or "Manual" (all fields shown). Edit mode always shows everything.
+  const [createMode, setCreateMode] = useState<CreateMode>(programFetcher ? "program" : "manual");
+  const [showClassDetails, setShowClassDetails] = useState(false);
+  const [programApplied, setProgramApplied] = useState(false);
   // Teacher results sit in columns on wide modals (measured from the list itself).
   const [teacherListWidth, setTeacherListWidth] = useState(0);
   const TEACHER_GAP = 10;
@@ -656,6 +662,7 @@ export default function AddClassModal({
     // Writes the chosen subject into the existing form fields. Nothing is
     // created until the admin presses Create Class.
     onApply: (fill) => {
+      setProgramApplied(true);
       setSelectedYear(fill.yearId);
       const matchedSemester = SEMESTER_OPTIONS.find((item) => item.label === fill.semester);
       if (matchedSemester) setSelectedSemester(matchedSemester.id);
@@ -822,6 +829,9 @@ export default function AddClassModal({
   };
 
   const resetForm = () => {
+    setCreateMode(programFetcher ? "program" : "manual");
+    setShowClassDetails(false);
+    setProgramApplied(false);
     setInstructorIdentifier("");
     setSelectedTeacherKey("");
     setTeacherSearch("");
@@ -838,6 +848,16 @@ export default function AddClassModal({
     setBannerFile(null);
     setScheduleBlocks([createEmptyScheduleBlock()]);
     closeSemesterDropdown();
+  };
+
+  // Switching modes starts the form fresh but keeps the banner and chosen teacher.
+  const switchCreateMode = (next: CreateMode) => {
+    const keep = { bannerFile, instructorIdentifier, selectedTeacherKey };
+    resetForm();
+    setBannerFile(keep.bannerFile);
+    setInstructorIdentifier(keep.instructorIdentifier);
+    setSelectedTeacherKey(keep.selectedTeacherKey);
+    setCreateMode(next);
   };
 
   useEffect(() => {
@@ -907,6 +927,12 @@ export default function AddClassModal({
     }
   }, [visible, isEditMode, initialData]);
 
+  const isProgramMode = !isEditMode && !!programFetcher && createMode === "program";
+  const detailsVisible = isEditMode || !isProgramMode || (programApplied && showClassDetails);
+  const summarySectionLabel = selectedYear
+    ? SECTION_OPTIONS[selectedYear]?.find((s) => s.id === selectedSection)?.label || ""
+    : "";
+
   const handleClose = () => {
     if (isBusy) return;
     resetForm();
@@ -916,33 +942,48 @@ export default function AddClassModal({
   const handleSubmit = async () => {
     if (isBusy) return;
 
+    // In program mode the details are hidden: reveal them when something is wrong so it can be fixed.
+    const failSubmit = (message: string) => {
+      if (isProgramMode) setShowClassDetails(true);
+      showToast(message, "error");
+    };
+    if (isProgramMode && !programApplied) {
+      showToast(
+        selectedTeacherKey
+          ? "Select a subject from the program, or switch to Manual."
+          : "Select a teacher and a subject, or switch to Manual.",
+        "error"
+      );
+      return;
+    }
+
     if (!selectedYear) {
-      showToast("Select a year.", "error");
+      failSubmit("Select a year.");
       return;
     }
 
     if (!selectedSemester) {
-      showToast("Select a semester.", "error");
+      failSubmit("Select a semester.");
       return;
     }
 
     if (!selectedSection) {
-      showToast("Select a section.", "error");
+      failSubmit("Select a section.");
       return;
     }
 
     if (!courseNameInput.trim()) {
-      showToast("Enter a course name.", "error");
+      failSubmit("Enter a course name.");
       return;
     }
 
     if (!startYear.trim() || !endYear.trim()) {
-      showToast("Enter a start year.", "error");
+      failSubmit("Enter a start year.");
       return;
     }
 
     if (!instructorIdentifier.trim()) {
-      showToast("Enter a teacher ID.", "error");
+      failSubmit("Enter a teacher ID.");
       return;
     }
 
@@ -953,7 +994,7 @@ export default function AddClassModal({
 
     const scheduleError = validateScheduleBlocks(scheduleBlocks);
     if (scheduleError) {
-      showToast(scheduleError, "error");
+      failSubmit(scheduleError);
       return;
     }
 
@@ -961,7 +1002,7 @@ export default function AddClassModal({
     // whose own schedule blocks double-book the same day/time...
     const internalOverlapError = validateNoInternalScheduleOverlap(scheduleBlocks);
     if (internalOverlapError) {
-      showToast(internalOverlapError, "error");
+      failSubmit(internalOverlapError);
       return;
     }
 
@@ -978,7 +1019,7 @@ export default function AddClassModal({
       isEditMode ? initialData?.id ?? null : null
     );
     if (conflictError) {
-      showToast(conflictError, "error");
+      failSubmit(conflictError);
       return;
     }
 
@@ -1083,6 +1124,10 @@ export default function AddClassModal({
                 contentContainerStyle={styles.modalContent}
               >
                 {!isEditMode && !!programFetcher && (
+                  <CreateModeToggle mode={createMode} onChange={switchCreateMode} disabled={isBusy} />
+                )}
+
+                {isProgramMode && (
                   <View style={styles.modalSection}>
                     <View style={styles.modalSectionHeaderRow}>
                       <Ionicons name="person-outline" size={18} color="#8B0000" />
@@ -1102,6 +1147,9 @@ export default function AddClassModal({
                             setSelectedTeacherKey("");
                             setInstructorIdentifier("");
                             programPicker.clear();
+                            // a different teacher has a different program: start the pick over
+                            setProgramApplied(false);
+                            setShowClassDetails(false);
                           }}
                         >
                           <Text style={styles.teacherChange}>Change</Text>
@@ -1146,6 +1194,24 @@ export default function AddClassModal({
                   </View>
                 )}
 
+                {isProgramMode && programApplied && (
+                  <SelectionSummary
+                    title={courseNameInput}
+                    details={[
+                      summarySectionLabel,
+                      selectedSemester ? `${selectedSemesterLabel} · S.Y. ${startYear}-${endYear}` : "",
+                      selectedTeacher
+                        ? `${`${selectedTeacher.firstName || ""} ${selectedTeacher.lastName || ""}`.trim() || "Teacher"} · ID ${selectedTeacherKey}`
+                        : "",
+                    ]}
+                    schedule={scheduleBlocks}
+                    expanded={showClassDetails}
+                    onToggleEdit={() => setShowClassDetails((prev) => !prev)}
+                  />
+                )}
+
+                {detailsVisible && (
+                  <>
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <MaterialCommunityIcons
@@ -1462,6 +1528,8 @@ export default function AddClassModal({
                     />
                   </View>
                 </View>
+                  </>
+                )}
 
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>

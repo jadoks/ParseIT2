@@ -120,31 +120,6 @@ type DropdownState =
 
 const DROPDOWN_WIDTH = 170;
 
-// Mirrors the formatting helpers in CourseDetail.tsx so schedule text reads
-// the same way everywhere it's shown.
-const pad = (n: number) => String(n).padStart(2, '0');
-
-const formatScheduleTime = (time: string) => {
-  if (!time) return '';
-  const [hourStr, minuteStr] = time.split(':');
-  let hour = parseInt(hourStr, 10);
-  if (Number.isNaN(hour)) return time;
-  const period = hour >= 12 ? 'PM' : 'AM';
-  hour = hour % 12 || 12;
-  return `${hour}:${pad(parseInt(minuteStr, 10) || 0)} ${period}`;
-};
-
-const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
-  Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
-  Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
-};
-
-const formatScheduleBlock = (entry: CourseCardScheduleEntry) => {
-  const days = (entry.days || []).map((d) => SCHEDULE_DAY_ABBREVIATIONS[d] || d).join(', ');
-  const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
-  return { days, time, room: entry.room || '' };
-};
-
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
@@ -307,9 +282,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
     ? getRecommendationType(analytics.recommendedAssignment)
     : null;
 
-  const courseSchedule: CourseCardScheduleEntry[] = Array.isArray(course.schedule)
-    ? course.schedule
-    : [];
 
   const topColor = recommendedRecommendation
     ? getRecommendationColor(recommendedRecommendation)
@@ -492,23 +464,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
             <View style={styles.metaBlock}>
               <Text style={styles.metaLabel}>Learning status</Text>
               <Text style={styles.metaValue}>No pending support activity</Text>
-            </View>
-          )}
-
-          {courseSchedule.length > 0 && (
-            <View style={styles.scheduleRow}>
-              <MaterialCommunityIcons name="calendar-clock" size={14} color="#5f6368" />
-              <View style={styles.scheduleTextWrap}>
-                {courseSchedule.map((entry, index) => {
-                  const { days, time, room } = formatScheduleBlock(entry);
-                  return (
-                    <Text key={`schedule-${index}`} style={styles.scheduleText} numberOfLines={1}>
-                      {days} · {time}
-                      {room ? ` · ${room}` : ''}
-                    </Text>
-                  );
-                })}
-              </View>
             </View>
           )}
 

@@ -29,6 +29,7 @@ import TeacherCourseCard from './TeacherCourseCard';
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
 import Toast from '../Final_Admin_Components/Toast';
 // Program-based Create Class + admin-configurable sections.
+import { CreateMode, CreateModeToggle, SelectionSummary } from '../Final_Admin_Components/ClassCreateModeParts';
 import ProgramClassPicker, { useProgramPicker } from '../Final_Admin_Components/ProgramClassPicker';
 import { toFormBlocks, useSectionConfig } from '../Final_Admin_Components/programHelpers';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
@@ -522,6 +523,7 @@ const Dashboard2 = ({
   }, [showVerticalIndicator]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAllClasses, setShowAllClasses] = useState(false);
+  const [classSearch, setClassSearch] = useState('');
   const { width } = useWindowDimensions();
   const [isDeleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [courseToDelete, setCourseToDelete] = useState<TeacherCourseData | null>(null);
@@ -553,6 +555,11 @@ const Dashboard2 = ({
   const [classBannerMimeType, setClassBannerMimeType] = useState<string | null>(null);
   const [startYear, setStartYear] = useState('2025');
   const [courseNameInput, setCourseNameInput] = useState('');
+  // Create Class modal: "From Program" (pick a subject, details hidden until
+  // "Edit class details") or "Manual" (all fields shown).
+  const [createMode, setCreateMode] = useState<CreateMode>('program');
+  const [showClassDetails, setShowClassDetails] = useState(false);
+  const [programApplied, setProgramApplied] = useState(false);
   const [courseUnitsInput, setCourseUnitsInput] = useState('');
   const [scheduleBlocks, setScheduleBlocks] = useState<ClassScheduleFormBlock[]>([createEmptyScheduleBlock()]);
   const [editSelectedYear, setEditSelectedYear] = useState<string | null>(null);
@@ -668,7 +675,26 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       }));
   }, [localCourses]);
 
-  const visibleCourses = useMemo(() => showAllClasses ? processedCourses : processedCourses.slice(0, 6), [processedCourses, showAllClasses]);
+  // ── Search My Classes ── matches every word typed against name, section, year,
+  // semester, school year, class code and instructor (case-insensitive).
+  const isSearchingClasses = classSearch.trim().length > 0;
+  const filteredCourses = useMemo(() => {
+    const tokens = classSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return processedCourses;
+    return processedCourses.filter((course) => {
+      const haystack = [
+        course.name, course.section, course.yearSection, course.year, course.semester,
+        course.schoolYear, course.classCode, course.courseCode, course.instructor,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return tokens.every((token) => haystack.includes(token));
+    });
+  }, [processedCourses, classSearch]);
+
+  // While searching, show every match (ignore the "first 6" limit).
+  const visibleCourses = useMemo(
+    () => (isSearchingClasses ? filteredCourses : showAllClasses ? processedCourses : processedCourses.slice(0, 6)),
+    [isSearchingClasses, filteredCourses, processedCourses, showAllClasses]
+  );
   const hiddenCourseCount = Math.max(processedCourses.length - 6, 0);
   const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';
 
@@ -705,6 +731,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     // Writes the chosen program subject into the EXISTING Create Class fields.
     // Nothing is created until the teacher presses Create.
     onApply: (fill) => {
+      setProgramApplied(true);
       setSelectedYear(fill.yearId);
       const matchedSemester = SEMESTER_OPTIONS.find((item) => item.label === fill.semester);
       if (matchedSemester) setSelectedSemester(matchedSemester.id);
@@ -715,6 +742,12 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       if (fill.schedule.length > 0) setScheduleBlocks(toFormBlocks(fill.schedule));
     },
   });
+
+  // Create Class modal: which parts of the form are showing.
+  const detailsVisible = createMode === 'manual' || (programApplied && showClassDetails);
+  const summarySectionLabel = selectedYear
+    ? (SECTION_OPTIONS[selectedYear] || []).find((s: SectionOption) => s.id === selectedSection)?.label || ''
+    : '';
 
   const isInitialLoad = isLoading && courses.length === 0 && announcements.length === 0;
 
@@ -733,6 +766,15 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     setStartYear('2025'); setSemesterDropdownVisible(false); setCourseNameInput(''); setCourseUnitsInput('');
     programPicker.clear();
     setScheduleBlocks([createEmptyScheduleBlock()]);
+    setCreateMode('program'); setShowClassDetails(false); setProgramApplied(false);
+  };
+
+  // Switching modes starts the form fresh but keeps the banner the teacher already chose.
+  const switchCreateMode = (next: CreateMode) => {
+    const keep = { uri: classBanner, name: classBannerFileName, mime: classBannerMimeType };
+    resetCreateForm();
+    setClassBanner(keep.uri); setClassBannerFileName(keep.name); setClassBannerMimeType(keep.mime);
+    setCreateMode(next);
   };
 
   const resetEditForm = () => {
@@ -825,20 +867,23 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
 
   const handleCreateClass = async () => {
     if (isCreatingClass) return;
+    // In program mode the details are hidden: reveal them when something is wrong so it can be fixed.
+    const failCreate = (message: string) => { if (createMode === 'program') setShowClassDetails(true); showToast(message, 'error'); };
+    if (createMode === 'program' && !programApplied) { showToast('Select a subject from your program, or switch to Manual.', 'error'); return; }
     const activeYear = selectedYear; const activeSemester = selectedSemester;
-    if (!activeYear) { showToast('Select a year.', 'error'); return; }
-    if (!activeSemester) { showToast('Select a semester.', 'error'); return; }
-    if (!selectedSection) { showToast('Select a section.', 'error'); return; }
-    if (!courseNameInput.trim()) { showToast('Enter a course name.', 'error'); return; }
-    if (!startYear.trim() || !endYear) { showToast('Enter a valid start year.', 'error'); return; }
+    if (!activeYear) { failCreate('Select a year.'); return; }
+    if (!activeSemester) { failCreate('Select a semester.'); return; }
+    if (!selectedSection) { failCreate('Select a section.'); return; }
+    if (!courseNameInput.trim()) { failCreate('Enter a course name.'); return; }
+    if (!startYear.trim() || !endYear) { failCreate('Enter a valid start year.'); return; }
     if (!classBanner) { showToast('Upload a class banner.', 'error'); return; }
     const scheduleError = validateScheduleBlocks(scheduleBlocks);
-    if (scheduleError) { showToast(scheduleError, 'error'); return; }
+    if (scheduleError) { failCreate(scheduleError); return; }
     const internalOverlapError = validateNoInternalScheduleOverlap(scheduleBlocks);
-    if (internalOverlapError) { showToast(internalOverlapError, 'error'); return; }
+    if (internalOverlapError) { failCreate(internalOverlapError); return; }
     const newSchoolYear = `${startYear.trim()}-${endYear}`;
     const conflictError = findTeacherScheduleConflict(scheduleBlocks, localCourses, newSchoolYear, selectedSemesterLabel);
-    if (conflictError) { showToast(conflictError, 'error'); return; }
+    if (conflictError) { failCreate(conflictError); return; }
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeYear]?.find((section: SectionOption) => section.id === selectedSection)?.label || '';
@@ -1054,7 +1099,30 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               </View>
             )}
             <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
-              <ProgramClassPicker picker={programPicker} allowUpload={false} />
+              <CreateModeToggle mode={createMode} onChange={switchCreateMode} disabled={isCreatingClass} />
+
+              {createMode === 'program' && (
+                <ProgramClassPicker
+                  picker={programPicker}
+                  emptyHint="Upload your Program by Teacher (image, PDF, or Word) to pick a subject and fill the form automatically."
+                />
+              )}
+
+              {createMode === 'program' && programApplied && (
+                <SelectionSummary
+                  title={courseNameInput}
+                  details={[
+                    summarySectionLabel,
+                    selectedSemester ? `${selectedSemesterLabel} · S.Y. ${startYear}-${endYear}` : '',
+                  ]}
+                  schedule={scheduleBlocks}
+                  expanded={showClassDetails}
+                  onToggleEdit={() => setShowClassDetails((prev) => !prev)}
+                />
+              )}
+
+              {detailsVisible && (
+                <>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
                   <MaterialCommunityIcons name="school-outline" size={18} color="#8B0000" />
@@ -1183,6 +1251,9 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                   <View style={styles.yearInputWrap}><Text style={styles.autoYearText}>{endYear || 'Auto'}</Text></View>
                 </View>
               </View>
+                </>
+              )}
+
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={[styles.uploadBtn, isCreatingClass && styles.disabledBtn]} onPress={handlePickBanner} disabled={isCreatingClass}>
                 <MaterialCommunityIcons name="image-plus" size={20} color="#8B0000" />
@@ -1531,7 +1602,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 My Classes
               </Text>
               <View style={styles.classesHeaderActions}>
-                {hiddenCourseCount > 0 ? (
+                {hiddenCourseCount > 0 && !isSearchingClasses ? (
                   <TouchableOpacity 
                     style={[styles.seeAllButton, isMobile && styles.iconOnlyButton]} 
                     onPress={() => setShowAllClasses((prev) => !prev)} 
@@ -1562,6 +1633,33 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 </TouchableOpacity>
               </View>
             </View>
+
+            {processedCourses.length > 0 && (
+              <View style={styles.classSearchWrap}>
+                <MaterialCommunityIcons name="magnify" size={20} color="#8A6F6F" />
+                <TextInput
+                  value={classSearch}
+                  onChangeText={setClassSearch}
+                  placeholder="Search classes by name, section, or code"
+                  placeholderTextColor="#B79A9A"
+                  style={styles.classSearchInput}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+                {isSearchingClasses && (
+                  <TouchableOpacity onPress={() => setClassSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <MaterialCommunityIcons name="close-circle" size={18} color="#B79A9A" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {isSearchingClasses && visibleCourses.length === 0 && (
+              <View style={styles.classSearchEmpty}>
+                <MaterialCommunityIcons name="text-search" size={28} color="#B79A9A" />
+                <Text style={styles.classSearchEmptyText}>No classes match "{classSearch.trim()}"</Text>
+              </View>
+            )}
 
             <View style={styles.courseGrid}>
               {visibleCourses.map((item) => (
@@ -1702,6 +1800,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   
+  classSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 46,
+    borderWidth: 1,
+    borderColor: '#EBD4D4',
+    borderRadius: 14,
+    backgroundColor: '#FAF5F5',
+    paddingHorizontal: 14,
+    marginBottom: 16,
+  },
+  classSearchInput: {
+    flex: 1,
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    color: '#2B1111',
+    paddingVertical: 0,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  classSearchEmpty: { alignItems: 'center', gap: 8, paddingVertical: 28 },
+  classSearchEmptyText: { fontFamily: FONT_BODY, fontSize: 14, color: '#8A6F6F', fontWeight: '600' },
   courseGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'stretch', gap: 21, width: '100%' },
 
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.08)' },
