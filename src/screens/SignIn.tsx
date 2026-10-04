@@ -179,7 +179,7 @@ const SignIn = ({
   // BSIT logo shown big in the middle of the left image panel. Sized to the
   // space between the back button (top) and the quote block (bottom) so it
   // never overlaps either, and capped so it doesn't get silly on huge screens.
-  const bsitLogoSize = Math.max(220, Math.min(width * 0.48 - 96, height - 400, 560));
+  const bsitLogoSize = Math.max(220, Math.min(width * 0.48 - 96, height - 290, 560));
   const isSmallScreen = width < 480;
   const isTablet = width >= 768;
 
@@ -1074,13 +1074,6 @@ const SignIn = ({
               </TouchableOpacity>
 
               <View style={styles.leftPanelContent}>
-                <View style={styles.leftLogoWrap}>
-                  <Image
-                    source={require('../../assets/images/logo.png')}
-                    style={styles.leftLogoImage}
-                    resizeMode="contain"
-                  />
-                </View>
                 <Text style={styles.leftQuote}>
                   "Learning today, leading tomorrow."
                 </Text>
@@ -1100,6 +1093,13 @@ const SignIn = ({
                 showsVerticalScrollIndicator={false}
               >
                 <View style={styles.formWrapperLarge}>
+                  {/* App logo lives on the form side now; the left panel is reserved
+                      for the BSIT seal. */}
+                  <Image
+                    source={require('../../assets/images/logo.png')}
+                    style={styles.formLogo}
+                    resizeMode="contain"
+                  />
                   <Text style={styles.headingSplit}>Sign in to your account</Text>
                   <Text style={styles.subheadingSplit}>
                     Enter your credentials to continue.
@@ -1563,23 +1563,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   leftPanelContent: { flex: 1, justifyContent: 'flex-end' },
-  leftLogoWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 28,
-    shadowColor: '#500000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 24,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: '#F2F4F7',
-  },
-  leftLogoImage: { width: 58, height: 58 },
+  // Small app logo shown above the heading in the form panel (large screens).
+  formLogo: { width: 48, height: 48, marginBottom: 20, alignSelf: 'flex-start' },
   // BSIT logo overlay: fills the panel, centered in the free space between the
   // back button (top) and the quote block (bottom).
   leftBsitWrap: {
@@ -1587,7 +1572,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 70,
-    paddingBottom: 300,
+    paddingBottom: 190,
   },
   leftBsitBadge: { alignItems: 'center', justifyContent: 'center' },
   // 70% opacity so the logo sits back into the photo (muted / grayed look).
