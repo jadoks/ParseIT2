@@ -63,6 +63,10 @@ interface Props {
   // student back to Game with its "new quiz" modal (game type, number of
   // questions, class & lesson) already open. Falls back to onBack() if omitted.
   onPlayAgain?: () => void;
+  // "New Quiz" costs one of today's AI generations. When provided, this is
+  // asked first (the parent shows its own "limit reached" toast and returns
+  // false) so a blocked request leaves the finished quiz untouched.
+  canStartNewQuiz?: () => Promise<boolean>;
 }
 
 // 🆕 RESUME SUPPORT: same hashing/key scheme as Game.tsx so progress saved
@@ -199,6 +203,27 @@ function shuffleArray<T>(items: T[]): T[] {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
+// Deterministic shuffle: the same seed always gives the same order. "Play
+// Again" reshuffles the SAME questions with a new seed, and the seed is saved
+// with the progress snapshot so a resumed replay comes back in the exact order
+// the student was playing (saved question indexes stay valid).
+function seededShuffle<T>(items: T[], seed: number): T[] {
+  let s = seed >>> 0;
+  const rand = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let x = s;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function createBlankPrompt(question: string, answer: string) {
   const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const answerRegex = new RegExp(escaped, 'i');
@@ -257,9 +282,14 @@ const matchColor = (index: number) => MATCH_COLORS[index % MATCH_COLORS.length];
 
 const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '65%'; 
 
-export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId, onPlayAgain }: Props) {
+export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId, onPlayAgain, canStartNewQuiz }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
+
+  // 0 = questions in their generated order. "Play Again" sets a new non-zero
+  // seed, which reshuffles the question order (and the answer options) of the
+  // same quiz without generating anything new.
+  const [replaySeed, setReplaySeed] = useState(0);
 
   // Parse backend response into categorized arrays based on structure
   const parsedData = useMemo(() => {
@@ -313,8 +343,20 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       }
     }
 
+    if (replaySeed !== 0) {
+      return {
+        trivia: seededShuffle(trivia, replaySeed).map((q, i) => ({
+          ...q,
+          options: seededShuffle(q.options, replaySeed + i + 1),
+        })),
+        matching: seededShuffle(matching, replaySeed + 7),
+        fillBlank: seededShuffle(fillBlank, replaySeed + 13),
+        flashcards: seededShuffle(flashcards, replaySeed + 29),
+      };
+    }
+
     return { trivia, matching, fillBlank, flashcards };
-  }, [generatedQuestions]);
+  }, [generatedQuestions, replaySeed]);
 
   const questions = parsedData.trivia;
   const matchingItems = parsedData.matching;
@@ -478,6 +520,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               setUserChoices(saved.userChoices ?? {});
               setShowResults(saved.showResults ?? false);
               setUserAnswers(saved.userAnswers ?? []);
+              setReplaySeed(saved.replaySeed ?? 0);
               setMode(saved.mode);
               hasSavedScoreRef.current = saved.scoreSaved === true;
             }
@@ -490,6 +533,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
 
       if (!isCancelled) {
         if (!restored) {
+          setReplaySeed(0);
           resetAll();
           autoSelectMode();
         }
@@ -551,6 +595,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       flashcardIndex, flashcardInput, flashcardChecked, flashcardIsCorrect, isFlashcardAnswerVisible,
       matchingScore, userChoices, showResults,
       userAnswers,
+      replaySeed,
       savedAt: Date.now(),
       // 🆕 LEADERBOARD: carried along so reopening the app on an
       // already-saved results screen doesn't record a duplicate attempt.
@@ -566,7 +611,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     fillIndex, fillScore, fillAnswer, fillChecked, fillIsCorrect,
     flashcardIndex, flashcardInput, flashcardChecked, flashcardIsCorrect, isFlashcardAnswerVisible,
     matchingScore, userChoices, showResults,
-    userAnswers,
+    userAnswers, replaySeed,
   ]);
 
   const recordAnswer = (question: string, userAns: string, correctAns: string, explanation?: string, isCorrect?: boolean) => {
@@ -631,6 +676,43 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setUserAnswers([]);
     setMode('menu');
     setShowResults(false);
+  };
+
+  // "Play Again": replay the SAME questions, reshuffled. No AI generation, so
+  // it never touches today's limit and works for every game type (this used
+  // to be Matching-only). A replay is a brand-new attempt, so its score is
+  // recorded again when it reaches the results screen. The saved session is
+  // left in place so leaving mid-replay still offers "Resume".
+  const handleReplay = () => {
+    hasSavedScoreRef.current = false;
+    setReplaySeed(Math.floor(Math.random() * 1_000_000_000) + 1);
+    resetMatchingCards(); // also clears answers + results and reshuffles the cards
+    resetFlashcards();
+    resetFillBlank();
+    resetTrivia();
+    setUserAnswers([]);
+    setShowResults(false);
+    autoSelectMode();
+  };
+
+  // "New Quiz": discard this quiz and open the "Start a New Quiz" form
+  // (game type, question count, class & lessons). This is the only action
+  // that generates new questions, so it is the only one the daily limit gates.
+  const handleNewQuiz = async () => {
+    if (canStartNewQuiz && !(await canStartNewQuiz())) return;
+    // 🐛 FIX (kept): await so the removal finishes before we navigate away —
+    // otherwise Game.tsx can remount and re-check storage before the old
+    // session is actually gone.
+    await clearSavedProgress();
+    if (onPlayAgain) onPlayAgain();
+    else onBack();
+  };
+
+  const handleBackToGames = async () => {
+    // Score was already saved when the results screen was reached.
+    // Awaited so Game.tsx doesn't re-read a stale session on remount.
+    await clearSavedProgress();
+    onBack();
   };
 
   const goToGameScreen = async () => {
@@ -904,24 +986,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           })}
         </View>
 
-        <View style={styles.modalButtonRow}>
-          <Pressable style={styles.cancelBtn} onPress={resetMatchingCards}>
-            <Text style={styles.cancelBtnText}>Play Again</Text>
+        <View style={styles.resultsActions}>
+          <Pressable style={[styles.saveBtn, styles.resultsBtn]} onPress={handleReplay}>
+            <Text style={styles.saveBtnText}>Play Again</Text>
           </Pressable>
-          <Pressable 
-            style={styles.saveBtn} 
-            onPress={async () => {
-              // 🆕 LEADERBOARD: no need to save here — the score was already
-              // recorded the moment this results screen was reached (see the
-              // effect above). This just leaves the results screen.
-              // 🐛 FIX: await so the storage removal finishes before onBack()
-              // navigates away and Game.tsx re-checks for a resumable
-              // session (otherwise it can still see the stale entry).
-              await clearSavedProgress();
-              onBack();
-            }}
-          >
-            <Text style={styles.saveBtnText}>Save & Back</Text>
+          <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleNewQuiz}>
+            <Text style={styles.cancelBtnText}>New Quiz</Text>
+          </Pressable>
+          <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleBackToGames}>
+            <Text style={styles.cancelBtnText}>Back to Games</Text>
           </Pressable>
         </View>
       </View>
@@ -1330,37 +1403,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           ))}
         </View>
 
-        <View style={styles.modalButtonRow}>
-          <Pressable
-                style={styles.cancelBtn}
-                onPress={async () => {
-                  // 🆕 LEADERBOARD: no need to worry about saving here — the
-                  // score was already recorded the moment this results
-                  // screen was reached (see the effect above). This just
-                  // clears the "unfinished quiz" resume state and hands off
-                  // to the parent to reopen the new-quiz modal.
-                  // 🐛 FIX: await so the removal finishes before we navigate
-                  // away — otherwise Game.tsx can remount and re-check
-                  // storage before the old session is actually gone.
-                  await clearSavedProgress();
-                  if (onPlayAgain) onPlayAgain();
-                  else onBack();
-                }}
-            >
-            <Text style={styles.cancelBtnText}>Play Again</Text>
+        <View style={styles.resultsActions}>
+          <Pressable style={[styles.saveBtn, styles.resultsBtn]} onPress={handleReplay}>
+            <Text style={styles.saveBtnText}>Play Again</Text>
           </Pressable>
-          <Pressable
-            style={styles.saveBtn}
-            onPress={async () => {
-              // 🆕 LEADERBOARD: score is already saved (see the effect
-              // above) — this button now just leaves the results screen.
-              // 🐛 FIX: await so this finishes before onBack() navigates
-              // away (see note above).
-              await clearSavedProgress();
-              onBack();
-            }}
-          >
-            <Text style={styles.saveBtnText}>Back to Games</Text>
+          <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleNewQuiz}>
+            <Text style={styles.cancelBtnText}>New Quiz</Text>
+          </Pressable>
+          <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleBackToGames}>
+            <Text style={styles.cancelBtnText}>Back to Games</Text>
           </Pressable>
         </View>
       </View>
@@ -1686,6 +1737,10 @@ const styles = StyleSheet.create({
   reviewCorrectAnswer: { fontFamily: FONT_BODY, fontSize: 13, color: '#4CAF50', fontWeight: WEIGHT_EMPHASIS },
   reviewExplanation: { fontFamily: FONT_BODY, fontSize: 13, color: '#2196F3', marginTop: 4, fontStyle: 'italic' },
   modalButtonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 6, paddingHorizontal: 16 },
+  // Results screen actions: stacked full-width buttons (Play Again is the
+  // primary), so three labels fit on a narrow phone.
+  resultsActions: { gap: 10, marginTop: 6, paddingHorizontal: 16 },
+  resultsBtn: { flex: 0, alignSelf: 'stretch' },
   cancelBtn: {
     flex: 1,
     minHeight: 46,

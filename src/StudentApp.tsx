@@ -2287,23 +2287,36 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   // reached" once they tapped Generate inside Game.tsx. Check the persisted
   // count directly (same storage key Game.tsx uses) BEFORE doing anything
   // else, and short-circuit with an error toast if it's already maxed out.
-  const handlePlayAgainFromQuizMasters = async () => {
+  // "Play Again" on the results screen now replays the SAME quiz inside
+  // QuizMasters (no generation, so no limit check). Only "New Quiz" comes
+  // here, and only it costs an AI generation — so only it is gated. Returns
+  // false (after showing a toast) when today's limit is already used up.
+  const canStartNewQuizFromQuizMasters = async (): Promise<boolean> => {
     try {
       const raw = await AsyncStorage.getItem(getGenerationLimitStorageKey(currentStudent?.studentId));
       if (raw) {
         const parsed = JSON.parse(raw);
         const usedToday = parsed?.date === getTodayKey() ? (parsed.count || 0) : 0;
         if (usedToday >= MAX_GENERATIONS_PER_DAY) {
-          showToast(`You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today.`, 'error');
-          return;
+          showToast(
+            `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today. You can still tap Play Again to replay this quiz.`,
+            'error'
+          );
+          return false;
         }
       }
     } catch (err) {
-      console.warn('Failed to check AI generation limit before Play Again:', err);
+      console.warn('Failed to check AI generation limit before New Quiz:', err);
       // Fail open — if the check itself errors, don't block the student;
       // Game.tsx's own limit check inside generateFromMaterials is still
       // there as the backstop before any actual generation happens.
     }
+    return true;
+  };
+
+  const handlePlayAgainFromQuizMasters = async () => {
+    // Kept as a backstop for callers that don't pre-check.
+    if (!(await canStartNewQuizFromQuizMasters())) return;
 
     setGeneratedQuizMastersData(null);
     setQuizContext(null);
@@ -3029,10 +3042,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             if (!quizContext) return;
             await saveQuizScore({ classId: quizContext.classId, materialIds: quizContext.materialIds, score, totalQuestions, answers });
           }}
-          // 🆕 "Play Again" instead sends the student back to Games with the
-          // new-quiz modal (game type, number of questions, class & lesson)
-          // already open, rather than just discarding the attempt silently.
+          // 🆕 "New Quiz" (results screen) sends the student back to Games with
+          // the new-quiz modal (game type, number of questions, class & lesson)
+          // already open. "Play Again" replays the same quiz inside QuizMasters.
           onPlayAgain={handlePlayAgainFromQuizMasters}
+          canStartNewQuiz={canStartNewQuizFromQuizMasters}
         />;
       case 'gamebasedassignment': 
         return <GameBasedAssignment 

@@ -174,8 +174,12 @@ const SignIn = ({
   // Toast auto-dismisses, so we run that follow-up when it hides instead.
   const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
 
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
+  // BSIT logo shown big in the middle of the left image panel. Sized to the
+  // space between the back button (top) and the quote block (bottom) so it
+  // never overlaps either, and capped so it doesn't get silly on huge screens.
+  const bsitLogoSize = Math.max(220, Math.min(width * 0.48 - 96, height - 400, 560));
   const isSmallScreen = width < 480;
   const isTablet = width >= 768;
 
@@ -1050,6 +1054,22 @@ const SignIn = ({
             >
               <View style={styles.leftPanelOverlay} />
 
+              {/* BSIT logo overlay — big and centered over the photo */}
+              <View style={styles.leftBsitWrap} pointerEvents="none">
+                <View
+                  style={[
+                    styles.leftBsitBadge,
+                    { width: bsitLogoSize, height: bsitLogoSize, borderRadius: bsitLogoSize / 2 },
+                  ]}
+                >
+                  <Image
+                    source={require('../../assets/images/BSITLOGO1.png')}
+                    style={styles.leftBsitImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
               <TouchableOpacity
                 style={styles.leftBackButton}
                 onPress={handleGoToLanding}
@@ -1565,6 +1585,27 @@ const styles = StyleSheet.create({
     borderColor: '#F2F4F7',
   },
   leftLogoImage: { width: 58, height: 58 },
+  // BSIT logo overlay: fills the panel, centered in the free space between the
+  // back button (top) and the quote block (bottom).
+  leftBsitWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 70,
+    paddingBottom: 300,
+  },
+  // White disc behind the logo so its black gear stays visible on the dark overlay.
+  leftBsitBadge: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 16 },
+    shadowRadius: 32,
+    elevation: 12,
+  },
+  leftBsitImage: { width: '100%', height: '100%' },
   leftQuote: { fontFamily: FONT_BODY, 
     fontSize: 27,
     fontWeight: '800',

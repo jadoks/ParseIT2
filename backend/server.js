@@ -22989,6 +22989,9 @@ ${spec.rules}
     findTeacherByIdentifier,
     geminiAI: geminiGameAI,
     SchemaType,
+    // Same term rule the grade-upload limit uses; the program upload limit
+    // resets each semester. (teacherPrograms.js has its own copy if undefined.)
+    getCurrentAcademicTerm: typeof getCurrentAcademicTerm === "function" ? getCurrentAcademicTerm : undefined,
   });
   // ==================== END TEACHER PROGRAM + SECTION CONFIG ====================
 

@@ -17,7 +17,19 @@ import {
   UNKNOWN_SECTION_ID,
 } from "./programHelpers";
 
-const MAX_PROGRAM_BYTES = 15 * 1024 * 1024;
+const MAX_PROGRAM_BYTES = 5 * 1024 * 1024; // keep in sync with teacherPrograms.js
+const MAX_PROGRAM_LABEL = "5MB";
+
+// Uploads used this semester (server-enforced; the app just shows it).
+export type ProgramUploadStatus = {
+  used: number;
+  max: number;
+  remaining: number;
+  canUpload: boolean;
+  semester: string;
+  schoolYear: string;
+  message?: string | null;
+};
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".docx"];
 
@@ -57,12 +69,30 @@ export function useProgramFile({
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadStatus, setUploadStatus] = useState<ProgramUploadStatus | null>(null);
+
+  // Cheap check (no AI call): how many of this semester's uploads are left.
+  const loadUploadStatus = useCallback(async () => {
+    if (!teacherId) {
+      setUploadStatus(null);
+      return;
+    }
+    try {
+      const response = await fetcher(`/teacher-program/${encodeURIComponent(teacherId)}/upload-status`);
+      const body = await response.json();
+      if (response.ok && body?.data) setUploadStatus(body.data);
+    } catch (err) {
+      console.warn("Program upload status failed:", err); // not fatal: the server still enforces the limit
+    }
+  }, [teacherId, fetcher]);
 
   const load = useCallback(async () => {
     if (!teacherId) {
       setProgram(null);
+      setUploadStatus(null);
       return;
     }
+    loadUploadStatus();
     setIsLoading(true);
     try {
       const response = await fetcher(`/teacher-program/${encodeURIComponent(teacherId)}`);
@@ -75,7 +105,7 @@ export function useProgramFile({
     } finally {
       setIsLoading(false);
     }
-  }, [teacherId, fetcher]);
+  }, [teacherId, fetcher, loadUploadStatus]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -89,6 +119,14 @@ export function useProgramFile({
       return;
     }
     setError("");
+    // Out of uploads for this semester: say so before opening the file picker.
+    if (uploadStatus && !uploadStatus.canUpload) {
+      setError(
+        uploadStatus.message ||
+          `All ${uploadStatus.max} program uploads for ${uploadStatus.semester} have been used. You can upload again next semester.`
+      );
+      return;
+    }
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["image/*", "application/pdf", DOCX_MIME],
@@ -108,7 +146,7 @@ export function useProgramFile({
         return;
       }
       if (asset.size && asset.size > MAX_PROGRAM_BYTES) {
-        setError("Program file must be under 15MB.");
+        setError(`Program file must be ${MAX_PROGRAM_LABEL} or smaller.`);
         return;
       }
 
@@ -129,6 +167,7 @@ export function useProgramFile({
       setError(err?.message || "Failed to upload program.");
     } finally {
       setIsUploading(false);
+      loadUploadStatus(); // an attempt that reached the AI counts even if it failed
     }
   };
 
@@ -144,7 +183,7 @@ export function useProgramFile({
     }
   };
 
-  return { program, isLoading, isUploading, error, upload, remove, reload: load };
+  return { program, isLoading, isUploading, error, uploadStatus, upload, remove, reload: load };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -225,6 +264,7 @@ export function useProgramPicker({
     isLoading: file.isLoading,
     isUploading: file.isUploading,
     error: file.error,
+    uploadStatus: file.uploadStatus,
     upload: file.upload,
     remove: file.remove,
     selectSubject,
@@ -249,7 +289,13 @@ export default function ProgramClassPicker({
   allowUpload?: boolean; // false in the teacher's Create Class modal (upload lives in the drawer menu)
   emptyHint?: string;
 }) {
-  const { program, subjects, active, isLoading, isUploading, error } = picker;
+  const { program, subjects, active, isLoading, isUploading, error, uploadStatus } = picker;
+  const uploadsBlocked = !!uploadStatus && !uploadStatus.canUpload;
+  const uploadNote = uploadStatus
+    ? uploadsBlocked
+      ? uploadStatus.message || `All ${uploadStatus.max} uploads for ${uploadStatus.semester} are used. You can upload again next semester.`
+      : `Max ${MAX_PROGRAM_LABEL} · ${uploadStatus.remaining} of ${uploadStatus.max} uploads left this semester`
+    : `Max ${MAX_PROGRAM_LABEL} per file`;
 
   // Wide modal (desktop): lay subject cards out in columns instead of one
   // full-width row per subject. Phones / narrow modals stay at one column.
@@ -281,7 +327,12 @@ export default function ProgramClassPicker({
                 : "No program found. Open the menu and tap Upload My Program to add yours.")}
           </Text>
           {allowUpload && (
-            <TouchableOpacity style={styles.uploadBtn} onPress={picker.upload} disabled={isUploading} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={[styles.uploadBtn, uploadsBlocked && styles.uploadBtnDisabled]}
+              onPress={picker.upload}
+              disabled={isUploading || uploadsBlocked}
+              activeOpacity={0.85}
+            >
               {isUploading ? (
                 <>
                   <ActivityIndicator size="small" color="#8B0000" />
@@ -294,6 +345,9 @@ export default function ProgramClassPicker({
                 </>
               )}
             </TouchableOpacity>
+          )}
+          {allowUpload && (
+            <Text style={[styles.uploadNote, uploadsBlocked && styles.uploadNoteBlocked]}>{uploadNote}</Text>
           )}
           {!!error && <Text style={styles.errorText}>{error}</Text>}
         </>
@@ -310,7 +364,11 @@ export default function ProgramClassPicker({
               </Text>
             </View>
             {allowUpload && (
-              <TouchableOpacity onPress={picker.upload} disabled={isUploading} style={styles.linkBtn}>
+              <TouchableOpacity
+                onPress={picker.upload}
+                disabled={isUploading || uploadsBlocked}
+                style={[styles.linkBtn, uploadsBlocked && { opacity: 0.4 }]}
+              >
                 {isUploading ? (
                   <ActivityIndicator size="small" color="#8B0000" />
                 ) : (
@@ -325,6 +383,9 @@ export default function ProgramClassPicker({
             )}
           </View>
 
+          {allowUpload && (
+            <Text style={[styles.uploadNote, uploadsBlocked && styles.uploadNoteBlocked]}>{uploadNote}</Text>
+          )}
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 
           {subjects.length === 0 ? (
@@ -426,6 +487,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  uploadBtnDisabled: { opacity: 0.45 },
+  uploadNote: { fontSize: 12, color: "#8A6F6F", marginTop: 8 },
+  uploadNoteBlocked: { color: "#B45309", fontWeight: "600" },
   uploadBtnText: { color: "#8B0000", fontWeight: "700", fontSize: 14 },
   fileRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   fileName: { fontSize: 14, fontWeight: "700", color: "#2B1111" },

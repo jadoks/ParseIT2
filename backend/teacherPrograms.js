@@ -3,7 +3,9 @@
 // Adds two features to server.js (see WIRING at the bottom of this file):
 //
 //  1. TEACHER PROGRAM  (INS Form 5A "Program by Teacher")
-//       POST   /teacher-program/upload      teacher uploads image / PDF / DOCX
+//       POST   /teacher-program/upload      teacher uploads image / PDF / DOCX (max 5MB, 3 per semester)
+//       GET    /teacher-program/:teacherId/upload-status   uploads used / left this semester
+//       POST   /teacher-program/:teacherId/reset-upload-count   admin only
 //       GET    /teacher-program/:teacherId  teacher (own) or admin reads it
 //       DELETE /teacher-program/:teacherId  teacher (own) or admin removes it
 //     Uploading NEVER creates classes. It only stores the parsed program so the
@@ -376,11 +378,82 @@ export function registerTeacherProgramRoutes(app, deps) {
     findTeacherByIdentifier,
     geminiAI, // new GoogleGenerativeAI(...) instance (geminiGameAI in server.js)
     SchemaType,
+    getCurrentAcademicTerm: getCurrentAcademicTermDep, // server.js helper (June-Dec = 1st sem, Jan-May = 2nd sem)
     modelName = process.env.GEMINI_PROGRAM_MODEL || process.env.GEMINI_GAME_MODEL || "gemini-3.5-flash",
   } = deps;
   const FieldValue = admin.firestore.FieldValue;
 
-  const MAX_BYTES = 15 * 1024 * 1024;
+  // ── Gemini cost guards ────────────────────────────────────────────────────
+  // Every upload/replace sends the file to Gemini, so both are capped:
+  //  • file size: 5MB
+  //  • uploads (first upload + replacements, by the teacher OR an admin on the
+  //    teacher's behalf) per teacher per semester: 3. The counter is keyed by the
+  //    CURRENT school year + semester (from today's date), so it starts fresh
+  //    when the next semester begins. Deleting the program does NOT give an
+  //    upload back, otherwise delete + upload would bypass the cap.
+  const MAX_BYTES = 5 * 1024 * 1024;
+  const MAX_MB_LABEL = "5MB";
+  const MAX_UPLOADS_PER_SEMESTER = Number(process.env.PROGRAM_UPLOADS_PER_SEMESTER) || 3;
+
+  // Same rule as server.js's getCurrentAcademicTerm (Philippine time):
+  //   June - December -> 1st Semester of YYYY-(YYYY+1)
+  //   January - May   -> 2nd Semester of (YYYY-1)-YYYY
+  const fallbackCurrentTerm = (now = new Date()) => {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "numeric" }).formatToParts(now);
+    const year = Number(parts.find((p) => p.type === "year")?.value);
+    const month = Number(parts.find((p) => p.type === "month")?.value);
+    return month >= 6
+      ? { schoolYear: `${year}-${year + 1}`, semester: "1st Semester" }
+      : { schoolYear: `${year - 1}-${year}`, semester: "2nd Semester" };
+  };
+  const currentTerm = () =>
+    typeof getCurrentAcademicTermDep === "function" ? getCurrentAcademicTermDep() : fallbackCurrentTerm();
+
+  const safeId = (v) => String(v).replace(/[^a-zA-Z0-9]/g, "_");
+  const uploadCounterRef = (teacherKey, term) =>
+    db.collection("teacherProgramUploads").doc(`${safeId(teacherKey)}_${safeId(term.schoolYear)}_${safeId(term.semester)}`);
+
+  const buildUsage = (term, used) => ({
+    used,
+    max: MAX_UPLOADS_PER_SEMESTER,
+    remaining: Math.max(0, MAX_UPLOADS_PER_SEMESTER - used),
+    canUpload: used < MAX_UPLOADS_PER_SEMESTER,
+    semester: term.semester,
+    schoolYear: term.schoolYear,
+  });
+
+  const limitReachedMessage = (term, isAdmin) =>
+    `${isAdmin ? "This teacher has" : "You've"} used all ${MAX_UPLOADS_PER_SEMESTER} program uploads for ${term.semester}, S.Y. ${term.schoolYear}. ` +
+    `${isAdmin ? "They" : "You"} can upload again next semester.`;
+
+  async function readUploadCount(teacherKey, term) {
+    const snap = await uploadCounterRef(teacherKey, term).get();
+    return snap.exists ? Number(snap.data()?.count) || 0 : 0;
+  }
+
+  // Atomically claims one upload BEFORE Gemini is called, so two requests sent
+  // at the same moment can't both squeeze past the limit.
+  async function reserveUploadSlot(teacherKey, term, uid) {
+    const ref = uploadCounterRef(teacherKey, term);
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const used = snap.exists ? Number(snap.data()?.count) || 0 : 0;
+      if (used >= MAX_UPLOADS_PER_SEMESTER) return { ok: false, used };
+      tx.set(
+        ref,
+        {
+          teacherId: String(teacherKey),
+          schoolYear: term.schoolYear,
+          semester: term.semester,
+          count: used + 1,
+          lastUploadedByUid: uid || null,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return { ok: true, used: used + 1 };
+    });
+  }
   const IMAGE_MIMES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"];
   const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -551,9 +624,13 @@ Return JSON with:
       if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
 
       const cleanBase64 = String(fileBase64).replace(/^data:[^;]+;base64,/, "");
+      // Reject oversize files from the base64 length alone, before decoding.
+      if (Math.floor((cleanBase64.length * 3) / 4) > MAX_BYTES + 4) {
+        return res.status(400).json({ error: `File must be ${MAX_MB_LABEL} or smaller.` });
+      }
       const buffer = Buffer.from(cleanBase64, "base64");
       if (buffer.length === 0) return res.status(400).json({ error: "File is empty." });
-      if (buffer.length > MAX_BYTES) return res.status(400).json({ error: "File must be under 15MB." });
+      if (buffer.length > MAX_BYTES) return res.status(400).json({ error: `File must be ${MAX_MB_LABEL} or smaller.` });
 
       const lower = String(fileName).toLowerCase();
       let mime = String(mimeType || "").toLowerCase();
@@ -570,11 +647,26 @@ Return JSON with:
         return res.status(400).json({ error: "Upload an image (JPG/PNG/WEBP), PDF, or Word (.docx) file." });
       }
 
+      // From here on Gemini is used, so this upload counts. Nothing above this
+      // line (missing file, too big, wrong type) uses up one of the uploads.
+      if (!geminiAI) return res.status(500).json({ error: "AI is not configured on the server." });
+      const term = currentTerm();
+      const slot = await reserveUploadSlot(resolved.key, term, req.user?.uid);
+      if (!slot.ok) {
+        return res.status(429).json({
+          error: limitReachedMessage(term, resolved.profile.role === "admin"),
+          code: "PROGRAM_UPLOAD_LIMIT",
+          usage: buildUsage(term, slot.used),
+        });
+      }
+      const usage = buildUsage(term, slot.used);
+
       const extracted = await extractWithGemini({ buffer, mimeType: mime, fileName });
       const subjects = buildProgramFromExtraction(extracted);
       if (subjects.length === 0) {
         return res.status(422).json({
           error: "No classes could be read from this file. Try a clearer photo or a PDF.",
+          usage,
         });
       }
 
@@ -608,10 +700,49 @@ Return JSON with:
       return res.json({
         success: true,
         data: { ...doc, updatedAt: new Date().toISOString() },
+        usage,
       });
     } catch (error) {
       console.error("Teacher program upload error:", error);
       return res.status(500).json({ error: error?.message || "Failed to read the program." });
+    }
+  });
+
+  // ------------------- upload allowance (status / admin reset) ---------------
+  // Lets the app show "2 of 3 uploads left" and block the picker BEFORE a file
+  // is chosen. No Gemini call here.
+  app.get("/teacher-program/:teacherId/upload-status", requireAuth, async (req, res) => {
+    try {
+      const resolved = await resolveTeacherKey(req, req.params.teacherId);
+      if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+      const term = currentTerm();
+      const usage = buildUsage(term, await readUploadCount(resolved.key, term));
+      return res.json({
+        success: true,
+        data: { ...usage, message: usage.canUpload ? null : limitReachedMessage(term, resolved.profile.role === "admin") },
+      });
+    } catch (error) {
+      console.error("Program upload status error:", error);
+      return res.status(500).json({ error: "Failed to check upload status." });
+    }
+  });
+
+  // Admin only: give a teacher their uploads back for the CURRENT semester
+  // (e.g. a teacher used all 3 on bad scans).
+  app.post("/teacher-program/:teacherId/reset-upload-count", requireAuth, async (req, res) => {
+    try {
+      const resolved = await resolveTeacherKey(req, req.params.teacherId);
+      if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+      if (resolved.profile.role !== "admin") return res.status(403).json({ error: "Admins only." });
+      const term = currentTerm();
+      await uploadCounterRef(resolved.key, term).set(
+        { teacherId: String(resolved.key), schoolYear: term.schoolYear, semester: term.semester, count: 0, resetByUid: req.user.uid, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+      return res.json({ success: true, data: buildUsage(term, 0) });
+    } catch (error) {
+      console.error("Program upload reset error:", error);
+      return res.status(500).json({ error: "Failed to reset upload count." });
     }
   });
 
