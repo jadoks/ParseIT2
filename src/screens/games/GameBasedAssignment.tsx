@@ -604,7 +604,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         flashcardAnswer
       );
       setFlashcardSubmitted(true);
-      setIsFlipped(true);
+      // Correct: reveal the card right away. Wrong: the student taps
+      // "Tap to See Answer" first, so the flip is a deliberate step.
+      setIsFlipped(correct);
       setIsCorrect(correct);
       setAnswerFeedback(feedback || null);
       if (correct) {
@@ -926,7 +928,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     correct: boolean,
     title: string,
     lines: Array<string | null | undefined>,
-    label: string
+    label: string,
+    onPress: () => void = handleNext
   ) => (
     <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
       <Text style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</Text>
@@ -941,7 +944,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           ))}
         </ScrollView>
       )}
-      <TouchableOpacity style={[styles.nextButton, styles.feedbackNextButton]} onPress={handleNext}>
+      <TouchableOpacity style={[styles.nextButton, styles.feedbackNextButton]} onPress={onPress}>
         <Text style={styles.nextButtonText}>{label}</Text>
       </TouchableOpacity>
     </View>
@@ -1061,12 +1064,20 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             </TouchableOpacity>
           </View>
         ) : (
-          renderFeedbackBar(
-            !!isCorrect,
-            isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
-            [!isCorrect ? `Your answer: ${flashcardAnswer}` : null, answerFeedback],
-            currentIndex < questions.length - 1 ? 'Next Card' : 'Finish Game'
-          )
+          !isCorrect && !isFlipped
+            ? renderFeedbackBar(
+                false,
+                'Incorrect ❌',
+                [],
+                'Tap to See Answer',
+                () => setIsFlipped(true)
+              )
+            : renderFeedbackBar(
+                !!isCorrect,
+                isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
+                [!isCorrect ? `Your answer: ${flashcardAnswer}` : null],
+                currentIndex < questions.length - 1 ? 'Next Card' : 'Finish Game'
+              )
         )}
       </View>
     </View>

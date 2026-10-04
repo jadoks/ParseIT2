@@ -1144,7 +1144,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             renderFeedbackBar(
               !!flashcardIsCorrect,
               flashcardIsCorrect ? 'Correct! 🎉' : 'Incorrect ❌',
-              [flashcardFeedback],
+              [!flashcardIsCorrect && isFlashcardAnswerVisible ? `Your answer: ${flashcardInput}` : null],
               !flashcardIsCorrect && !isFlashcardAnswerVisible
                 ? [{ label: 'Tap to See Answer', onPress: () => setIsFlashcardAnswerVisible(true) }]
                 : [{
