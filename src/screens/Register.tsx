@@ -1763,12 +1763,7 @@ export default function Register({
 
               {/* BSIT logo overlay — big and centered over the photo */}
               <View style={styles.leftBsitWrap} pointerEvents="none">
-                <View
-                  style={[
-                    styles.leftBsitBadge,
-                    { width: bsitLogoSize, height: bsitLogoSize, borderRadius: bsitLogoSize / 2 },
-                  ]}
-                >
+                <View style={[styles.leftBsitBadge, { width: bsitLogoSize, height: bsitLogoSize }]}>
                   <Image
                     source={require('../../assets/images/BSITLOGO1.png')}
                     style={styles.leftBsitImage}
@@ -1942,18 +1937,9 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     paddingBottom: 300,
   },
-  // White disc behind the logo so its black gear stays visible on the dark overlay.
-  leftBsitBadge: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowOffset: { width: 0, height: 16 },
-    shadowRadius: 32,
-    elevation: 12,
-  },
-  leftBsitImage: { width: '100%', height: '100%' },
+  leftBsitBadge: { alignItems: 'center', justifyContent: 'center' },
+  // 70% opacity so the logo sits back into the photo (muted / grayed look).
+  leftBsitImage: { width: '100%', height: '100%', opacity: 0.7 },
   leftQuote: {
     fontSize: 27,
     fontWeight: '800',
