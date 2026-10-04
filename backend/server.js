@@ -10929,13 +10929,17 @@ app.get(
           }
 
           // 🌟 "New class chat" indicator — separate from unreadCount above.
-          // Flags class-group conversations this user has never opened yet,
+          // Flags class-group conversations AND discussion rooms this user has
+          // never opened yet (a room just created by them, or one they were just
+          // added to) -- same rules as a class chat:
           // i.e. their class was just created (teacher) or they were just
           // added/joined (student), regardless of whether any real messages
           // have been sent yet. It clears the moment they open the
           // conversation (which sets participant.lastReadAt via
           // /messenger-mark-read), independent of the numbered unread count.
-          const isNewClassChat = conversation.type === "class" && !lastReadAt;
+          const isNewClassChat =
+            (conversation.type === "class" || conversation.type === "room") &&
+            !lastReadAt;
 
           // 🌟 Hydrate custom avatar URL if it exists
           let hydratedAvatarUrl = conversation.avatarUrl || null;

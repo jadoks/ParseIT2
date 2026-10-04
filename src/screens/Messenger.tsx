@@ -2232,7 +2232,7 @@ const Messenger = ({
                       borderRadius: sizes.listAvatar / 2,
                     }}
                   />
-                  {item.isClassChat && item.isNewClassChat && (
+                  {(item.isClassChat || item.isRoom) && item.isNewClassChat && (
                     <View style={styles.newClassChatDot} />
                   )}
                 </View>
@@ -2355,7 +2355,7 @@ const Messenger = ({
                     borderRadius: sizes.listAvatar / 2,
                   }}
                 />
-                {item.isClassChat && item.isNewClassChat && (
+                {(item.isClassChat || item.isRoom) && item.isNewClassChat && (
                   <View style={styles.newClassChatDot} />
                 )}
               </View>

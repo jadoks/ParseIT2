@@ -1635,20 +1635,20 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
             </View>
 
             {processedCourses.length > 0 && (
-              <View style={styles.classSearchWrap}>
-                <MaterialCommunityIcons name="magnify" size={20} color="#8A6F6F" />
+              <View style={[styles.classSearchWrap, isLargeScreen && styles.classSearchWrapLarge]}>
+                <MaterialCommunityIcons name="magnify" size={20} color="#65676B" />
                 <TextInput
                   value={classSearch}
                   onChangeText={setClassSearch}
                   placeholder="Search classes by name, section, or code"
-                  placeholderTextColor="#B79A9A"
+                  placeholderTextColor="#65676B"
                   style={styles.classSearchInput}
                   returnKeyType="search"
                   autoCorrect={false}
                 />
                 {isSearchingClasses && (
                   <TouchableOpacity onPress={() => setClassSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <MaterialCommunityIcons name="close-circle" size={18} color="#B79A9A" />
+                    <MaterialCommunityIcons name="close-circle" size={18} color="#65676B" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -1804,20 +1804,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: 46,
-    borderWidth: 1,
-    borderColor: '#EBD4D4',
-    borderRadius: 14,
-    backgroundColor: '#FAF5F5',
-    paddingHorizontal: 14,
+    height: 44,
+    // Same flat gray pill as the TeacherHeader search: no border, #F0F2F5.
+    borderRadius: 999,
+    backgroundColor: '#F0F2F5',
+    paddingHorizontal: 16,
     marginBottom: 16,
   },
+  // On large screens a full-width bar is far too long; keep it to 40%.
+  classSearchWrapLarge: { width: '40%', minWidth: 320 },
   classSearchInput: {
     flex: 1,
     fontFamily: FONT_BODY,
     fontSize: 14,
-    color: '#2B1111',
+    color: '#000',
     paddingVertical: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   classSearchEmpty: { alignItems: 'center', gap: 8, paddingVertical: 28 },
