@@ -680,7 +680,7 @@ export default function AddClassModal({
     const list = teachers.filter((t) =>
       !q || `${t.firstName || ""} ${t.lastName || ""} ${t.teacherId || ""} ${t.email || ""}`.toLowerCase().includes(q)
     );
-    return list.slice(0, 6);
+    return list; // every matching teacher: the list below scrolls
   }, [teachers, teacherSearch]);
 
   const selectedTeacher = useMemo(
@@ -1162,24 +1162,39 @@ export default function AddClassModal({
                           onChangeText={setTeacherSearch}
                           placeholder="Search teacher by name, ID, or email"
                         />
-                        <View
-                          style={styles.teacherGrid}
-                          onLayout={(e) => setTeacherListWidth(e.nativeEvent.layout.width)}
+                        <Text style={styles.teacherCount}>
+                          {filteredTeachers.length === 0
+                            ? "No teachers found"
+                            : `${filteredTeachers.length} teacher${filteredTeachers.length === 1 ? "" : "s"}${
+                                teacherSearch.trim() ? " found" : ""
+                              }`}
+                        </Text>
+                        {/* Scrolls inside the modal so every registered teacher is reachable. */}
+                        <ScrollView
+                          style={styles.teacherScroll}
+                          nestedScrollEnabled
+                          showsVerticalScrollIndicator
+                          persistentScrollbar
                         >
-                          {filteredTeachers.map((teacher) => (
-                            <TouchableOpacity
-                              key={teacher.id}
-                              style={[styles.teacherOption, teacherCardWidth ? { width: teacherCardWidth } : null]}
-                              activeOpacity={0.85}
-                              onPress={() => handleSelectTeacher(teacher)}
-                            >
-                              <Text style={styles.teacherName}>
-                                {`${teacher.firstName || ""} ${teacher.lastName || ""}`.trim() || teacher.email}
-                              </Text>
-                              <Text style={styles.teacherMeta}>ID: {teacher.teacherId || teacher.id}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
+                          <View
+                            style={styles.teacherGrid}
+                            onLayout={(e) => setTeacherListWidth(e.nativeEvent.layout.width)}
+                          >
+                            {filteredTeachers.map((teacher) => (
+                              <TouchableOpacity
+                                key={teacher.id}
+                                style={[styles.teacherOption, teacherCardWidth ? { width: teacherCardWidth } : null]}
+                                activeOpacity={0.85}
+                                onPress={() => handleSelectTeacher(teacher)}
+                              >
+                                <Text style={styles.teacherName}>
+                                  {`${teacher.firstName || ""} ${teacher.lastName || ""}`.trim() || teacher.email}
+                                </Text>
+                                <Text style={styles.teacherMeta}>ID: {teacher.teacherId || teacher.id}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </ScrollView>
                       </>
                     )}
 
@@ -1650,7 +1665,10 @@ export default function AddClassModal({
 }
 
 const styles = StyleSheet.create({
-  teacherGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10, width: "100%", alignSelf: "stretch" },
+  teacherCount: { fontSize: 12, fontWeight: "700", color: "#8A6F6F", marginTop: 10 },
+  // About three rows tall; more teachers scroll instead of being cut off.
+  teacherScroll: { maxHeight: 260, marginTop: 8 },
+  teacherGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, width: "100%", alignSelf: "stretch", paddingRight: 4 },
   teacherOption: {
     borderWidth: 1,
     borderColor: "#EBD4D4",

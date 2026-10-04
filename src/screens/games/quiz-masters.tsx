@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -245,6 +246,14 @@ function createMatchingCards(questions: any[]): MatchingCard[] {
 
   return shuffleArray(cards);
 }
+
+// One distinct color per term (cycled if there are more than 12). The term, its
+// number badge, and the definition it is paired with all share the same color.
+const MATCH_COLORS = [
+  '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA', '#00ACC1',
+  '#D81B60', '#3949AB', '#6D4C41', '#7CB342', '#546E7A', '#F4511E',
+];
+const matchColor = (index: number) => MATCH_COLORS[index % MATCH_COLORS.length];
 
 const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '65%'; 
 
@@ -655,13 +664,46 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setShowResults(false);
   };
 
+  // One-to-one matching: each term owns at most one definition and each
+  // definition belongs to at most one term. Tapping a paired card "picks it up"
+  // so it can be re-paired; choosing a definition another term holds steals it.
   const handleTermPress = (termId: string) => {
+    if (selectedTermId === termId) {
+      setSelectedTermId(null);
+      return;
+    }
+    setUserChoices(prev => {
+      const next = { ...prev };
+      delete next[termId];
+      return next;
+    });
     setSelectedTermId(termId);
   };
 
   const handleDefinitionPress = (defId: string) => {
-    if (!selectedTermId) return;
-    setUserChoices(prev => ({ ...prev, [selectedTermId]: defId }));
+    const ownerId = Object.keys(userChoices).find(k => userChoices[k] === defId);
+
+    // Nothing selected: tapping a paired definition picks it back up.
+    if (!selectedTermId) {
+      if (ownerId) {
+        setUserChoices(prev => {
+          const next = { ...prev };
+          delete next[ownerId];
+          return next;
+        });
+        setSelectedTermId(ownerId);
+      }
+      return;
+    }
+
+    setUserChoices(prev => {
+      const next: Record<string, string> = {};
+      Object.keys(prev).forEach(k => {
+        if (prev[k] !== defId) next[k] = prev[k];
+      });
+      next[selectedTermId] = defId;
+      return next;
+    });
     setSelectedTermId(null);
   };
 
@@ -891,50 +933,80 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       return renderMatchingResults();
     }
 
-    const isSubmitDisabled = Object.keys(userChoices).length < terms.length;
+    const pairedCount = Object.keys(userChoices).length;
+    const isSubmitDisabled = pairedCount < terms.length;
+    const activeTermIndex = selectedTermId
+      ? terms.findIndex(t => t.id === selectedTermId)
+      : -1;
+    const activeColor = activeTermIndex >= 0 ? matchColor(activeTermIndex) : null;
 
     return (
       <View style={styles.gameContainer}>
         <View style={styles.header}>
-          <Text style={styles.progressText}>Paired: {Object.keys(userChoices).length}/{terms.length}</Text>
+          <Text style={styles.progressText}>Paired: {pairedCount}/{terms.length}</Text>
         </View>
 
         <Text style={styles.memoryMatchInstructions}>
-          Tap a term, then tap its matching definition letter.
+          Pick a term, then pick its definition. Each definition can only be used once.
+          Tap a paired card to change it.
+        </Text>
+
+        {/* Progress: one dot per term, filled with that term's color once paired */}
+        <View style={styles.matchProgressRow}>
+          {terms.map((t, i) => (
+            <View
+              key={`dot-${t.id}`}
+              style={[
+                styles.matchDot,
+                userChoices[t.id] ? { backgroundColor: matchColor(i), borderColor: matchColor(i) } : null,
+              ]}
+            />
+          ))}
+        </View>
+
+        <Text style={[styles.matchPrompt, activeColor ? { color: activeColor } : null]}>
+          {selectedTermId
+            ? `Now choose the match for term ${activeTermIndex + 1}`
+            : 'Select a term from Column A'}
         </Text>
 
         <View style={styles.memoryMatchContainer}>
           <View style={styles.memoryColumn}>
             <Text style={styles.memoryColumnHeader}>Column A (Terms)</Text>
-            {terms.map((card) => {
-              const pairedDefId = userChoices[card.id];
-              const pairedDefIndex = definitions.findIndex(d => d.id === pairedDefId);
-              const pairedDef = pairedDefIndex >= 0 ? definitions[pairedDefIndex] : null;
-              const selectedLetter = pairedDefIndex >= 0 ? String.fromCharCode(65 + pairedDefIndex) : '';
-              const isSelected = selectedTermId === card.id;
+            {terms.map((card, tIdx) => {
+              const color = matchColor(tIdx);
+              const pairedDefIndex = definitions.findIndex(d => d.id === userChoices[card.id]);
+              const isPaired = pairedDefIndex >= 0;
+              const isActive = selectedTermId === card.id;
               return (
                 <Pressable
                   key={card.id}
                   style={[
-                    styles.memoryCard,
-                    isSelected && styles.memoryCardSelected,
-                    pairedDef && styles.memoryCardMatched,
+                    styles.matchCard,
+                    isPaired && { backgroundColor: color + '1A', borderColor: color },
+                    isActive && {
+                      backgroundColor: color + '26',
+                      borderColor: color,
+                      borderWidth: 3,
+                      shadowColor: color,
+                      shadowOpacity: 0.35,
+                      shadowRadius: 8,
+                      elevation: 5,
+                    },
                   ]}
                   onPress={() => handleTermPress(card.id)}
                 >
-                  <View style={styles.memoryCardRow}>
-                    <Text style={styles.memoryCardText}>{card.text}</Text>
-                    {selectedLetter !== '' && (
-                      <Text style={styles.memoryCardSelectedLetter}>
-                        ({selectedLetter})
-                      </Text>
-                    )}
+                  <View style={[styles.matchBadge, { backgroundColor: color }]}>
+                    <Text style={styles.matchBadgeText}>{tIdx + 1}</Text>
                   </View>
-                  {pairedDef && (
-                    <Text style={styles.memoryCardSubtext} numberOfLines={1}>
-                      → {pairedDef.text}
-                    </Text>
-                  )}
+                  <Text style={styles.matchCardText}>{card.text}</Text>
+                  {isPaired ? (
+                    <View style={[styles.matchChip, { backgroundColor: color }]}>
+                      <Text style={styles.matchChipText}>{String.fromCharCode(65 + pairedDefIndex)}</Text>
+                    </View>
+                  ) : isActive ? (
+                    <Ionicons name="radio-button-on" size={22} color={color} />
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -944,25 +1016,31 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             <Text style={styles.memoryColumnHeader}>Column B (Definitions)</Text>
             {definitions.map((card, index) => {
               const letter = String.fromCharCode(65 + index);
-              const pairedTermId = Object.keys(userChoices).find(k => userChoices[k] === card.id);
-              const pairedTerm = terms.find(t => t.id === pairedTermId);
-              const isPaired = !!pairedTerm;
-              
+              const ownerId = Object.keys(userChoices).find(k => userChoices[k] === card.id);
+              const ownerIndex = ownerId ? terms.findIndex(t => t.id === ownerId) : -1;
+              const isTaken = ownerIndex >= 0;
+              const ownerColor = isTaken ? matchColor(ownerIndex) : null;
+              // Free definitions glow in the active term's color so the target is obvious.
+              const isTarget = !isTaken && activeColor !== null;
+
               return (
                 <Pressable
                   key={card.id}
                   style={[
-                    styles.memoryCard,
-                    isPaired && styles.memoryCardMatched,
+                    styles.matchCard,
+                    isTaken && { backgroundColor: ownerColor + '1A', borderColor: ownerColor as string },
+                    isTarget && { borderColor: activeColor as string, borderStyle: 'dashed' },
                   ]}
                   onPress={() => handleDefinitionPress(card.id)}
                 >
-                  <Text style={styles.memoryCardLetter}>{letter}</Text>
-                  <Text style={styles.memoryCardText}>{card.text}</Text>
-                  {isPaired && (
-                    <Text style={styles.memoryCardSubtext} numberOfLines={1}>
-                      ← {pairedTerm?.text}
-                    </Text>
+                  <View style={[styles.matchBadge, { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' }]}>
+                    <Text style={[styles.matchBadgeText, !isTaken && { color: '#546E7A' }]}>{letter}</Text>
+                  </View>
+                  <Text style={styles.matchCardText}>{card.text}</Text>
+                  {isTaken && (
+                    <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
+                      <Text style={styles.matchChipText}>{ownerIndex + 1}</Text>
+                    </View>
                   )}
                 </Pressable>
               );
@@ -981,76 +1059,101 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     );
   };
 
+  // Compact response bar used by every fixed-layout game. It lives in a fixed
+  // slot at the bottom so answering never pushes the page taller / scrollable.
+  const renderFeedbackBar = (
+    correct: boolean,
+    title: string,
+    lines: Array<string | null | undefined>,
+    buttons: Array<{ label: string; onPress: () => void }>
+  ) => (
+    <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
+      <Text style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</Text>
+      {lines.filter(Boolean).length > 0 && (
+        <ScrollView style={styles.feedbackLines} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          {lines.filter(Boolean).map((line, i) => (
+            <Text key={i} style={styles.feedbackLine}>{line}</Text>
+          ))}
+        </ScrollView>
+      )}
+      {buttons.map(b => (
+        <Pressable key={b.label} style={[styles.nextButton, styles.feedbackNextButton]} onPress={b.onPress}>
+          <Text style={styles.nextButtonText}>{b.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
   const renderFlashcardGame = () => {
     if (!currentFlashcard) return null;
+    const flashcardTotal = flashcardItems.length > 0 ? flashcardItems.length : questions.length;
 
     return (
       <View style={styles.gameContainer}>
         <View style={styles.header}>
-          <Text style={styles.progressText}>Card {flashcardIndex + 1} of {flashcardItems.length > 0 ? flashcardItems.length : questions.length}</Text>
+          <Text style={styles.progressText}>Card {flashcardIndex + 1} of {flashcardTotal}</Text>
         </View>
 
         <View style={styles.flashcardContainer}>
-          {!isFlashcardAnswerVisible ? (
-            <View style={styles.flashcardFront}>
-              <Ionicons name="help-circle-outline" size={40} color="#8B0000" />
-              <Text style={styles.flashcardQuestion}>{currentFlashcard.question}</Text>
-            </View>
-          ) : (
-            <View style={styles.flashcardBack}>
-              <Ionicons name="checkmark-circle-outline" size={40} color="#4CAF50" />
-              <Text style={styles.flashcardAnswerText}>{currentFlashcard.answer}</Text>
-              {currentFlashcard.explanation ? (
-                <Text style={styles.flashcardExplanation}>{currentFlashcard.explanation}</Text>
-              ) : null}
-            </View>
-          )}
+          <ScrollView
+            style={styles.flashcardScrollFill}
+            contentContainerStyle={styles.flashcardScroll}
+            showsVerticalScrollIndicator={false}
+          >
+            {!isFlashcardAnswerVisible ? (
+              <>
+                <Ionicons name="help-circle-outline" size={40} color="#8B0000" />
+                <Text style={styles.flashcardQuestion}>{currentFlashcard.question}</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle-outline" size={40} color="#4CAF50" />
+                <Text style={styles.flashcardAnswerText}>{currentFlashcard.answer}</Text>
+                {currentFlashcard.explanation ? (
+                  <Text style={styles.flashcardExplanation}>{currentFlashcard.explanation}</Text>
+                ) : null}
+              </>
+            )}
+          </ScrollView>
         </View>
 
-        {!flashcardChecked ? (
-          <View style={styles.flashcardInputContainer}>
-            <TextInput
-              style={styles.flashcardInput}
-              placeholder="Type your answer here..."
-              placeholderTextColor="#999"
-              value={flashcardInput}
-              onChangeText={setFlashcardInput}
-              multiline
-            />
-            <Pressable
-              style={[styles.nextButton, (!flashcardInput.trim() || isFlashcardGrading) && styles.nextButtonDisabled]}
-              onPress={handleFlashcardCheck}
-              disabled={!flashcardInput.trim() || isFlashcardGrading}
-            >
-              {isFlashcardGrading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.nextButtonText}>Check Answer</Text>
-              )}
-            </Pressable>
-          </View>
-        ) : (
-          <View style={[styles.feedbackCard, flashcardIsCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
-            <Text style={[styles.feedbackText, { color: flashcardIsCorrect ? '#2E7D32' : '#C62828' }]}>
-              {flashcardIsCorrect ? 'Correct! 🎉' : 'Incorrect ❌'}
-            </Text>
-            {flashcardFeedback && (
-              <Text style={styles.feedbackSubtext}>{flashcardFeedback}</Text>
-            )}
-            {!flashcardIsCorrect && !isFlashcardAnswerVisible && (
-              <Pressable style={styles.nextButton} onPress={() => setIsFlashcardAnswerVisible(true)}>
-                <Text style={styles.nextButtonText}>Tap to See Answer</Text>
+        <View style={styles.fixedFooter}>
+          {!flashcardChecked ? (
+            <View style={styles.flashcardInputContainer}>
+              <TextInput
+                style={[styles.flashcardInput, styles.fixedInput]}
+                placeholder="Type your answer here..."
+                placeholderTextColor="#999"
+                value={flashcardInput}
+                onChangeText={setFlashcardInput}
+                multiline
+              />
+              <Pressable
+                style={[styles.nextButton, styles.feedbackNextButton, (!flashcardInput.trim() || isFlashcardGrading) && styles.nextButtonDisabled]}
+                onPress={handleFlashcardCheck}
+                disabled={!flashcardInput.trim() || isFlashcardGrading}
+              >
+                {isFlashcardGrading ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.nextButtonText}>Check Answer</Text>
+                )}
               </Pressable>
-            )}
-            {(flashcardIsCorrect || isFlashcardAnswerVisible) && (
-              <Pressable style={styles.nextButton} onPress={handleNextFlashcard}>
-                <Text style={styles.nextButtonText}>
-                  {flashcardIndex + 1 >= (flashcardItems.length > 0 ? flashcardItems.length : questions.length) ? 'Finish Practice' : 'Next Card'}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        )}
+            </View>
+          ) : (
+            renderFeedbackBar(
+              !!flashcardIsCorrect,
+              flashcardIsCorrect ? 'Correct! 🎉' : 'Incorrect ❌',
+              [flashcardFeedback],
+              !flashcardIsCorrect && !isFlashcardAnswerVisible
+                ? [{ label: 'Tap to See Answer', onPress: () => setIsFlashcardAnswerVisible(true) }]
+                : [{
+                    label: flashcardIndex + 1 >= flashcardTotal ? 'Finish Practice' : 'Next Card',
+                    onPress: handleNextFlashcard,
+                  }]
+            )
+          )}
+        </View>
       </View>
     );
   };
@@ -1065,56 +1168,55 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Text style={styles.scoreText}>Score: {fillScore}</Text>
         </View>
 
-        <View style={styles.questionCard}>
-          <Text style={styles.questionText}>{currentFillItem.prompt}</Text>
+        <View style={styles.fixedQuestionCard}>
+          <ScrollView contentContainerStyle={styles.fixedQuestionScroll} showsVerticalScrollIndicator={false}>
+            <Text style={styles.questionText}>{currentFillItem.prompt}</Text>
+          </ScrollView>
         </View>
 
-        <TextInput
-          style={[
-            styles.flashcardInput,
-            fillChecked && (fillIsCorrect ? { borderColor: '#4CAF50', backgroundColor: '#E8F5E9' } : { borderColor: '#F44336', backgroundColor: '#FFEBEE' }),
-          ]}
-          value={fillAnswer}
-          onChangeText={setFillAnswer}
-          placeholder="Type the missing word..."
-          placeholderTextColor="#999"
-          editable={!fillChecked}
-          autoCapitalize="none"
-        />
+        <View style={styles.fixedFooter}>
+          <TextInput
+            style={[
+              styles.flashcardInput,
+              styles.fixedInput,
+              fillChecked && (fillIsCorrect ? { borderColor: '#4CAF50', backgroundColor: '#E8F5E9' } : { borderColor: '#F44336', backgroundColor: '#FFEBEE' }),
+            ]}
+            value={fillAnswer}
+            onChangeText={setFillAnswer}
+            placeholder="Type the missing word..."
+            placeholderTextColor="#999"
+            editable={!fillChecked}
+            autoCapitalize="none"
+          />
 
-        {fillChecked ? (
-          <View style={[styles.feedbackCard, fillIsCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
-            <Text style={[styles.feedbackText, { color: fillIsCorrect ? '#2E7D32' : '#C62828' }]}>
-              {fillIsCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌'}
-            </Text>
-            {!fillIsCorrect && <Text style={styles.feedbackSubtext}>Correct answer: {currentFillItem.answer}</Text>}
-            {fillFeedback && <Text style={styles.feedbackSubtext}>{fillFeedback}</Text>}
-            {currentFillItem.explanation && <Text style={styles.feedbackSubtext}>{currentFillItem.explanation}</Text>}
-            <Pressable style={styles.nextButton} onPress={nextFillBlank}>
-              <Text style={styles.nextButtonText}>
-                {fillIndex + 1 >= fillBlankItems.length ? 'Finish Practice' : 'Next Item'}
-              </Text>
+          {fillChecked ? (
+            renderFeedbackBar(
+              !!fillIsCorrect,
+              fillIsCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
+              [!fillIsCorrect ? `Correct answer: ${currentFillItem.answer}` : null, fillFeedback, currentFillItem.explanation],
+              [{ label: fillIndex + 1 >= fillBlankItems.length ? 'Finish Practice' : 'Next Item', onPress: nextFillBlank }]
+            )
+          ) : (
+            <Pressable
+              style={[styles.nextButton, styles.feedbackNextButton, (!fillAnswer.trim() || isFillGrading) && styles.nextButtonDisabled]}
+              onPress={checkFillAnswer}
+              disabled={!fillAnswer.trim() || isFillGrading}
+            >
+              {isFillGrading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.nextButtonText}>Check Answer</Text>
+              )}
             </Pressable>
-          </View>
-        ) : (
-          <Pressable
-            style={[styles.nextButton, (!fillAnswer.trim() || isFillGrading) && styles.nextButtonDisabled]}
-            onPress={checkFillAnswer}
-            disabled={!fillAnswer.trim() || isFillGrading}
-          >
-            {isFillGrading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.nextButtonText}>Check Answer</Text>
-            )}
-          </Pressable>
-        )}
+          )}
+        </View>
       </View>
     );
   };
 
   const renderTriviaGame = () => {
     if (!currentTrivia) return null;
+    const triviaCorrect = triviaSelected === currentTrivia.answer;
 
     return (
       <View style={styles.gameContainer}>
@@ -1123,8 +1225,10 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Text style={styles.scoreText}>Score: {triviaScore}</Text>
         </View>
 
-        <View style={styles.questionCard}>
-          <Text style={styles.questionText}>{currentTrivia.question}</Text>
+        <View style={styles.fixedQuestionCard}>
+          <ScrollView contentContainerStyle={styles.fixedQuestionScroll} showsVerticalScrollIndicator={false}>
+            <Text style={styles.questionText}>{currentTrivia.question}</Text>
+          </ScrollView>
         </View>
 
         <View style={styles.optionsContainer}>
@@ -1166,19 +1270,20 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           })}
         </View>
 
-        {triviaSelected && (
-          <View style={[styles.feedbackCard, triviaSelected === currentTrivia.answer ? styles.feedbackCorrect : styles.feedbackWrong]}>
-            <Text style={[styles.feedbackText, { color: triviaSelected === currentTrivia.answer ? '#2E7D32' : '#C62828' }]}>
-              {triviaSelected === currentTrivia.answer ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌'}
-            </Text>
-            {currentTrivia.explanation && <Text style={styles.feedbackSubtext}>{currentTrivia.explanation}</Text>}
-            <Pressable style={styles.nextButton} onPress={nextTrivia}>
-              <Text style={styles.nextButtonText}>
-                {triviaIndex + 1 >= questions.length ? 'Finish Practice' : 'Next Question'}
-              </Text>
-            </Pressable>
-          </View>
-        )}
+        <View style={[styles.fixedFooter, styles.fixedFooterMin]}>
+          {triviaSelected ? (
+            renderFeedbackBar(
+              triviaCorrect,
+              triviaCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
+              [!triviaCorrect ? `Correct answer: ${currentTrivia.answer}` : null, currentTrivia.explanation],
+              [{ label: triviaIndex + 1 >= questions.length ? 'Finish Practice' : 'Next Question', onPress: nextTrivia }]
+            )
+          ) : (
+            <View style={styles.footerHint}>
+              <Text style={styles.footerHintText}>Choose an answer</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -1287,6 +1392,11 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return renderMenu();
   };
 
+  // Matching has a long two-column list and the summary/menu are plain pages, so they
+  // keep the scrolling page; the other practice games are a fixed, no-scroll layout.
+  const isFixedLayout =
+    hasGeneratedGame && (mode === 'flashcards' || mode === 'fillBlank' || mode === 'trivia');
+
   return (
     <View style={styles.container}>
       <View style={styles.topBar}>
@@ -1298,17 +1408,37 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
         </Text>
         <View style={{ width: 40 }} />
       </View>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View
-          style={
-            isLargeScreen
-              ? [styles.contentWrapLarge, { width: LARGE_SCREEN_CONTENT_WIDTH_PERCENT }]
-              : styles.contentWrapSmall
-          }
+      {isFixedLayout ? (
+        // Question-style games fit the screen: no page scrolling, so the
+        // correct/wrong response and Next button are always visible.
+        <KeyboardAvoidingView
+          style={styles.fixedShell}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {renderContent()}
-        </View>
-      </ScrollView>
+          <View
+            style={[
+              isLargeScreen
+                ? [styles.contentWrapLarge, { width: LARGE_SCREEN_CONTENT_WIDTH_PERCENT }]
+                : styles.contentWrapSmall,
+              styles.fixedFill,
+            ]}
+          >
+            {renderContent()}
+          </View>
+        </KeyboardAvoidingView>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View
+            style={
+              isLargeScreen
+                ? [styles.contentWrapLarge, { width: LARGE_SCREEN_CONTENT_WIDTH_PERCENT }]
+                : styles.contentWrapSmall
+            }
+          >
+            {renderContent()}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -1337,7 +1467,7 @@ const styles = StyleSheet.create({
   contentWrapSmall: { width: '100%' },
   contentWrapLarge: { maxWidth: 900, minWidth: 480, alignSelf: 'center' },
   gameContainer: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   progressText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#555' },
   scoreText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
   questionCard: {
@@ -1351,13 +1481,14 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   questionText: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: WEIGHT_EMPHASIS, color: '#222', lineHeight: 26 },
-  optionsContainer: { gap: 12 },
+  optionsContainer: { gap: 10 },
   optionButton: {
     backgroundColor: '#FFF',
     borderWidth: 2,
     borderColor: '#DDD',
     borderRadius: 16,
-    padding: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1380,11 +1511,41 @@ const styles = StyleSheet.create({
   },
   nextButtonDisabled: { backgroundColor: '#CCC' },
   nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: 16, fontWeight: WEIGHT_EMPHASIS },
+  // Fixed (no-scroll) game layout
+  fixedShell: { flex: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
+  fixedFill: { flex: 1 },
+  fixedQuestionCard: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minHeight: 80,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  fixedQuestionScroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+  fixedFooter: { flexShrink: 0, marginTop: 8, justifyContent: 'flex-end', gap: 8 },
+  fixedFooterMin: { minHeight: 134 },
+  footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  footerHintText: { fontFamily: FONT_BODY, color: '#8A8F98', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
+  feedbackBar: { borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
+  feedbackTitle: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
+  feedbackLines: { maxHeight: 84, alignSelf: 'stretch', marginTop: 4 },
+  feedbackLine: { fontFamily: FONT_BODY, fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 2 },
+  feedbackNextButton: { marginTop: 8, paddingVertical: 12 },
+  fixedInput: { minHeight: 48, maxHeight: 96 },
+  flashcardScrollFill: { alignSelf: 'stretch' },
+  flashcardScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
   flashcardContainer: {
-    height: 250,
+    flex: 1,
     backgroundColor: '#FFF',
     borderRadius: 20,
-    marginBottom: 24,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 15,
@@ -1452,6 +1613,32 @@ const styles = StyleSheet.create({
   },
   memoryCardSelected: { backgroundColor: '#E3F2FD', borderColor: '#2196F3' },
   memoryCardMatched: { backgroundColor: '#E8F5E9', borderColor: '#4CAF50', opacity: 0.85 },
+  // Matching — colored pair cards
+  matchCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#E0E3E8',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    minHeight: 64,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  matchBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  matchBadgeText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: 14 },
+  matchCardText: { fontFamily: FONT_BODY, flex: 1, color: '#222', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
+  matchChip: { minWidth: 30, height: 30, borderRadius: 15, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
+  matchChipText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: 13 },
+  matchProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  matchDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#CFD4DA', backgroundColor: '#FFF' },
+  matchPrompt: { fontFamily: FONT_BODY, textAlign: 'center', marginBottom: 14, color: '#2196F3', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   memoryCardText: { fontFamily: FONT_BODY, color: '#222', fontSize: 14, fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
   memoryCardSubtext: { fontFamily: FONT_BODY, fontSize: 12, color: '#4CAF50', marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
   memoryCardRow: {

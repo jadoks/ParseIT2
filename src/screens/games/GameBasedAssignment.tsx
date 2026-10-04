@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -624,20 +625,54 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     }
   };
 
+  // One-to-one matching: every term owns at most one choice and every choice
+  // belongs to at most one term. Tapping an already-paired card "picks it up"
+  // so it can be re-paired; picking a choice that another term holds steals it
+  // (the previous owner becomes unpaired).
   const handleMemoryCardPress = (card: any) => {
     if (matchingSubmitted) return;
 
     if (card.type === 'term') {
+      if (selectedTerm === card.pairId) {
+        setSelectedTerm(null);
+        return;
+      }
+      setTermAnswers(prev => {
+        const next = { ...prev };
+        delete next[card.pairId];
+        return next;
+      });
       setSelectedTerm(card.pairId);
       return;
     }
 
-    if (card.type === 'def' && selectedTerm !== null) {
-      setTermAnswers(prev => ({
-        ...prev,
-        [selectedTerm]: card.pairId,
-      }));
+    if (card.type === 'def') {
+      const ownerKey = Object.keys(termAnswers).find(
+        k => termAnswers[Number(k)] === card.pairId
+      );
 
+      // Nothing selected: tapping a paired choice picks it back up.
+      if (selectedTerm === null) {
+        if (ownerKey !== undefined) {
+          const ownerId = Number(ownerKey);
+          setTermAnswers(prev => {
+            const next = { ...prev };
+            delete next[ownerId];
+            return next;
+          });
+          setSelectedTerm(ownerId);
+        }
+        return;
+      }
+
+      setTermAnswers(prev => {
+        const next: Record<number, number> = {};
+        Object.keys(prev).forEach(k => {
+          if (prev[Number(k)] !== card.pairId) next[Number(k)] = prev[Number(k)];
+        });
+        next[selectedTerm] = card.pairId;
+        return next;
+      });
       setSelectedTerm(null);
     }
   };
@@ -885,12 +920,44 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     );
   };
 
+  // Compact response bar used by every fixed-layout game. It lives in a fixed
+  // slot at the bottom so answering never pushes the page taller / scrollable.
+  const renderFeedbackBar = (
+    correct: boolean,
+    title: string,
+    lines: Array<string | null | undefined>,
+    label: string
+  ) => (
+    <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
+      <Text style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</Text>
+      {lines.filter(Boolean).length > 0 && (
+        <ScrollView
+          style={styles.feedbackLines}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+        >
+          {lines.filter(Boolean).map((line, i) => (
+            <Text key={i} style={styles.feedbackLine}>{line}</Text>
+          ))}
+        </ScrollView>
+      )}
+      <TouchableOpacity style={[styles.nextButton, styles.feedbackNextButton]} onPress={handleNext}>
+        <Text style={styles.nextButtonText}>{label}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderQuizMaster = () => (
     <View style={styles.gameContainer}>
       {renderHeader(`Question ${currentIndex + 1} / ${questions.length}`)}
 
-      <View style={styles.questionCard}>
-        <Text style={styles.questionText}>{currentQuestion.question}</Text>
+      <View style={styles.fixedQuestionCard}>
+        <ScrollView
+          contentContainerStyle={styles.fixedQuestionScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.questionText}>{currentQuestion.question}</Text>
+        </ScrollView>
       </View>
 
       <View style={styles.optionsContainer}>
@@ -926,23 +993,20 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         })}
       </View>
 
-      {hasAnswered && (
-        <View style={[styles.feedbackCard, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
-          <Text style={[styles.feedbackText, { color: isCorrect ? '#2E7D32' : '#C62828' }]}>
-            {isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌'}
-          </Text>
-          {!isCorrect && (
-            <Text style={styles.feedbackSubtext}>
-              Correct answer: {currentQuestion.options?.[currentQuestion.correctIndex!]}
-            </Text>
-          )}
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>
-              {currentIndex < questions.length - 1 ? 'Next Question' : 'Finish Game'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <View style={[styles.fixedFooter, styles.fixedFooterMin]}>
+        {hasAnswered ? (
+          renderFeedbackBar(
+            !!isCorrect,
+            isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
+            [!isCorrect ? `Correct answer: ${currentQuestion.options?.[currentQuestion.correctIndex!]}` : null],
+            currentIndex < questions.length - 1 ? 'Next Question' : 'Finish Game'
+          )
+        ) : (
+          <View style={styles.footerHint}>
+            <Text style={styles.footerHintText}>Choose an answer</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 
@@ -952,63 +1016,59 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
       <View style={styles.flashcardOuter}>
         <View style={[styles.flashcardContainer, isFlipped && styles.flashcardFlipped]}>
-          {!isFlipped ? (
-            <View style={styles.flashcardFront}>
-              <Ionicons name="help-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#8B0000" />
-              <Text style={styles.flashcardQuestion}>{currentQuestion.question}</Text>
-            </View>
-          ) : (
-            <View style={styles.flashcardBack}>
-              <Ionicons name="checkmark-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#4CAF50" />
-              <Text style={styles.flashcardAnswerText}>{currentQuestion.answer}</Text>
-            </View>
-          )}
+          <ScrollView
+            style={styles.flashcardScrollFill}
+            contentContainerStyle={styles.flashcardScroll}
+            showsVerticalScrollIndicator={false}
+          >
+            {!isFlipped ? (
+              <>
+                <Ionicons name="help-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#8B0000" />
+                <Text style={styles.flashcardQuestion}>{currentQuestion.question}</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#4CAF50" />
+                <Text style={styles.flashcardAnswerText}>{currentQuestion.answer}</Text>
+              </>
+            )}
+          </ScrollView>
         </View>
       </View>
 
-      {!flashcardSubmitted ? (
-        <View style={styles.flashcardInputContainer}>
-          <TextInput
-            style={styles.flashcardInput}
-            placeholder="Type your answer here..."
-            placeholderTextColor="#999"
-            value={flashcardAnswer}
-            onChangeText={setFlashcardAnswer}
-            multiline
-            editable={!isGradingAnswer}
-          />
-          <TouchableOpacity
-            style={[styles.nextButton, (!flashcardAnswer.trim() || isGradingAnswer) && styles.nextButtonDisabled]}
-            onPress={handleFlashcardSubmit}
-            disabled={!flashcardAnswer.trim() || isGradingAnswer}
-          >
-            {isGradingAnswer ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.nextButtonText}>Submit & Flip Card</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={[styles.feedbackCard, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
-          <Text style={[styles.feedbackText, { color: isCorrect ? '#2E7D32' : '#C62828' }]}>
-            {isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌'}
-          </Text>
-          {!isCorrect && (
-            <Text style={styles.feedbackSubtext}>
-              Your answer: {flashcardAnswer}
-            </Text>
-          )}
-          {answerFeedback && (
-            <Text style={styles.feedbackSubtext}>{answerFeedback}</Text>
-          )}
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>
-              {currentIndex < questions.length - 1 ? 'Next Card' : 'Finish Game'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <View style={styles.fixedFooter}>
+        {!flashcardSubmitted ? (
+          <View style={styles.flashcardInputContainer}>
+            <TextInput
+              style={[styles.flashcardInput, styles.fixedInput]}
+              placeholder="Type your answer here..."
+              placeholderTextColor="#999"
+              value={flashcardAnswer}
+              onChangeText={setFlashcardAnswer}
+              multiline
+              editable={!isGradingAnswer}
+            />
+            <TouchableOpacity
+              style={[styles.nextButton, styles.feedbackNextButton, (!flashcardAnswer.trim() || isGradingAnswer) && styles.nextButtonDisabled]}
+              onPress={handleFlashcardSubmit}
+              disabled={!flashcardAnswer.trim() || isGradingAnswer}
+            >
+              {isGradingAnswer ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.nextButtonText}>Submit & Flip Card</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          renderFeedbackBar(
+            !!isCorrect,
+            isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
+            [!isCorrect ? `Your answer: ${flashcardAnswer}` : null, answerFeedback],
+            currentIndex < questions.length - 1 ? 'Next Card' : 'Finish Game'
+          )
+        )}
+      </View>
     </View>
   );
 
@@ -1036,120 +1096,147 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     <View style={styles.gameContainer}>
       {renderHeader(`Question ${currentIndex + 1} / ${questions.length}`)}
 
-      <View style={styles.questionCard}>
-        <Text style={styles.questionText}>{currentQuestion.question}</Text>
+      <View style={styles.fixedQuestionCard}>
+        <ScrollView
+          contentContainerStyle={styles.fixedQuestionScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.questionText}>{currentQuestion.question}</Text>
+        </ScrollView>
       </View>
 
-      {!hasAnswered ? (
-        <View style={styles.flashcardInputContainer}>
-          <TextInput
-            style={styles.flashcardInput}
-            placeholder="Type the missing word..."
-            placeholderTextColor="#999"
-            value={flashcardAnswer}
-            onChangeText={setFlashcardAnswer}
-            editable={!isGradingAnswer}
-          />
-          <TouchableOpacity
-            style={[styles.nextButton, (!flashcardAnswer.trim() || isGradingAnswer) && styles.nextButtonDisabled]}
-            onPress={handleFillBlankSubmit}
-            disabled={!flashcardAnswer.trim() || isGradingAnswer}
-          >
-            {isGradingAnswer ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.nextButtonText}>Submit Answer</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={[styles.feedbackCard, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
-          <Text style={[styles.feedbackText, { color: isCorrect ? '#2E7D32' : '#C62828' }]}>
-            {isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect '}
-          </Text>
-          {!isCorrect && (
-            <Text style={styles.feedbackSubtext}>
-              Correct answer: {currentQuestion.answer}
-            </Text>
-          )}
-          {answerFeedback && (
-            <Text style={styles.feedbackSubtext}>{answerFeedback}</Text>
-          )}
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>
-              {currentIndex < questions.length - 1 ? 'Next Question' : 'Finish Game'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <View style={styles.fixedFooter}>
+        {!hasAnswered ? (
+          <View style={styles.flashcardInputContainer}>
+            <TextInput
+              style={[styles.flashcardInput, styles.fixedInput]}
+              placeholder="Type the missing word..."
+              placeholderTextColor="#999"
+              value={flashcardAnswer}
+              onChangeText={setFlashcardAnswer}
+              editable={!isGradingAnswer}
+            />
+            <TouchableOpacity
+              style={[styles.nextButton, styles.feedbackNextButton, (!flashcardAnswer.trim() || isGradingAnswer) && styles.nextButtonDisabled]}
+              onPress={handleFillBlankSubmit}
+              disabled={!flashcardAnswer.trim() || isGradingAnswer}
+            >
+              {isGradingAnswer ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.nextButtonText}>Submit Answer</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          renderFeedbackBar(
+            !!isCorrect,
+            isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌',
+            [!isCorrect ? `Correct answer: ${currentQuestion.answer}` : null, answerFeedback],
+            currentIndex < questions.length - 1 ? 'Next Question' : 'Finish Game'
+          )
+        )}
+      </View>
     </View>
-
   );
 
   const renderMemoryMatch = () => {
     const terms = memoryCards.filter(c => c.type === 'term');
     const defs = memoryCards.filter(c => c.type === 'def');
-    const allAnswered = Object.keys(termAnswers).length === questions.length;
+    const pairedCount = Object.keys(termAnswers).length;
+    const allAnswered = pairedCount === questions.length;
+    const activeTermIndex =
+      selectedTerm !== null ? terms.findIndex(t => t.pairId === selectedTerm) : -1;
+    const activeColor = activeTermIndex >= 0 ? matchColor(activeTermIndex) : null;
+
     return (
       <View style={styles.gameContainer}>
         {renderHeader('Match Terms to Definitions')}
 
         <Text style={styles.memoryMatchInstructions}>
-          Select a term then select its matching letter.
+          Pick a term, then pick its definition. Each definition can only be used once.
+          Tap a paired card to change it.
         </Text>
 
-        <Text style={styles.memoryMatchPrompt}>
+        {/* Progress: one dot per term, filled with that term's color once paired */}
+        <View style={styles.matchProgressRow}>
+          {terms.map((t, i) => {
+            const paired = termAnswers[t.pairId] !== undefined;
+            return (
+              <View
+                key={`dot-${t.id}`}
+                style={[
+                  styles.matchDot,
+                  paired && { backgroundColor: matchColor(i), borderColor: matchColor(i) },
+                ]}
+              />
+            );
+          })}
+          <Text style={styles.matchProgressText}>
+            {pairedCount}/{questions.length} paired
+          </Text>
+        </View>
+
+        <Text
+          style={[
+            styles.memoryMatchPrompt,
+            activeColor ? { color: activeColor } : null,
+          ]}
+        >
           {selectedTerm !== null
-            ? 'Select a letter from Column B'
+            ? `Now choose the match for term ${activeTermIndex + 1} in Column B`
             : 'Select a term from Column A'}
         </Text>
 
         <View style={styles.memoryMatchContainer}>
           {/* COLUMN A */}
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>
-              Column A (Terms)
-            </Text>
+            <Text style={styles.memoryColumnHeader}>Column A (Terms)</Text>
 
-            {terms.map(card => {
-              const selectedDefId =
-                termAnswers[card.pairId];
-
-              const selectedIndex =
-                defs.findIndex(
-                  d => d.pairId === selectedDefId
-                );
-
-              const selectedLetter =
-                selectedIndex >= 0
-                  ? String.fromCharCode(
-                      65 + selectedIndex
-                    )
-                  : '';
+            {terms.map((card, tIdx) => {
+              const color = matchColor(tIdx);
+              const pairedDefId = termAnswers[card.pairId];
+              const defIndex =
+                pairedDefId !== undefined
+                  ? defs.findIndex(d => d.pairId === pairedDefId)
+                  : -1;
+              const isPaired = defIndex >= 0;
+              const isActive = selectedTerm === card.pairId;
 
               return (
                 <TouchableOpacity
                   key={card.id}
+                  activeOpacity={0.85}
                   style={[
-                    styles.memoryCard,
-                    selectedTerm === card.pairId &&
-                      styles.memoryCardSelected,
+                    styles.matchCard,
+                    isPaired && { backgroundColor: color + '1A', borderColor: color },
+                    isActive && {
+                      backgroundColor: color + '26',
+                      borderColor: color,
+                      borderWidth: 3,
+                      shadowColor: color,
+                      shadowOpacity: 0.35,
+                      shadowRadius: 8,
+                      elevation: 5,
+                    },
                   ]}
-                  onPress={() =>
-                    handleMemoryCardPress(card)
-                  }
+                  onPress={() => handleMemoryCardPress(card)}
                 >
-                  <View style={styles.memoryCardRow}>
-                    <Text style={styles.memoryCardText}>
-                      {card.text}
-                    </Text>
-
-                    {selectedLetter !== '' && (
-                      <Text style={styles.memoryCardSelectedLetter}>
-                        ({selectedLetter})
-                      </Text>
-                    )}
+                  <View style={[styles.matchBadge, { backgroundColor: color }]}>
+                    <Text style={styles.matchBadgeText}>{tIdx + 1}</Text>
                   </View>
+
+                  <Text style={styles.matchCardText}>{card.text}</Text>
+
+                  {isPaired ? (
+                    <View style={[styles.matchChip, { backgroundColor: color }]}>
+                      <Text style={styles.matchChipText}>
+                        {String.fromCharCode(65 + defIndex)}
+                      </Text>
+                    </View>
+                  ) : isActive ? (
+                    <Ionicons name="radio-button-on" size={22} color={color} />
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -1157,29 +1244,62 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
           {/* COLUMN B */}
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>
-              Column B (Choices)
-            </Text>
+            <Text style={styles.memoryColumnHeader}>Column B (Choices)</Text>
 
-            {defs.map((card, index) => {
-              const letter =
-                String.fromCharCode(65 + index);
+            {defs.map((card, dIdx) => {
+              const letter = String.fromCharCode(65 + dIdx);
+              const ownerKey = Object.keys(termAnswers).find(
+                k => termAnswers[Number(k)] === card.pairId
+              );
+              const ownerIndex =
+                ownerKey !== undefined
+                  ? terms.findIndex(t => t.pairId === Number(ownerKey))
+                  : -1;
+              const isTaken = ownerIndex >= 0;
+              const ownerColor = isTaken ? matchColor(ownerIndex) : null;
+              // Free choices glow in the active term's color so the target is obvious.
+              const isTarget = !isTaken && activeColor !== null;
 
               return (
                 <TouchableOpacity
                   key={card.id}
-                  style={styles.memoryCard}
-                  onPress={() =>
-                    handleMemoryCardPress(card)
-                  }
+                  activeOpacity={0.85}
+                  style={[
+                    styles.matchCard,
+                    isTaken && {
+                      backgroundColor: ownerColor + '1A',
+                      borderColor: ownerColor as string,
+                    },
+                    isTarget && {
+                      borderColor: activeColor as string,
+                      borderStyle: 'dashed',
+                    },
+                  ]}
+                  onPress={() => handleMemoryCardPress(card)}
                 >
-                  <Text style={styles.memoryCardLetter}>
-                    {letter}
-                  </Text>
+                  <View
+                    style={[
+                      styles.matchBadge,
+                      { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.matchBadgeText,
+                        !isTaken && { color: '#546E7A' },
+                      ]}
+                    >
+                      {letter}
+                    </Text>
+                  </View>
 
-                  <Text style={styles.memoryCardText}>
-                    {card.text}
-                  </Text>
+                  <Text style={styles.matchCardText}>{card.text}</Text>
+
+                  {isTaken && (
+                    <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
+                      <Text style={styles.matchChipText}>{ownerIndex + 1}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -1194,9 +1314,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           onPress={handleSubmitMatching}
           disabled={!allAnswered}
         >
-          <Text style={styles.nextButtonText}>
-            Submit Matching
-          </Text>
+          <Text style={styles.nextButtonText}>Submit Matching</Text>
         </TouchableOpacity>
       </View>
     );
@@ -1212,6 +1330,10 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       default: return renderQuizMaster();
     }
   };
+
+  // Matching has a long two-column list and the summary has a review list, so they
+  // keep the scrolling page; every other game is a fixed, no-scroll layout.
+  const isFixedLayout = !gameFinished && gameType !== 'memory_match';
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -1233,13 +1355,24 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           <Text style={styles.resumeLoadingText}>Resuming your game...</Text>
         </View>
       ) : (
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.centeredContent}>{renderGame()}</View>
-        </ScrollView>
+        isFixedLayout ? (
+          // Question-style games fit the screen: no page scrolling, so the
+          // correct/wrong response and Next button are always visible.
+          <KeyboardAvoidingView
+            style={styles.fixedShell}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.fixedContent}>{renderGame()}</View>
+          </KeyboardAvoidingView>
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.centeredContent}>{renderGame()}</View>
+          </ScrollView>
+        )
       )}
 
       {/* Toast — portal-based so it renders above the game/summary screens */}
@@ -1267,6 +1400,14 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 // STYLE FACTORY — derives every value from the responsive token
 // set above. No hardcoded pixel widths/paddings/fonts here.
 // ============================================================
+// One distinct color per term (cycled if there are more than 12). The term, its
+// number badge, and the definition it is paired with all share the same color.
+const MATCH_COLORS = [
+  '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA', '#00ACC1',
+  '#D81B60', '#3949AB', '#6D4C41', '#7CB342', '#546E7A', '#F4511E',
+];
+const matchColor = (index: number) => MATCH_COLORS[index % MATCH_COLORS.length];
+
 const createStyles = (r: ResponsiveInfo) => {
   const isRowMemory = r.memoryColumns === 2;
 
@@ -1328,7 +1469,7 @@ const createStyles = (r: ResponsiveInfo) => {
       flexWrap: 'wrap',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: r.spacing.lg,
+      marginBottom: r.spacing.md,
       gap: r.spacing.sm,
     },
     progressText: { fontFamily: FONT_BODY, 
@@ -1381,7 +1522,8 @@ const createStyles = (r: ResponsiveInfo) => {
       borderWidth: 2,
       borderColor: '#DDD',
       borderRadius: 16,
-      padding: r.isSmallPhone ? 14 : 16,
+      paddingVertical: r.isSmallPhone ? 10 : 12,
+      paddingHorizontal: r.isSmallPhone ? 14 : 16,
       minHeight: r.touchTarget,
       flexDirection: 'row',
       alignItems: 'center',
@@ -1432,17 +1574,91 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     nextButtonDisabled: { backgroundColor: '#CCC' },
     nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: r.font.button, fontWeight: WEIGHT_EMPHASIS },
+    // Fixed (no-scroll) game layout
+    fixedShell: {
+      flex: 1,
+      paddingHorizontal: r.horizontalPadding,
+      paddingTop: r.spacing.sm,
+      paddingBottom: r.spacing.md,
+      alignItems: 'center',
+    },
+    fixedContent: {
+      flex: 1,
+      width: '100%',
+      maxWidth: r.contentWidth,
+      alignSelf: 'center',
+    },
+    fixedQuestionCard: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 0,
+      minHeight: 80,
+      backgroundColor: '#FFF',
+      borderRadius: 16,
+      marginBottom: r.spacing.md,
+      shadowColor: '#000',
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      elevation: 4,
+      width: '100%',
+      overflow: 'hidden',
+    },
+    fixedQuestionScroll: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: r.cardPadding,
+    },
+    fixedFooter: {
+      flexShrink: 0,
+      width: '100%',
+      marginTop: r.spacing.sm,
+      justifyContent: 'flex-end',
+    },
+    fixedFooterMin: { minHeight: r.touchTarget + 84 },
+    footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: r.spacing.md },
+    footerHintText: {
+      fontFamily: FONT_BODY,
+      color: '#8A8F98',
+      fontSize: r.font.caption,
+      fontWeight: WEIGHT_EMPHASIS,
+    },
+    feedbackBar: {
+      width: '100%',
+      borderRadius: 16,
+      paddingVertical: r.spacing.sm + 2,
+      paddingHorizontal: r.cardPadding,
+      alignItems: 'center',
+    },
+    feedbackTitle: {
+      fontFamily: FONT_BODY,
+      fontSize: r.font.subheading + 2,
+      fontWeight: WEIGHT_EMPHASIS,
+      textAlign: 'center',
+    },
+    feedbackLines: { maxHeight: 84, alignSelf: 'stretch', marginTop: 4 },
+    feedbackLine: {
+      fontFamily: FONT_BODY,
+      fontSize: r.font.caption + 1,
+      color: '#555',
+      textAlign: 'center',
+      marginBottom: 2,
+    },
+    feedbackNextButton: { marginTop: r.spacing.sm, alignSelf: 'stretch', minWidth: undefined },
+    fixedInput: { minHeight: 48, maxHeight: 96 },
+    flashcardScrollFill: { alignSelf: 'stretch' },
+    flashcardScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
     // Flashcard
     flashcardOuter: {
       width: '100%',
+      flex: 1,
       alignItems: 'center',
     },
     flashcardContainer: {
       width: r.flashcardWidth,
-      height: r.flashcardHeight,
+      flex: 1,
       backgroundColor: '#FFF',
       borderRadius: 20,
-      marginBottom: r.spacing.lg,
+      marginBottom: r.spacing.sm,
       shadowColor: '#000',
       shadowOpacity: 0.08,
       shadowRadius: 15,
@@ -1560,6 +1776,82 @@ const createStyles = (r: ResponsiveInfo) => {
       color: '#8B0000',
       marginBottom: r.spacing.xs + 2,
       fontSize: r.font.body,
+    },
+    // Matching — colored pair cards
+    matchCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      width: '100%',
+      backgroundColor: '#FFF',
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: '#E0E3E8',
+      paddingVertical: r.isSmallPhone ? 10 : 14,
+      paddingHorizontal: r.isSmallPhone ? 10 : 14,
+      marginBottom: r.spacing.sm,
+      minHeight: Math.max(r.touchTarget + 8, 64),
+      shadowColor: '#000',
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    matchBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    matchBadgeText: {
+      fontFamily: FONT_BODY,
+      fontWeight: WEIGHT_EMPHASIS,
+      color: '#FFF',
+      fontSize: 14,
+    },
+    matchCardText: {
+      fontFamily: FONT_BODY,
+      flex: 1,
+      color: '#222',
+      fontSize: r.font.caption + 1,
+      fontWeight: WEIGHT_EMPHASIS,
+    },
+    matchChip: {
+      minWidth: 30,
+      height: 30,
+      borderRadius: 15,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    matchChipText: {
+      fontFamily: FONT_BODY,
+      fontWeight: WEIGHT_EMPHASIS,
+      color: '#FFF',
+      fontSize: 13,
+    },
+    matchProgressRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: r.spacing.sm,
+    },
+    matchDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: '#CFD4DA',
+      backgroundColor: '#FFF',
+    },
+    matchProgressText: {
+      fontFamily: FONT_BODY,
+      marginLeft: 8,
+      color: '#555',
+      fontSize: r.font.caption,
+      fontWeight: WEIGHT_EMPHASIS,
     },
     memoryCardText: { fontFamily: FONT_BODY, 
       color: '#222',
