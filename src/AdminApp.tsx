@@ -28,6 +28,7 @@ import ManageUserData from "./Final_Admin_Components/ManageUserData";
 import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
 import StudentAtRisk from "./Final_Admin_Components/StudentAtRisk";
+import Honors from "./teacher_components/Honors";
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
@@ -301,6 +302,10 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   };
 
   const renderContent = () => {
+    if (activeSideNav === "Dean's List") {
+      return <Honors apiBaseUrl={API_BASE_URL} />;
+    }
+
     if (activeSideNav === "Analytics") {
       return (
         <Analytics

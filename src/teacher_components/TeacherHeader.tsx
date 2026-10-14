@@ -25,7 +25,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export type ScreenType =
   | 'home'
-  | 'honors'
   | 'grades'
   | 'announcement'
   | 'profile'
@@ -46,7 +45,6 @@ interface SearchFeature {
 
 const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
   { id: 'home', title: 'Teacher Dashboard', screen: 'home', icon: 'view-dashboard-outline', keywords: ['home', 'dash', 'main', 'overview'] },
-  { id: 'honors', title: "Dean's List", screen: 'honors', icon: 'medal', keywords: ['honor', 'award', 'achievement', 'star', 'dean'] },
   { id: 'grades', title: 'Gradebook', screen: 'grades', icon: 'school', keywords: ['grade', 'score', 'mark', 'result', 'exam'] },
   { id: 'announcement', title: 'Share Announcement', screen: 'announcement', icon: 'bullhorn', keywords: ['announce', 'post', 'news', 'alert', 'share'] },
   { id: 'community', title: 'Teacher Community', screen: 'community', icon: 'forum-outline', keywords: ['comm', 'post', 'feed', 'social', 'forum'] },
@@ -316,7 +314,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     // 2. GLOBAL SEARCH LOGIC (Home, Honors, Grades, etc.)
     const isGlobalSearchScreen = 
         activeScreen === 'home' || 
-        activeScreen === 'honors' || 
         activeScreen === 'grades' || 
         activeScreen === 'announcement' ||
         activeScreen === 'profile' ||
@@ -354,23 +351,20 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   const isActive = (screen: ScreenType) => activeScreen === screen;
 
  
-const mobileNavScreens: ('home' | 'honors' | 'grades' | 'announcement')[] = [
+const mobileNavScreens: ('home' | 'grades' | 'announcement')[] = [
   'home',
-  'honors',
   'grades',
   'announcement',
 ];
 
 const desktopNavScreens: (
-  'home' | 'honors' | 'grades' | 'announcement' | 'messenger'
-)[] = ['home', 'honors', 'grades', 'announcement', 'messenger'];
+  'home' | 'grades' | 'announcement' | 'messenger'
+)[] = ['home', 'grades', 'announcement', 'messenger'];
 
   const getNavLabel = (screen: ScreenType) => {
     switch (screen) {
       case 'home':
         return 'Home';
-      case 'honors':
-        return "Dean's List";
       case 'grades':
         return 'Grades';
       case 'announcement':
@@ -392,7 +386,6 @@ const desktopNavScreens: (
     // Global Search Placeholder
     if (
       activeScreen === 'home' ||
-      activeScreen === 'honors' ||
       activeScreen === 'grades' ||
       activeScreen === 'announcement' ||
       activeScreen === 'profile' ||
@@ -411,8 +404,6 @@ const desktopNavScreens: (
     switch (screen) {
       case 'home':
         return <Ionicons name="home" size={size} color={color} />;
-      case 'honors':
-        return <MaterialCommunityIcons name="medal" size={size} color={color} />;
       case 'grades':
         return <MaterialCommunityIcons name="school" size={size} color={color} />;
       case 'announcement':
@@ -435,7 +426,7 @@ const desktopNavScreens: (
   // background tint. The nav button itself now uses generous horizontal
   // padding like Facebook's desktop tabs.
   const renderDesktopNavButton = (
-    screen: 'home' | 'honors' | 'grades' | 'announcement' | 'messenger',
+    screen: 'home' | 'grades' | 'announcement' | 'messenger',
     size: number,
     extraStyle?: object
   ) => (
@@ -486,7 +477,6 @@ const desktopNavScreens: (
   const renderSearchResults = () => {
     const isGlobalSearchScreen =
       activeScreen === 'home' ||
-      activeScreen === 'honors' ||
       activeScreen === 'grades' ||
       activeScreen === 'announcement' ||
       activeScreen === 'profile' ||
