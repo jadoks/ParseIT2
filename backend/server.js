@@ -15828,14 +15828,17 @@ app.get(
     const raw = String(sectionName || "").trim();
     let letterRank = 99;
 
-    const combined = raw.match(/^([1-4])\s*([abc])\b/i); // "1C Amazon", "3B"
-    const plain = raw.match(/^(?:section\s+)?([abc])$/i); // "A", "Section B"
+    const combined = raw.match(/^([1-4])\s*([a-z]{1,2})\b/i); // "1C Amazon", "3B", "1AB"
+    const plain = raw.match(/^(?:section\s+)?([a-z])$/i); // "A", "Section B"
+    // "A" -> 1, "Z" -> 26, "AA" -> 27 ...
+    const rankOf = (letters) =>
+      letters.toUpperCase().split("").reduce((sum, ch) => sum * 26 + (ch.charCodeAt(0) - 64), 0);
 
     if (combined) {
       if (year === null) year = Number(combined[1]);
-      letterRank = combined[2].toUpperCase().charCodeAt(0) - 64;
+      letterRank = rankOf(combined[2]);
     } else if (plain) {
-      letterRank = plain[1].toUpperCase().charCodeAt(0) - 64;
+      letterRank = rankOf(plain[1]);
     } else {
       const years = year ? [year] : [1, 2, 3, 4];
       for (const y of years) {
@@ -16238,7 +16241,7 @@ app.get(
       // "1A Microsoft" -> "BSIT 1A" (the form's Program / Year / Section style).
       const programLabel = (value) => {
         const text = String(value || "").trim();
-        const match = text.match(/^([1-4])\s*([a-z])\b/i);
+        const match = text.match(/^([1-4])\s*([a-z]{1,2})\b/i);
         return match ? `BSIT ${match[1]}${match[2].toUpperCase()}` : `BSIT ${text}`.trim();
       };
 

@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native';
+import { apiFetch } from '../services/api'; // path-only fetch that adds the Bearer token
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 type HonorKey = 'summa' | 'magna' | 'cumLaude';
@@ -98,10 +99,7 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
     setExpandedId(null);
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/latin-honors?schoolYear=${encodeURIComponent(startYear)}`,
-        { credentials: 'include' }
-      );
+      const response = await apiFetch(`/latin-honors?schoolYear=${encodeURIComponent(startYear)}`);
       const data = await response.json();
 
       if (!response.ok) {

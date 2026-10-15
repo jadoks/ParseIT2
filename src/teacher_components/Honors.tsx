@@ -19,6 +19,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import * as XLSX from 'xlsx';
+import { apiFetch } from '../services/api'; // path-only fetch that adds the Bearer token
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
@@ -94,7 +95,30 @@ type SectionRef = { yearLevel: string; sectionName: string };
 type Adviser = { id: string; name: string };
 type SectionFormInput = { adviser: string; totalStudents: string };
 
-const sectionKey = (section: SectionRef) => `${section.yearLevel}|${section.sectionName}`;
+// A section's id as used by Manage Sections ("1A"). Student records keep the section NAME they
+// were uploaded with ("Microsoft"), so this accepts "1A Google", "Section A" or a default name,
+// and the same section always gets the same key even after it is renamed in Manage Sections.
+const sectionIdOf = (yearLevel: string, sectionName: string): string | null => {
+  const raw = String(sectionName || '').trim();
+  const combined = raw.match(/^([1-4])\s*([a-z]{1,2})\b/i);
+  if (combined) return `${combined[1]}${combined[2].toUpperCase()}`;
+
+  const year = yearLevelToNumber(yearLevel);
+  const names = year ? SECTION_NAMES_BY_YEAR[year] : null;
+  if (!year || !names) return null;
+  const plain = raw.match(/^(?:section\s+)?([a-z])$/i);
+  const letter = plain
+    ? plain[1].toUpperCase()
+    : Object.keys(names).find((l) => names[l].toLowerCase() === raw.toLowerCase());
+  return letter ? `${year}${letter}` : null;
+};
+
+const sectionKey = (section: SectionRef) =>
+  sectionIdOf(section.yearLevel, section.sectionName) ?? `${section.yearLevel}|${section.sectionName}`;
+
+// The Form Details dialog lists the sections from Manage Sections ("1A Microsoft" ...).
+type FormSection = SectionRef & { label: string };
+type SectionConfigYears = Record<string, { id: string; label: string }[]>;
 
 // Titles are not stored on teacher accounts, so admins type them ("Mr.", "Dr.").
 // They're ignored when searching and kept when a suggestion is picked.
@@ -832,6 +856,10 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [advisersFailed, setAdvisersFailed] = useState(false);
   const [activeAdviserKey, setActiveAdviserKey] = useState<string | null>(null);
   const [showFormErrors, setShowFormErrors] = useState(false);
+  // The sections defined in Manage Sections (null until loaded / if it can't be loaded).
+  const [sectionConfig, setSectionConfig] = useState<SectionConfigYears | null>(null);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
+  const [sectionsFailed, setSectionsFailed] = useState(false);
 
   // NEW: Controls the full-screen "how is this list generated" explainer,
   // opened from the (?) icon beside the "Deans List" title.
@@ -1246,23 +1274,38 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   };
 
   // ─── Deans List Form: details dialog ─────────────────────────────────────
-  // Every section of the term (the summary table on the form lists sections
-  // with 0 champions too), 1A -> 4C.
-  const formSections: SectionRef[] = (() => {
-    const byKey = new Map<string, SectionRef>();
-    [...allSections, ...generatedSections].forEach((section) => {
+  // The form lists the sections set up in Manage Sections (even ones with no Deans List
+  // students or no uploaded grades), plus any section that has Deans List students.
+  const formSections: FormSection[] = (() => {
+    const byKey = new Map<string, FormSection>();
+
+    ['1st', '2nd', '3rd', '4th'].forEach((year) => {
+      (sectionConfig?.[year] ?? []).forEach((item) => {
+        const ref = { yearLevel: `${year} Year`, sectionName: item.label };
+        byKey.set(sectionKey(ref), { ...ref, label: item.label });
+      });
+    });
+
+    // If Manage Sections couldn't be loaded, fall back to every section seen in the data.
+    const fromData = sectionConfig ? generatedSections : [...allSections, ...generatedSections];
+    fromData.forEach((section) => {
       const key = sectionKey(section);
       if (!byKey.has(key)) {
-        byKey.set(key, { yearLevel: section.yearLevel, sectionName: section.sectionName });
+        byKey.set(key, {
+          yearLevel: section.yearLevel,
+          sectionName: section.sectionName,
+          label: displaySection(section.yearLevel, section.sectionName),
+        });
       }
     });
-    return [...byKey.values()].sort((a, b) => {
-      const [aYear, aLetter] = sectionSortKey(a.yearLevel, a.sectionName);
-      const [bYear, bLetter] = sectionSortKey(b.yearLevel, b.sectionName);
-      if (aYear !== bYear) return aYear - bYear;
-      if (aLetter !== bLetter) return aLetter - bLetter;
-      return String(a.sectionName).localeCompare(String(b.sectionName));
-    });
+
+    return [...byKey.entries()]
+      .sort(([aKey, aSection], [bKey, bSection]) => {
+        const aId = /^[1-4][A-Z]{1,2}$/.test(aKey) ? aKey : `9${aSection.label}`;
+        const bId = /^[1-4][A-Z]{1,2}$/.test(bKey) ? bKey : `9${bSection.label}`;
+        return aId.localeCompare(bId);
+      })
+      .map(([, section]) => section);
   })();
 
   const championsFor = (section: SectionRef) =>
@@ -1286,12 +1329,29 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     setActiveAdviserKey(null);
   };
 
+  // Always re-read Manage Sections when the dialog opens so edits there show up right away.
+  const loadSectionConfig = async () => {
+    setSectionsLoading(true);
+    setSectionsFailed(false);
+    try {
+      const response = await apiFetch('/section-config');
+      const data = await response.json();
+      if (!response.ok || !data?.data?.years) throw new Error(data?.error || 'Failed to load sections.');
+      setSectionConfig(data.data.years);
+    } catch {
+      setSectionConfig(null);
+      setSectionsFailed(true);
+    } finally {
+      setSectionsLoading(false);
+    }
+  };
+
   const loadAdvisers = async () => {
     if (advisersLoading || advisers.length > 0) return;
     setAdvisersLoading(true);
     setAdvisersFailed(false);
     try {
-      const response = await fetch(`${apiBaseUrl}/deans-list/advisers`, { credentials: 'include' });
+      const response = await apiFetch('/deans-list/advisers');
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to load advisers.');
       setAdvisers(Array.isArray(data?.advisers) ? data.advisers : []);
@@ -1311,6 +1371,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     setShowFormErrors(false);
     setActiveAdviserKey(null);
     setShowFormModal(true);
+    loadSectionConfig();
     loadAdvisers();
   };
 
@@ -1382,7 +1443,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               // sectionName already starts with the year digit (e.g. "1A Microsoft"),
               // so don't send the year level or the server repeats it ("1st Year 1A ...").
               yearLevel: '',
-              sectionName: displaySection(section.yearLevel, section.sectionName),
+              sectionName: section.label,
               adviser: input.adviser.trim(),
               totalStudents: Number(input.totalStudents),
               students: (match?.students ?? []).map((student) => ({
@@ -2435,7 +2496,11 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
               <Text style={[styles.formGroupTitle, { marginTop: 22 }]}>Sections</Text>
               <Text style={styles.formHint}>
-                {advisersLoading
+                {sectionsFailed
+                  ? "Couldn't load Manage Sections, so only sections found in the grades are listed."
+                  : sectionsLoading
+                  ? 'Loading sections…'
+                  : advisersLoading
                   ? 'Loading registered teachers…'
                   : advisersFailed
                   ? "Couldn't load teacher suggestions. You can still type each adviser."
@@ -2454,7 +2519,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                   <View key={key} style={[styles.formSectionCard, !!error && styles.formSectionCardError]}>
                     <View style={styles.formSectionHeader}>
                       <Text style={styles.formSectionTitle}>
-                        {displaySection(section.yearLevel, section.sectionName)}
+                        {section.label}
                       </Text>
                       <Text style={styles.formSectionMeta}>
                         {champions} champion{champions === 1 ? '' : 's'}
