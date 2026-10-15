@@ -860,6 +860,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [sectionConfig, setSectionConfig] = useState<SectionConfigYears | null>(null);
   const [sectionsLoading, setSectionsLoading] = useState(false);
   const [sectionsFailed, setSectionsFailed] = useState(false);
+  // Sections taken off the form with the delete button; they can be added back from the picker.
+  const [removedSections, setRemovedSections] = useState<Record<string, boolean>>({});
+  const [showAddSection, setShowAddSection] = useState(false);
 
   // NEW: Controls the full-screen "how is this list generated" explainer,
   // opened from the (?) icon beside the "Deans List" title.
@@ -1276,7 +1279,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   // ─── Deans List Form: details dialog ─────────────────────────────────────
   // The form lists the sections set up in Manage Sections (even ones with no Deans List
   // students or no uploaded grades), plus any section that has Deans List students.
-  const formSections: FormSection[] = (() => {
+  const configuredSections: FormSection[] = (() => {
     const byKey = new Map<string, FormSection>();
 
     ['1st', '2nd', '3rd', '4th'].forEach((year) => {
@@ -1310,6 +1313,24 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const championsFor = (section: SectionRef) =>
     generatedSections.find((item) => sectionKey(item) === sectionKey(section))?.students.length ?? 0;
+
+  // A section can be taken off the form unless it has Deans List students. Only sections that
+  // came from Manage Sections can be added back (the picker lists what was removed).
+  const isRemoved = (section: SectionRef) =>
+    !!removedSections[sectionKey(section)] && championsFor(section) === 0;
+
+  const formSections = configuredSections.filter((section) => !isRemoved(section));
+  const removedList = configuredSections.filter((section) => isRemoved(section));
+
+  const removeSection = (section: SectionRef) => {
+    setRemovedSections((prev) => ({ ...prev, [sectionKey(section)]: true }));
+    if (activeAdviserKey === sectionKey(section)) setActiveAdviserKey(null);
+  };
+
+  const addSectionBack = (section: SectionRef) => {
+    setRemovedSections((prev) => ({ ...prev, [sectionKey(section)]: false }));
+    if (removedList.length <= 1) setShowAddSection(false);
+  };
 
   const getSectionInput = (section: SectionRef): SectionFormInput =>
     sectionInputs[sectionKey(section)] ?? { adviser: '', totalStudents: '' };
@@ -2521,9 +2542,21 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                       <Text style={styles.formSectionTitle}>
                         {section.label}
                       </Text>
-                      <Text style={styles.formSectionMeta}>
-                        {champions} champion{champions === 1 ? '' : 's'}
-                      </Text>
+                      <View style={styles.formSectionHeaderRight}>
+                        <Text style={styles.formSectionMeta}>
+                          {champions} champion{champions === 1 ? '' : 's'}
+                        </Text>
+                        {champions === 0 && (
+                          <TouchableOpacity
+                            onPress={() => removeSection(section)}
+                            hitSlop={8}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Remove ${section.label}`}
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
 
                     <View style={[styles.formRow, isMobile && styles.formRowMobile]}>
@@ -2580,6 +2613,42 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                   </View>
                 );
               })}
+
+              {removedList.length > 0 ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.addSectionBtn}
+                    onPress={() => setShowAddSection((prev) => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color="#8B0000" />
+                    <Text style={styles.addSectionBtnText}>Add section</Text>
+                  </TouchableOpacity>
+
+                  {showAddSection && (
+                    <View style={styles.suggestionBox}>
+                      <Text style={styles.addSectionHint}>Sections from Manage Sections</Text>
+                      {removedList.map((section) => (
+                        <TouchableOpacity
+                          key={sectionKey(section)}
+                          style={styles.suggestionItem}
+                          onPress={() => addSectionBack(section)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="add" size={16} color="#8B0000" />
+                          <Text style={styles.suggestionText} numberOfLines={1}>
+                            {section.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <Text style={[styles.formHint, { marginTop: 12 }]}>
+                  Every section from Manage Sections is on the form.
+                </Text>
+              )}
             </ScrollView>
 
             <View style={styles.formModalFooter}>
@@ -2820,6 +2889,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFDFD',
   },
   formSectionCardError: { borderColor: '#B42318' },
+  formSectionHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  addSectionBtn: {
+    marginTop: 12,
+    minHeight: 44,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#8B0000',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  addSectionBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
+  addSectionHint: { fontFamily: FONT_BODY,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+    fontSize: 11,
+    fontWeight: WEIGHT_EMPHASIS,
+    letterSpacing: 0.5,
+    color: '#98A2B3',
+    textTransform: 'uppercase',
+  },
   formSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
