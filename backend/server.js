@@ -6897,6 +6897,7 @@ app.post("/create-admin", async (req, res) => {
       8. SUBJECT COLUMN VALUES MUST BE IGNORED (e.g., AP 1, CC 111, NSTP 1, PATHFIT 1, GEC-MMW). These are NOT the subjectTitle.
       9. MULTI-LINE DESCRIPTIONS: If a description spans multiple lines, combine them into one string.
       10. If FINAL GRADE is blank: grade = null
+      10a. If FINAL GRADE is INC (Incomplete), return grade as the string "INC" (never null, never a number).
       11. Return ONLY valid JSON.
       Format:
       [
@@ -6949,9 +6950,13 @@ app.post("/create-admin", async (req, res) => {
               for (const item of parsedGrades) {
                   // A blank FINAL GRADE comes back as null; Number(null) is 0, which
                   // would be saved as a real grade of 0 - skip ungraded subjects.
-                  if (item.grade === null || item.grade === undefined || String(item.grade).trim() === "") continue;
+                  // An INC (Incomplete) is not a numeric grade, so it never enters
+                  // `subjects` / the GWA - but it is remembered in `incSubjects` because
+                  // Latin Honors are void for any non-NSTP INC.
+                  const isIncomplete = /^inc(omplete)?\.?$/i.test(String(item.grade ?? "").trim());
+                  if (!isIncomplete && (item.grade === null || item.grade === undefined || String(item.grade).trim() === "")) continue;
                   const grade = Number(item.grade);
-                  if (isNaN(grade)) continue; 
+                  if (!isIncomplete && isNaN(grade)) continue; 
                   const normalizedSY = String(item.schoolYear || "Unknown").trim();
                   const normalizedSem = String(item.semester || "Unknown").trim();
                   const key = `${normalizedSY}|${normalizedSem}`;
@@ -6960,11 +6965,20 @@ app.post("/create-admin", async (req, res) => {
                           schoolYear: normalizedSY,
                           semester: normalizedSem,
                           subjects: [],
+                          incSubjects: [],
                           totalUnits: 0,
                           weightedGradeTotal: 0
                       };
                   }
                   const units = Number(item.units || 0);
+                  if (isIncomplete) {
+                      groupedGrades[key].incSubjects.push({
+                          subjectCode: item.subjectCode || "N/A",
+                          subjectTitle: item.subjectTitle || "Unknown Subject",
+                          units: units
+                      });
+                      continue;
+                  }
                   groupedGrades[key].subjects.push({
                       subjectCode: item.subjectCode || "N/A",
                       subjectTitle: item.subjectTitle || "Unknown Subject",
@@ -7133,6 +7147,9 @@ app.post("/create-admin", async (req, res) => {
                       yearLevel: yearLevel,
                       studentName: studentName,
                       subjects: group.subjects,
+                      // Always written (empty when none) so a re-upload after the INC
+                      // was resolved clears the old record.
+                      incSubjects: group.incSubjects,
                       updatedAt: FieldValue.serverTimestamp(),
                   }, { merge: true });
               }
@@ -15845,6 +15862,11 @@ app.get(
     return String(a.sectionName || "").localeCompare(String(b.sectionName || ""));
   };
 
+  const isNstpSubject = (subject) =>
+    /nstp|national\s+service\s+training/i.test(
+      `${subject?.subjectTitle || ""} ${subject?.subjectCode || ""}`
+    );
+
   const pickHighestGwaStudents = (students = []) => {
     const gwas = students
       .map((student) => Number(student?.gpa ?? student?.gwa))
@@ -15861,9 +15883,11 @@ app.get(
    * Rule:
    * - Teacher inputs startYear only, e.g. 2025.
    * - System builds school year automatically: S.Y 2025 - 2026.
+   * - NSTP subjects are excluded from everything below (units, grades, GWA, INC).
    * - Student must be enrolled in at least 18 units for that school year + semester.
    * - Student must have a submitted final grade for every enrolled class in that term.
    * - Student must NOT have any final grade above 2.5 (all grades must be 2.5 or lower).
+   * - Student must NOT have an INC (Incomplete) in any non-NSTP subject.
    * - Student's GWA must be at least 1.0 and up to 1.75 (i.e. 1.0 <= GWA <= 1.75).
    * - Extra: `highestGwa` in the response lists the qualified student(s) with the
    *   best (lowest-number) GWA across ALL year levels and sections — ties included.
@@ -15921,26 +15945,27 @@ app.get(
         if (!studentId) continue;
         if (studentsMap.has(studentId)) continue;
 
-        const subjects = Array.isArray(parsedData.subjects) ? parsedData.subjects : [];
+        // NSTP is left out of the Deans List entirely (units, grades and GWA).
+        const subjects = (Array.isArray(parsedData.subjects) ? parsedData.subjects : []).filter(
+          (subject) => !isNstpSubject(subject)
+        );
+        const incCount = (Array.isArray(parsedData.incSubjects) ? parsedData.incSubjects : []).filter(
+          (subject) => !isNstpSubject(subject)
+        ).length;
         const totalUnits = subjects.reduce(
           (sum, subject) => sum + Number(subject.units || 0),
           0
         );
 
-        // --- OPTIMIZATION: Extract the pre-calculated GWA saved by your upload endpoint ---
-        const savedGwa = Number(parsedData.gwa);
-        const hasValidSavedGwa = 
-          !isNaN(savedGwa) && 
-          parsedData.gwa !== null && 
-          parsedData.gwa !== undefined;
-
+        // The GWA saved at upload time counts NSTP, so it isn't used here; the GWA is
+        // recomputed below from the non-NSTP subjects.
         studentsMap.set(studentId, {
           id: studentId,
           name: parsedData.studentName || studentId,
           section: parsedData.section || "No Section",
           yearLevel: parsedData.yearLevel || "No Year Level",
           totalUnits,
-          savedGwa: hasValidSavedGwa ? savedGwa : null, // Store it for the qualification loop
+          incCount,
           courses: subjects.map((subject) => ({
             classId: subject.subjectCode,
             courseCode: subject.subjectCode,
@@ -15959,27 +15984,24 @@ app.get(
         const hasAtLeastOneCourse = student.courses.length > 0;
         const hasCompleteFinalGrades = student.courses.every((course) => course.hasFinalGrade);
         const hasNoGradeAbove25 = student.courses.every((course) => Number(course.grade) <= 2.5);
+        const hasNoInc = student.incCount === 0;
 
         if (
           !hasEnoughUnits ||
           !hasAtLeastOneCourse ||
           !hasCompleteFinalGrades ||
-          !hasNoGradeAbove25
+          !hasNoGradeAbove25 ||
+          !hasNoInc
         ) {
           continue;
         }
 
-        // Use the pre-calculated GWA from the database if available, otherwise fallback to calculation
-        let gwa = 0;
-        if (student.savedGwa !== null) {
-          gwa = student.savedGwa;
-        } else {
-          const weightedGradeTotal = student.courses.reduce(
-            (sum, course) => sum + Number(course.grade) * Number(course.units || 0),
-            0
-          );
-          gwa = student.totalUnits > 0 ? weightedGradeTotal / student.totalUnits : 0;
-        }
+        // Unit-weighted GWA of the non-NSTP subjects.
+        const weightedGradeTotal = student.courses.reduce(
+          (sum, course) => sum + Number(course.grade) * Number(course.units || 0),
+          0
+        );
+        const gwa = student.totalUnits > 0 ? weightedGradeTotal / student.totalUnits : 0;
 
         // --- ADDED VALIDATION: GWA must be at least 1.0 and up to 1.75 to qualify ---
         if (gwa < 1.0 || gwa > 1.75) {
@@ -16035,11 +16057,28 @@ app.get(
         data.flatMap((section) => section.students)
       );
 
+      // Every section that has students in this term, INCLUDING ones with no
+      // qualified students. The Deans List form's summary table lists all
+      // sections (a section with 0 champions still shows its adviser and size),
+      // so the client needs them to ask the admin for each section's details.
+      const allSectionsMap = new Map();
+      for (const student of studentsMap.values()) {
+        const key = `${student.yearLevel}-${student.section}`;
+        if (!allSectionsMap.has(key)) {
+          allSectionsMap.set(key, {
+            yearLevel: student.yearLevel,
+            sectionName: student.section,
+          });
+        }
+      }
+      const allSections = [...allSectionsMap.values()].sort(compareDeansListSections);
+
       return res.json({
         success: true,
         schoolYear: formattedSchoolYear,
         semester,
         data,
+        allSections,
         highestGwaValue: highestGwa.length ? highestGwa[0].gpa : null,
         highestGwa,
       });
@@ -16050,6 +16089,44 @@ app.get(
       });
     }
   });
+
+  /**
+   * DEANS LIST FORM - ADVISER SUGGESTIONS
+   * Admin-only. Returns the registered teacher accounts (id + display name
+   * only, nothing else from the profile) so the "Download Form" dialog can
+   * offer a searchable adviser picker for each section.
+   */
+  app.get(
+    "/deans-list/advisers",
+    requireAuth,
+    requireRoleOrSelf({ allowedRoles: [] }),
+    async (req, res) => {
+      try {
+        const snapshot = await db.collection("teachers").get();
+
+        const advisers = snapshot.docs
+          .map((doc) => {
+            const data = doc.data() || {};
+            const firstName = normalizeOptionalText(data.firstName) || "";
+            const lastName = normalizeOptionalText(data.lastName) || "";
+            const name = `${firstName} ${lastName}`.trim();
+            return {
+              id: normalizeOptionalText(data.teacherId) || doc.id,
+              name,
+            };
+          })
+          .filter((adviser) => adviser.name)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        return res.json({ success: true, advisers });
+      } catch (error) {
+        console.error("Deans List advisers error:", error);
+        return res.status(500).json({
+          error: error.message || "Failed to load advisers.",
+        });
+      }
+    }
+  );
 
   /**
    * DEANS LIST WORD (.docx) EXPORT
@@ -16064,8 +16141,14 @@ app.get(
    *   {
    *     schoolYear: "S.Y 2025 - 2026",
    *     semester: "1st Semester",
+   *     theme: "Trailblazing for Competence and Excellence: The Quest Continues",
+   *     recognitionDate: "October 27, 2026",      // required, free text
    *     sections: [
-   *       { yearLevel: "3rd Year", sectionName: "Java", students: [{ name, gpa }, ...] },
+   *       // adviser + totalStudents are typed in by the admin before download.
+   *       // A section with no qualified students is sent with `students: []`;
+   *       // it still appears in the summary table but gets no list page.
+   *       { yearLevel: "3rd Year", sectionName: "Java", adviser: "Engr. Ryan H. Teo",
+   *         totalStudents: 35, students: [{ name, gpa }, ...] },
    *       ...
    *     ],
    *     // optional — the student(s) with the highest (best) GWA across all year
@@ -16080,6 +16163,35 @@ app.get(
       if (!Array.isArray(sections) || sections.length === 0) {
         return res.status(400).json({
           error: "sections is required and must be a non-empty array.",
+        });
+      }
+
+      const theme = normalizeOptionalText(req.body?.theme);
+      const recognitionDate = normalizeOptionalText(req.body?.recognitionDate);
+
+      // The form can't be generated without the details the admin fills in.
+      const missing = [];
+      if (!theme) missing.push("theme of the convocation");
+      if (!recognitionDate) missing.push("recognition date");
+      sections.forEach((section) => {
+        const label = section?.sectionName || "a section";
+        const champions = Array.isArray(section?.students) ? section.students.length : 0;
+        const total = Number(section?.totalStudents);
+
+        if (!normalizeOptionalText(section?.adviser)) {
+          missing.push(`adviser for ${label}`);
+        }
+        if (!Number.isInteger(total) || total < 0) {
+          missing.push(`number of students for ${label}`);
+        } else if (total < champions) {
+          missing.push(
+            `number of students for ${label} (${total}) can't be less than its ${champions} champions`
+          );
+        }
+      });
+      if (missing.length > 0) {
+        return res.status(400).json({
+          error: `Missing or invalid: ${missing.join("; ")}.`,
         });
       }
 
@@ -16123,20 +16235,63 @@ app.get(
             )
           );
 
+      // "1A Microsoft" -> "BSIT 1A" (the form's Program / Year / Section style).
+      const programLabel = (value) => {
+        const text = String(value || "").trim();
+        const match = text.match(/^([1-4])\s*([a-z])\b/i);
+        return match ? `BSIT ${match[1]}${match[2].toUpperCase()}` : `BSIT ${text}`.trim();
+      };
+
+      const percentOf = (part, whole) =>
+        whole > 0 ? ((part / whole) * 100).toFixed(2) : "0.00";
+
+      // "S.Y 2025 - 2026" -> "2025-2026"
+      const ayMatch = String(schoolYear || "").match(/(\d{4})\D+(\d{4})/);
+      const ayLabel = ayMatch ? `${ayMatch[1]}-${ayMatch[2]}` : String(schoolYear || "");
+
       const highestStudents = highestSource
         .map((student, index) => ({
           no: String(index + 1),
-          name: student.name || "",
-          yearSection: [student.yearLevel, student.sectionName || student.section]
-            .filter(Boolean)
-            .join(" "),
+          name: String(student.name || "").toUpperCase(),
+          yearSection: programLabel(
+            [student.yearLevel, student.sectionName || student.section]
+              .filter(Boolean)
+              .join(" ")
+          ),
           gwa: student.gpa != null ? String(student.gpa) : student.gwa || "",
         }));
+
+      // Same 1A -> 4C order as the screen, even if the client sent them unsorted.
+      const orderedSections = [...sections].sort(compareDeansListSections);
+
+      // Summary table: one row per section (0-champion sections included).
+      const summaryRows = orderedSections.map((section) => {
+        const champions = Array.isArray(section.students) ? section.students.length : 0;
+        const total = Number(section.totalStudents);
+        return {
+          program: programLabel(
+            [section.yearLevel, section.sectionName].filter(Boolean).join(" ")
+          ),
+          adviser: String(section.adviser || "").trim(),
+          totalStudents: String(total),
+          champions: String(champions),
+          percent: percentOf(champions, total),
+        };
+      });
+      const grandTotalStudents = summaryRows.reduce((sum, row) => sum + Number(row.totalStudents), 0);
+      const grandTotalChampions = summaryRows.reduce((sum, row) => sum + Number(row.champions), 0);
 
       const templateData = {
         date: todayLabel,
         schoolYear: schoolYear || "",
+        ay: ayLabel,
         semester: semester || "",
+        theme,
+        recognitionDate,
+        summaryRows,
+        grandTotalStudents: String(grandTotalStudents),
+        grandTotalChampions: String(grandTotalChampions),
+        grandPercent: percentOf(grandTotalChampions, grandTotalStudents),
         // One-item array (or empty) so the template block only prints when
         // there is a Highest GWA student.
         highestGwaGroups: highestStudents.length
@@ -16148,13 +16303,17 @@ app.get(
               },
             ]
           : [],
-        // Same 1A -> 4C order as the screen, even if the client sent them unsorted.
-        sections: [...sections].sort(compareDeansListSections).map((section) => {
-          const students = Array.isArray(section.students) ? section.students : [];
+        // Per-section list pages: only sections that have champions.
+        sections: orderedSections
+          .filter((section) => Array.isArray(section.students) && section.students.length > 0)
+          .map((section) => {
+          const students = section.students;
           return {
             yearLevel: section.yearLevel || "",
             sectionName: section.sectionName || "",
-            totalStudents: String(students.length),
+            adviser: String(section.adviser || "").trim(),
+            // The number the admin typed in (all students), not the champion count.
+            totalStudents: String(Number(section.totalStudents)),
             students: students.map((student, index) => ({
               no: String(index + 1),
               name: student.name || "",
@@ -16200,6 +16359,204 @@ app.get(
       });
     }
   });
+
+
+  /**
+   * LATIN HONORS ROUTE (admin only)
+   * Query: schoolYear = the GRADUATING school year's start year (2025 -> S.Y 2025 - 2026).
+   *
+   * Rules:
+   * - A candidate is a student who has a record for the 2nd semester of the graduating
+   *   school year. Their four-year span is the 8 semesters (1st + 2nd) of S.Y (start-3)
+   *   through S.Y start.
+   * - All 8 semesters must be on record, otherwise the Latin Honors GWA can't be computed.
+   * - NSTP subjects are excluded everywhere (GWA, the "no grade above 2.5" rule, INC rule).
+   * - No (non-NSTP) subject grade above 2.5 in any semester.
+   * - No (non-NSTP) INC in any semester.
+   * - Latin Honors GWA = average of the 8 semester GWAs (each semester's GWA is the unit-
+   *   weighted average of its non-NSTP subjects).
+   * - Honor by GWA: Summa 1.000-1.200, Magna 1.201-1.450, Cum Laude 1.451-1.750.
+   */
+  const LATIN_HONOR_BANDS = [
+    { key: "summa", label: "Summa Cum Laude", min: 1.0, max: 1.2 },
+    { key: "magna", label: "Magna Cum Laude", min: 1.201, max: 1.45 },
+    { key: "cumLaude", label: "Cum Laude", min: 1.451, max: 1.75 },
+  ];
+
+  app.get(
+    "/latin-honors",
+    requireAuth,
+    requireRoleOrSelf({ allowedRoles: [] }),
+    async (req, res) => {
+      try {
+        const rawYear = String(normalizeOptionalText(req.query.schoolYear) || "").replace(/[^0-9]/g, "");
+        const graduatingStart = Number(rawYear.slice(0, 4));
+
+        if (!Number.isInteger(graduatingStart) || rawYear.slice(0, 4).length !== 4) {
+          return res.status(400).json({ error: "schoolYear must contain a valid 4-digit year." });
+        }
+
+        const semesterKeyOf = (value) => {
+          const text = String(value || "").toLowerCase();
+          if (text.includes("first") || text.includes("1st")) return "first";
+          if (text.includes("second") || text.includes("2nd")) return "second";
+          return text;
+        };
+        const schoolYearKeyOf = (value) => String(value || "").replace(/[^0-9]/g, "");
+
+        // The 8 semesters of the 4-year span, oldest first.
+        const expectedTerms = [];
+        for (let year = graduatingStart - 3; year <= graduatingStart; year++) {
+          for (const sem of ["first", "second"]) {
+            expectedTerms.push({
+              key: `${year}${year + 1}|${sem}`,
+              schoolYear: `${year}-${year + 1}`,
+              semester: sem === "first" ? "1st Semester" : "2nd Semester",
+              yearNumber: year - (graduatingStart - 3) + 1,
+            });
+          }
+        }
+        const expectedKeys = new Set(expectedTerms.map((term) => term.key));
+        const lastTermKey = expectedTerms[expectedTerms.length - 1].key;
+
+        const snapshot = await db.collection("studentParsedGrades").get();
+        const termsByStudent = new Map();
+
+        for (const doc of snapshot.docs) {
+          const data = doc.data() || {};
+          const studentId = normalizeOptionalText(data.studentId);
+          if (!studentId) continue;
+
+          const termKey = `${schoolYearKeyOf(data.schoolYear)}|${semesterKeyOf(data.semester)}`;
+          if (!expectedKeys.has(termKey)) continue;
+
+          if (!termsByStudent.has(studentId)) termsByStudent.set(studentId, new Map());
+          termsByStudent.get(studentId).set(termKey, data);
+        }
+
+        const qualified = [];
+        const notQualified = [];
+
+        for (const [studentId, terms] of termsByStudent.entries()) {
+          // Candidates = students who are on record for the graduating semester.
+          if (!terms.has(lastTermKey)) continue;
+
+          const lastDoc = terms.get(lastTermKey);
+          const reasons = [];
+          const semesters = [];
+          const semesterGwas = [];
+          let missingCount = 0;
+
+          for (const term of expectedTerms) {
+            const data = terms.get(term.key);
+            const label = `${term.semester} S.Y ${term.schoolYear}`;
+
+            if (!data) {
+              missingCount += 1;
+              continue;
+            }
+
+            const subjects = (Array.isArray(data.subjects) ? data.subjects : []).filter(
+              (subject) => !isNstpSubject(subject)
+            );
+            const graded = subjects.filter((subject) => Number.isFinite(Number(subject.grade)));
+
+            let units = 0;
+            let weighted = 0;
+            for (const subject of graded) {
+              const subjectUnits = Number(subject.units || 0);
+              units += subjectUnits;
+              weighted += Number(subject.grade) * subjectUnits;
+            }
+            const semesterGwa = units > 0 ? weighted / units : null;
+            if (semesterGwa !== null) semesterGwas.push(semesterGwa);
+
+            semesters.push({
+              schoolYear: term.schoolYear,
+              semester: term.semester,
+              yearNumber: term.yearNumber,
+              units,
+              gwa: semesterGwa !== null ? Number(semesterGwa.toFixed(3)) : null,
+            });
+
+            for (const subject of graded) {
+              if (Number(subject.grade) > 2.5) {
+                reasons.push(
+                  `Grade above 2.5: ${subject.subjectTitle || subject.subjectCode} (${Number(subject.grade).toFixed(2)}), ${label}`
+                );
+              }
+            }
+
+            const incSubjects = (Array.isArray(data.incSubjects) ? data.incSubjects : []).filter(
+              (subject) => !isNstpSubject(subject)
+            );
+            for (const subject of incSubjects) {
+              reasons.push(`INC: ${subject.subjectTitle || subject.subjectCode}, ${label}`);
+            }
+          }
+
+          if (missingCount > 0) {
+            reasons.unshift(
+              `Missing grades for ${missingCount} of ${expectedTerms.length} semesters, so the Latin Honors GWA can't be computed`
+            );
+          }
+
+          const complete = missingCount === 0 && semesterGwas.length === expectedTerms.length;
+          const latinGwa = complete
+            ? Number((semesterGwas.reduce((sum, gwa) => sum + gwa, 0) / semesterGwas.length).toFixed(3))
+            : null;
+
+          const band =
+            latinGwa !== null && latinGwa <= 1.75
+              ? LATIN_HONOR_BANDS.find((item) => latinGwa <= item.max)
+              : null;
+
+          if (latinGwa !== null && !band) {
+            reasons.push(`GWA of ${latinGwa.toFixed(3)} is above 1.750`);
+          }
+
+          const student = {
+            id: studentId,
+            name: lastDoc.studentName || studentId,
+            section: lastDoc.section || "No Section",
+            gwa: latinGwa,
+            semesters,
+          };
+
+          if (reasons.length === 0 && band) {
+            qualified.push({ ...student, honor: band.key, honorLabel: band.label });
+          } else {
+            notQualified.push({ ...student, reasons });
+          }
+        }
+
+        qualified.sort((a, b) => a.gwa - b.gwa || String(a.name).localeCompare(String(b.name)));
+        notQualified.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+        const countOf = (key) => qualified.filter((student) => student.honor === key).length;
+
+        return res.json({
+          success: true,
+          graduatingSchoolYear: `S.Y ${graduatingStart} - ${graduatingStart + 1}`,
+          coverage: `S.Y ${graduatingStart - 3} - ${graduatingStart + 1}`,
+          bands: LATIN_HONOR_BANDS,
+          summary: {
+            candidates: qualified.length + notQualified.length,
+            qualified: qualified.length,
+            summa: countOf("summa"),
+            magna: countOf("magna"),
+            cumLaude: countOf("cumLaude"),
+            notQualified: notQualified.length,
+          },
+          qualified,
+          notQualified,
+        });
+      } catch (error) {
+        console.error("Latin honors error:", error);
+        return res.status(500).json({ error: error.message || "Failed to generate Latin Honors." });
+      }
+    }
+  );
 
   app.get("/", (req, res) => {
     res.json({

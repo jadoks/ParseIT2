@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -84,6 +85,34 @@ type GeneratedSection = {
   yearLevel: string;
   sectionName: string;
   students: Student[];
+};
+
+// ─── "Download Form" details ────────────────────────────────────────────────
+// The official form needs facts the system doesn't store, so the admin fills
+// them in (in a dialog) right before the Word file is generated.
+type SectionRef = { yearLevel: string; sectionName: string };
+type Adviser = { id: string; name: string };
+type SectionFormInput = { adviser: string; totalStudents: string };
+
+const sectionKey = (section: SectionRef) => `${section.yearLevel}|${section.sectionName}`;
+
+// Titles are not stored on teacher accounts, so admins type them ("Mr.", "Dr.").
+// They're ignored when searching and kept when a suggestion is picked.
+const TITLE_PREFIX = /^(?:(?:mr|mrs|ms|dr|engr|prof|atty)\.?\s+)+/i;
+const stripTitle = (value: string) => value.replace(TITLE_PREFIX, '').trim();
+
+const findAdviserSuggestions = (advisers: Adviser[], query: string, limit = 5): Adviser[] => {
+  const cleaned = stripTitle(query).toLowerCase();
+  if (cleaned && advisers.some((adviser) => adviser.name.toLowerCase() === cleaned)) {
+    return []; // already a full, exact name — nothing left to suggest
+  }
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  return advisers
+    .filter((adviser) => {
+      const name = adviser.name.toLowerCase();
+      return tokens.every((token) => name.includes(token));
+    })
+    .slice(0, limit);
 };
 
 // "Highest GWA" = the BEST (lowest-number) GWA across ALL year levels and
@@ -792,6 +821,18 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   // NEW: Loading state for Download Form (Word) button
   const [isExportingForm, setIsExportingForm] = useState(false);
 
+  // "Download Form" dialog: convocation theme + per-section adviser / class size.
+  const [allSections, setAllSections] = useState<SectionRef[]>([]);
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [convocationTheme, setConvocationTheme] = useState('');
+  const [recognitionDate, setRecognitionDate] = useState('');
+  const [sectionInputs, setSectionInputs] = useState<Record<string, SectionFormInput>>({});
+  const [advisers, setAdvisers] = useState<Adviser[]>([]);
+  const [advisersLoading, setAdvisersLoading] = useState(false);
+  const [advisersFailed, setAdvisersFailed] = useState(false);
+  const [activeAdviserKey, setActiveAdviserKey] = useState<string | null>(null);
+  const [showFormErrors, setShowFormErrors] = useState(false);
+
   // NEW: Controls the full-screen "how is this list generated" explainer,
   // opened from the (?) icon beside the "Deans List" title.
   const [showFlowModal, setShowFlowModal] = useState(false);
@@ -880,6 +921,14 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       }));
 
       setGeneratedSections(rankedSections);
+      setAllSections(
+        Array.isArray(data?.allSections)
+          ? data.allSections.map((section: SectionRef) => ({
+              yearLevel: section.yearLevel,
+              sectionName: section.sectionName,
+            }))
+          : []
+      );
       setHighestGwaStudents(
         Array.isArray(data?.highestGwa)
           ? data.highestGwa
@@ -1196,6 +1245,106 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     `;
   };
 
+  // ─── Deans List Form: details dialog ─────────────────────────────────────
+  // Every section of the term (the summary table on the form lists sections
+  // with 0 champions too), 1A -> 4C.
+  const formSections: SectionRef[] = (() => {
+    const byKey = new Map<string, SectionRef>();
+    [...allSections, ...generatedSections].forEach((section) => {
+      const key = sectionKey(section);
+      if (!byKey.has(key)) {
+        byKey.set(key, { yearLevel: section.yearLevel, sectionName: section.sectionName });
+      }
+    });
+    return [...byKey.values()].sort((a, b) => {
+      const [aYear, aLetter] = sectionSortKey(a.yearLevel, a.sectionName);
+      const [bYear, bLetter] = sectionSortKey(b.yearLevel, b.sectionName);
+      if (aYear !== bYear) return aYear - bYear;
+      if (aLetter !== bLetter) return aLetter - bLetter;
+      return String(a.sectionName).localeCompare(String(b.sectionName));
+    });
+  })();
+
+  const championsFor = (section: SectionRef) =>
+    generatedSections.find((item) => sectionKey(item) === sectionKey(section))?.students.length ?? 0;
+
+  const getSectionInput = (section: SectionRef): SectionFormInput =>
+    sectionInputs[sectionKey(section)] ?? { adviser: '', totalStudents: '' };
+
+  const updateSectionInput = (section: SectionRef, patch: Partial<SectionFormInput>) => {
+    const key = sectionKey(section);
+    setSectionInputs((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] ?? { adviser: '', totalStudents: '' }), ...patch },
+    }));
+  };
+
+  const pickAdviser = (section: SectionRef, adviser: Adviser) => {
+    // Keep a title the admin already typed ("Dr. Mel" -> "Dr. Melanie R. Albarracin").
+    const prefix = getSectionInput(section).adviser.match(TITLE_PREFIX)?.[0] ?? '';
+    updateSectionInput(section, { adviser: `${prefix}${adviser.name}` });
+    setActiveAdviserKey(null);
+  };
+
+  const loadAdvisers = async () => {
+    if (advisersLoading || advisers.length > 0) return;
+    setAdvisersLoading(true);
+    setAdvisersFailed(false);
+    try {
+      const response = await fetch(`${apiBaseUrl}/deans-list/advisers`, { credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to load advisers.');
+      setAdvisers(Array.isArray(data?.advisers) ? data.advisers : []);
+    } catch {
+      // Not fatal: the admin can still type every adviser by hand.
+      setAdvisersFailed(true);
+    } finally {
+      setAdvisersLoading(false);
+    }
+  };
+
+  const openFormModal = () => {
+    if (generatedSections.length === 0) {
+      showFeedback('error', 'No Deans List', 'Generate the list first.');
+      return;
+    }
+    setShowFormErrors(false);
+    setActiveAdviserKey(null);
+    setShowFormModal(true);
+    loadAdvisers();
+  };
+
+  const formErrors = (() => {
+    const errors: { theme?: string; recognitionDate?: string; sections: Record<string, string> } = { sections: {} };
+    if (!convocationTheme.trim()) errors.theme = 'Enter the theme of the convocation.';
+    if (!recognitionDate.trim()) errors.recognitionDate = 'Enter the recognition date.';
+    formSections.forEach((section) => {
+      const input = getSectionInput(section);
+      const total = Number(input.totalStudents);
+      const champions = championsFor(section);
+      if (!input.adviser.trim()) {
+        errors.sections[sectionKey(section)] = 'Select or type the class adviser.';
+      } else if (!input.totalStudents.trim() || !Number.isInteger(total) || total <= 0) {
+        errors.sections[sectionKey(section)] = 'Enter the total number of students.';
+      } else if (total < champions) {
+        errors.sections[sectionKey(section)] =
+          `Total students can't be less than the ${champions} champion${champions === 1 ? '' : 's'}.`;
+      }
+    });
+    return errors;
+  })();
+
+  const hasFormErrors = !!formErrors.theme || !!formErrors.recognitionDate || Object.keys(formErrors.sections).length > 0;
+
+  const submitFormDetails = () => {
+    if (hasFormErrors) {
+      setShowFormErrors(true);
+      showFeedback('error', 'Incomplete', 'Complete the highlighted fields.');
+      return;
+    }
+    downloadDeansListForm();
+  };
+
   // ─── Deans List Form (Word) ──────────────────────────────────────────────
   // Asks the backend (/deans-list/export-docx) to fill the real .docx
   // template — which already has the CTU letterhead as a native Word
@@ -1208,6 +1357,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     }
 
     setIsExportingForm(true);
+    let succeeded = false;
     try {
       const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
       const safeSemester = sanitizeFileName(semester);
@@ -1220,16 +1370,27 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         body: JSON.stringify({
           schoolYear: schoolYear || 'S.Y ---- - ----',
           semester,
-          sections: generatedSections.map((section) => ({
-            // sectionName already starts with the year digit (e.g. "1A Microsoft"),
-            // so don't send the year level or the server repeats it ("1st Year 1A ...").
-            yearLevel: '',
-            sectionName: displaySection(section.yearLevel, section.sectionName),
-            students: section.students.map((student) => ({
-              name: student.name,
-              gpa: student.gpa,
-            })),
-          })),
+          theme: convocationTheme.trim(),
+          recognitionDate: recognitionDate.trim(),
+          // Every section of the term, not just those with champions: the form's
+          // summary table lists all of them with the adviser and class size the
+          // admin typed in.
+          sections: formSections.map((section) => {
+            const input = getSectionInput(section);
+            const match = generatedSections.find((item) => sectionKey(item) === sectionKey(section));
+            return {
+              // sectionName already starts with the year digit (e.g. "1A Microsoft"),
+              // so don't send the year level or the server repeats it ("1st Year 1A ...").
+              yearLevel: '',
+              sectionName: displaySection(section.yearLevel, section.sectionName),
+              adviser: input.adviser.trim(),
+              totalStudents: Number(input.totalStudents),
+              students: (match?.students ?? []).map((student) => ({
+                name: student.name,
+                gpa: student.gpa,
+              })),
+            };
+          }),
           // Separate "Highest GWA — all year levels" table on the form.
           highestGwa: highestGwaStudents.map((student) => ({
             name: student.name,
@@ -1262,6 +1423,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+        succeeded = true;
         showFeedback('success', 'Downloaded', 'Form downloaded.');
         return;
       }
@@ -1300,6 +1462,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
+        succeeded = true;
         showFeedback('success', 'Downloaded', 'Form saved.');
         return;
       }
@@ -1310,11 +1473,13 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
+      succeeded = true;
       showFeedback('success', 'Downloaded', 'Form saved.');
     } catch (error: any) {
-      showFeedback('error', 'Download Failed', 'Failed to save form.');
+      showFeedback('error', 'Download Failed', error?.message ? String(error.message) : 'Failed to save form.');
     } finally {
       setIsExportingForm(false);
+      if (succeeded) setShowFormModal(false);
     }
   };
 
@@ -1919,7 +2084,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                   isMobile && styles.exportHonorBtnMobile,
                   (generatedSections.length === 0 || isExportingForm) && styles.exportHonorBtnDisabled,
                 ]}
-                onPress={downloadDeansListForm}
+                onPress={openFormModal}
                 disabled={generatedSections.length === 0 || isExportingForm}
                 activeOpacity={0.85}
               >
@@ -2197,6 +2362,191 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         isLargeScreen={isLargeScreen}
       />
 
+      {/* "Download Form" details: theme + adviser / class size for every section. */}
+      <Modal
+        visible={showFormModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isExportingForm && setShowFormModal(false)}
+        statusBarTranslucent
+      >
+        <KeyboardAvoidingView
+          style={[styles.formModalOverlay, isMobile && styles.formModalOverlayMobile]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.formModalCard, isMobile && styles.formModalCardMobile]}>
+            <View style={styles.formModalHeader}>
+              <View style={styles.formModalHeaderText}>
+                <Text style={styles.formModalTitle}>Deans List Form Details</Text>
+                <Text style={styles.formModalSubtitle}>
+                  Fill in these details before the form is generated.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowFormModal(false)}
+                disabled={isExportingForm}
+                style={styles.formModalClose}
+                activeOpacity={0.8}
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={20} color="#7A4A4A" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.formModalScroll}
+              contentContainerStyle={styles.formModalBody}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.formGroupTitle}>Convocation</Text>
+
+              <Text style={styles.formLabel}>Theme of the convocation</Text>
+              <TextInput
+                style={[
+                  styles.formInput,
+                  styles.formInputMultiline,
+                  showFormErrors && !!formErrors.theme && styles.formInputError,
+                ]}
+                value={convocationTheme}
+                onChangeText={setConvocationTheme}
+                placeholder="e.g. Trailblazing for Competence and Excellence: The Quest Continues"
+                placeholderTextColor="#9AA0A6"
+                multiline
+              />
+              {showFormErrors && !!formErrors.theme && (
+                <Text style={styles.formErrorText}>{formErrors.theme}</Text>
+              )}
+
+              <Text style={styles.formLabel}>Recognition date</Text>
+              <TextInput
+                style={[
+                  styles.formInput,
+                  showFormErrors && !!formErrors.recognitionDate && styles.formInputError,
+                ]}
+                value={recognitionDate}
+                onChangeText={setRecognitionDate}
+                placeholder="e.g. October 27, 2026"
+                placeholderTextColor="#9AA0A6"
+              />
+              {showFormErrors && !!formErrors.recognitionDate && (
+                <Text style={styles.formErrorText}>{formErrors.recognitionDate}</Text>
+              )}
+
+              <Text style={[styles.formGroupTitle, { marginTop: 22 }]}>Sections</Text>
+              <Text style={styles.formHint}>
+                {advisersLoading
+                  ? 'Loading registered teachers…'
+                  : advisersFailed
+                  ? "Couldn't load teacher suggestions. You can still type each adviser."
+                  : 'Search a registered teacher, then add a title (Mr., Dr., …) if needed.'}
+              </Text>
+
+              {formSections.map((section) => {
+                const key = sectionKey(section);
+                const input = getSectionInput(section);
+                const champions = championsFor(section);
+                const error = showFormErrors ? formErrors.sections[key] : undefined;
+                const suggestions =
+                  activeAdviserKey === key ? findAdviserSuggestions(advisers, input.adviser) : [];
+
+                return (
+                  <View key={key} style={[styles.formSectionCard, !!error && styles.formSectionCardError]}>
+                    <View style={styles.formSectionHeader}>
+                      <Text style={styles.formSectionTitle}>
+                        {displaySection(section.yearLevel, section.sectionName)}
+                      </Text>
+                      <Text style={styles.formSectionMeta}>
+                        {champions} champion{champions === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.formRow, isMobile && styles.formRowMobile]}>
+                      <View style={styles.formFieldWide}>
+                        <Text style={styles.formLabel}>Class adviser</Text>
+                        <TextInput
+                          style={styles.formInput}
+                          value={input.adviser}
+                          onChangeText={(text) => {
+                            updateSectionInput(section, { adviser: text });
+                            setActiveAdviserKey(key);
+                          }}
+                          onFocus={() => setActiveAdviserKey(key)}
+                          placeholder="Search teacher name"
+                          placeholderTextColor="#9AA0A6"
+                          autoCorrect={false}
+                        />
+                        {suggestions.length > 0 && (
+                          <View style={styles.suggestionBox}>
+                            {suggestions.map((adviser) => (
+                              <TouchableOpacity
+                                key={adviser.id}
+                                style={styles.suggestionItem}
+                                onPress={() => pickAdviser(section, adviser)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="person-outline" size={15} color="#8B0000" />
+                                <Text style={styles.suggestionText} numberOfLines={1}>
+                                  {adviser.name}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.formFieldNarrow}>
+                        <Text style={styles.formLabel}>Total students</Text>
+                        <TextInput
+                          style={styles.formInput}
+                          value={input.totalStudents}
+                          onChangeText={(text) =>
+                            updateSectionInput(section, { totalStudents: text.replace(/[^0-9]/g, '').slice(0, 3) })
+                          }
+                          onFocus={() => setActiveAdviserKey(null)}
+                          placeholder="e.g. 44"
+                          placeholderTextColor="#9AA0A6"
+                          keyboardType="number-pad"
+                        />
+                      </View>
+                    </View>
+
+                    {!!error && <Text style={styles.formErrorText}>{error}</Text>}
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.formModalFooter}>
+              <TouchableOpacity
+                style={styles.formCancelBtn}
+                onPress={() => setShowFormModal(false)}
+                disabled={isExportingForm}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.formCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.exportHonorBtn, styles.exportFormBtn, isExportingForm && styles.exportHonorBtnDisabled]}
+                onPress={submitFormDetails}
+                disabled={isExportingForm}
+                activeOpacity={0.85}
+              >
+                {isExportingForm ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                )}
+                <Text style={styles.exportHonorBtnText}>
+                  {isExportingForm ? 'Generating...' : 'Download Form'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Toast — portal-based, matches SignIn/Community/Dashboard/ClassesScreen
           so feedback here looks and behaves the same as everywhere else. */}
       <Modal
@@ -2304,6 +2654,173 @@ const styles = StyleSheet.create({
   exportFormBtn: {
     backgroundColor: '#8B0000',
     borderBottomColor: '#5C0000',
+  },
+
+  // "Download Form" details dialog
+  formModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(43, 17, 17, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  formModalOverlayMobile: { padding: 12 },
+  formModalCard: {
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '92%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#EBD4D4',
+    overflow: 'hidden',
+  },
+  formModalCardMobile: { maxHeight: '96%', borderRadius: 18 },
+  formModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E6E6',
+  },
+  formModalHeaderText: { flex: 1, paddingRight: 12 },
+  formModalTitle: { fontFamily: FONT_TITLE,
+    fontSize: 20,
+    fontWeight: WEIGHT_TITLE,
+    color: '#2B1111',
+  },
+  formModalSubtitle: { fontFamily: FONT_BODY,
+    marginTop: 2,
+    fontSize: 13,
+    color: '#8A6F6F',
+  },
+  formModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FAF5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formModalScroll: { flexGrow: 0 },
+  formModalBody: { padding: 20, paddingBottom: 12 },
+  formGroupTitle: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    fontWeight: WEIGHT_EMPHASIS,
+    letterSpacing: 1,
+    color: '#98A2B3',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  formHint: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#667085',
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  formLabel: { fontFamily: FONT_BODY,
+    marginTop: 10,
+    marginBottom: 6,
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#344054',
+  },
+  formInput: { fontFamily: FONT_BODY,
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#B8AFA7',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    color: '#111',
+    fontSize: 14,
+  },
+  formInputMultiline: { minHeight: 70, textAlignVertical: 'top' },
+  formInputError: { borderColor: '#B42318', backgroundColor: '#FFF6F5' },
+  formErrorText: { fontFamily: FONT_BODY,
+    marginTop: 6,
+    fontSize: 12,
+    color: '#B42318',
+  },
+  formSectionCard: {
+    marginTop: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#EBD4D4',
+    borderRadius: 16,
+    backgroundColor: '#FFFDFD',
+  },
+  formSectionCardError: { borderColor: '#B42318' },
+  formSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  formSectionTitle: { fontFamily: FONT_TITLE,
+    fontSize: 16,
+    fontWeight: WEIGHT_TITLE,
+    color: '#8B0000',
+  },
+  formSectionMeta: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#667085',
+  },
+  formRow: { flexDirection: 'row', gap: 12 },
+  formRowMobile: { flexDirection: 'column', gap: 0 },
+  formFieldWide: { flex: 3 },
+  formFieldNarrow: { flex: 1 },
+  suggestionBox: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#E8CCCC',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E6E6',
+  },
+  suggestionText: { fontFamily: FONT_BODY,
+    flex: 1,
+    fontSize: 14,
+    color: '#344054',
+  },
+  formModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F3E6E6',
+  },
+  formCancelBtn: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E8CCCC',
+    backgroundColor: '#FAF5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formCancelText: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#7A4A4A',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
   },
   exportHonorBtnDisabled: {
     opacity: 0.45,

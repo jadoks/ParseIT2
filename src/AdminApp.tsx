@@ -20,6 +20,7 @@ import {
 import AdminDashboard from "./Final_Admin_Components/AdminDashboard";
 import Analytics from "./Final_Admin_Components/Analytics";
 import Header from "./Final_Admin_Components/Header";
+import LatinHonors from "./Final_Admin_Components/LatinHonors";
 import ManageAdmin from "./Final_Admin_Components/ManageAdmin";
 import ManageClass from "./Final_Admin_Components/ManageClass";
 import ManageStudent from "./Final_Admin_Components/ManageStudent";
@@ -304,6 +305,10 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const renderContent = () => {
     if (activeSideNav === "Dean's List") {
       return <Honors apiBaseUrl={API_BASE_URL} />;
+    }
+
+    if (activeSideNav === "Latin Honors") {
+      return <LatinHonors apiBaseUrl={API_BASE_URL} />;
     }
 
     if (activeSideNav === "Analytics") {

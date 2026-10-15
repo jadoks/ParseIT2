@@ -29,6 +29,12 @@ const MENU_ITEMS = [
     ),
   },
   {
+    label: "Latin Honors",
+    icon: (color: string) => (
+      <Ionicons name="ribbon-outline" size={18} color={color} />
+    ),
+  },
+  {
     label: "Analytics",
     icon: (color: string) => (
       <Ionicons name="analytics-outline" size={18} color={color} />
@@ -168,7 +174,7 @@ export default function Sidebar({
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.modalTitle}>Admin Tools</Text>
                 <Text style={styles.modalSubtitle}>
-                  Navigate Dean's List, analytics, settings, and account actions.
+                  Navigate Dean's List, Latin Honors, analytics, settings, and account actions.
                 </Text>
               </View>
             </View>

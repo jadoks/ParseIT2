@@ -257,6 +257,50 @@ function normalizeSchoolYear(raw) {
   return m && Number(m[2]) === Number(m[1]) + 1 ? `${m[1]}-${m[2]}` : null;
 }
 
+// ----------------------- teacher-name matching -----------------------------
+// "Juan A. Dela Cruz, MIT", "DELA CRUZ, JUAN", "Prof. Juan Dela Cruz" all
+// reduce to a bag of name tokens, so word order and titles don't matter.
+const NAME_NOISE = new Set([
+  "MR", "MRS", "MS", "MISS", "DR", "PROF", "PROFESSOR", "ENGR", "ENGINEER", "SIR", "MAAM", "MAM",
+  "JR", "SR", "II", "III", "IV", "MIT", "MSIT", "MIS", "MBA", "LPT", "PHD", "DIT", "MAED", "MAT", "RN", "CPA",
+]);
+
+const nameTokens = (v) =>
+  String(v || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z]+/g, " ")
+    .split(" ")
+    .filter((t) => t && !NAME_NOISE.has(t));
+
+function editDistance(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return dp[a.length][b.length];
+}
+
+// Exact match, or 1 typo for longer words (OCR/handwriting tolerance).
+const tokenMatches = (want, pool) =>
+  pool.some((t) => t === want || (want.length >= 5 && t.length >= 5 && editDistance(t, want) <= 1));
+
+// Custom "MY CLASS SCHEDULE" graphics often print only a first name OR only a
+// last name, so ONE of them is enough: any word of the first name, any word of
+// the last name, or an initial that matches either. A completely different
+// name still fails. Middle names, titles and word order are ignored.
+export function teacherNameMatches(printedName, firstName, lastName) {
+  const printed = nameTokens(printedName);
+  if (printed.length === 0) return false;
+  const words = [...nameTokens(firstName), ...nameTokens(lastName)];
+  if (words.length === 0) return true;
+  if (words.some((w) => w.length > 1 && tokenMatches(w, printed))) return true;
+  // A lone initial ("J. Dela Cruz") only counts alongside another word.
+  return false;
+}
+
 // ----------------------- PDF -> page images ---------------------------------
 // A PDF's embedded text layer is often scrambled on timetables (cells come out
 // in arbitrary order), which makes the model mis-read or produce broken JSON.
@@ -393,6 +437,8 @@ export function registerTeacherProgramRoutes(app, deps) {
   //    upload back, otherwise delete + upload would bypass the cap.
   const MAX_BYTES = 5 * 1024 * 1024;
   const MAX_MB_LABEL = "5MB";
+  // Set PROGRAM_REQUIRE_TEACHER_NAME=false to accept programs with no printed name.
+  const REQUIRE_TEACHER_NAME = process.env.PROGRAM_REQUIRE_TEACHER_NAME !== "false";
   const MAX_UPLOADS_PER_SEMESTER = Number(process.env.PROGRAM_UPLOADS_PER_SEMESTER) || 3;
 
   // Same rule as server.js's getCurrentAcademicTerm (Philippine time):
@@ -423,8 +469,7 @@ export function registerTeacherProgramRoutes(app, deps) {
   });
 
   const limitReachedMessage = (term, isAdmin) =>
-    `${isAdmin ? "This teacher has" : "You've"} used all ${MAX_UPLOADS_PER_SEMESTER} program uploads for ${term.semester}, S.Y. ${term.schoolYear}. ` +
-    `${isAdmin ? "They" : "You"} can upload again next semester.`;
+    `${isAdmin ? "Teacher has" : "You've"} used all ${MAX_UPLOADS_PER_SEMESTER} uploads this semester.`;
 
   async function readUploadCount(teacherKey, term) {
     const snap = await uploadCounterRef(teacherKey, term).get();
@@ -460,6 +505,7 @@ export function registerTeacherProgramRoutes(app, deps) {
   const programSchema = {
     type: SchemaType.OBJECT,
     properties: {
+      documentType: { type: SchemaType.STRING },
       teacherName: { type: SchemaType.STRING, nullable: true },
       semester: { type: SchemaType.STRING, nullable: true },
       schoolYear: { type: SchemaType.STRING, nullable: true },
@@ -494,7 +540,7 @@ export function registerTeacherProgramRoutes(app, deps) {
         },
       },
     },
-    required: ["summary", "blocks"],
+    required: ["documentType", "summary", "blocks"],
   };
 
   const PROMPT = `You are reading a teacher's weekly class program. It may be a photo (possibly skewed/blurry), a PDF, or HTML exported from Word. Two layouts are common:
@@ -502,8 +548,15 @@ export function registerTeacherProgramRoutes(app, deps) {
 LAYOUT A - university "PROGRAM BY TEACHER" form (INS Form 5A): a weekly grid plus a "SUMMARY OF SUBJECTS" table. Grid cells show courseCode, then section (e.g. "BSIT 2B"), then room (e.g. "CL2", "LLR1").
 LAYOUT B - a custom "MY CLASS SCHEDULE" graphic: only a weekly grid whose cells read like "Intro. to Computing - BSIT 1A - CL1" (title, section, room). There is NO summary table and NO course codes.
 
+FIRST decide what the file is and return it as documentType:
+- "teacher_program" - a weekly class program/schedule for a teacher (Layout A or B above).
+- "grades" - a grade sheet, class record, report card or list of scores.
+- "other" - anything else (ID, certificate, letter, random photo, unrelated document...).
+If documentType is not "teacher_program", return empty summary and blocks arrays. Never turn a grade sheet, class list or other table into schedule blocks.
+
 Return JSON with:
-- teacherName (null if not printed), semester ("1st Semester" or "2nd Semester"), schoolYear (e.g. "2026-2027").
+- documentType as described above.
+- teacherName: the teacher's name printed on the program (e.g. next to "Name of Teacher", "Faculty", "Instructor" or in the header/footer signature line); null if not printed. Copy it exactly as printed. semester ("1st Semester" or "2nd Semester"), schoolYear (e.g. "2026-2027").
 - summary: Layout A only - one item per row of the SUMMARY OF SUBJECTS table: courseCode (e.g. "AP-1", "PC-315L", "P ELEC 4"), title (Descriptive Title), units, section ("BSIT 1A"), students (number before the course). Return an empty array for Layout B.
 - blocks: one item per occupied cell group in the weekly grid, with day (Mon/Tue/Wed/Thu/Fri/Sat/Sun), startTime, endTime, room and:
     * Layout A: courseCode and section as printed.
@@ -524,19 +577,19 @@ Return JSON with:
       // A teacher can only ever touch their OWN program, so the id from the
       // client (drawer userId / dashboard teacherId – these can differ in
       // format) is ignored and the key always comes from the signed-in profile.
-      return { key: String(profile.data?.teacherId || profile.id), profile };
+      return { key: String(profile.data?.teacherId || profile.id), profile, teacher: profile.data };
     }
     if (profile.role === "admin") {
       const teacher = await findTeacherByIdentifier(String(requestedId || "").trim());
       if (!teacher) return { error: "Teacher not found.", status: 404 };
-      return { key: String(teacher.teacherId || teacher.id), profile };
+      return { key: String(teacher.teacherId || teacher.id), profile, teacher };
     }
     return { error: "You do not have access to this data.", status: 403 };
   }
 
   // Shape reminder used on retries that run WITHOUT the response schema.
   const JSON_SHAPE = `Respond with ONLY valid JSON (no markdown, no comments, no trailing commas) shaped exactly like:
-{"teacherName": string|null, "semester": string|null, "schoolYear": string|null,
+{"documentType": "teacher_program"|"grades"|"other", "teacherName": string|null, "semester": string|null, "schoolYear": string|null,
  "summary": [{"courseCode": string|null, "title": string, "units": number|null, "section": string|null, "students": number|null}],
  "blocks": [{"courseCode": string|null, "title": string|null, "section": string|null, "day": string, "startTime": string, "endTime": string, "room": string|null}]}`;
 
@@ -609,7 +662,7 @@ Return JSON with:
         console.warn(`Program extraction attempt ${i + 1} failed:`, e?.message);
       }
     }
-    throw new Error("Couldn't read this program. Try a clearer photo, or upload the PDF/Word version.");
+    throw new Error("Couldn't read this file. Try a clearer photo or PDF.");
   }
 
   // ---------------------------- POST upload ---------------------------------
@@ -662,10 +715,45 @@ Return JSON with:
       const usage = buildUsage(term, slot.used);
 
       const extracted = await extractWithGemini({ buffer, mimeType: mime, fileName });
-      const subjects = buildProgramFromExtraction(extracted);
+
+      // VALIDATION 1: must be a class program, not a grade sheet / random file.
+      const docType = String(extracted.documentType || "").toLowerCase();
+      const subjects = docType === "teacher_program" || !docType ? buildProgramFromExtraction(extracted) : [];
+      const hasSchedule = subjects.some((s) => s.sections.some((sec) => sec.schedule.length > 0));
+      if (docType !== "teacher_program" || !hasSchedule) {
+        return res.status(422).json({
+          error: "Not a class program. Upload your class schedule.",
+          code: "NOT_A_CLASS_PROGRAM",
+          usage,
+        });
+      }
+
+      // VALIDATION 2: the name printed on the program must be this teacher's.
+      const isAdminUpload = resolved.profile.role === "admin";
+      const ownerName = `${resolved.teacher?.firstName || ""} ${resolved.teacher?.lastName || ""}`.trim();
+      if (REQUIRE_TEACHER_NAME) {
+        const printedName = String(extracted.teacherName || "").trim();
+        if (!printedName || /^(null|n\/a|none|-)$/i.test(printedName)) {
+          return res.status(422).json({
+            error: "No teacher name found on this program.",
+            code: "TEACHER_NAME_MISSING",
+            usage,
+          });
+        }
+        if (!teacherNameMatches(printedName, resolved.teacher?.firstName, resolved.teacher?.lastName)) {
+          return res.status(422).json({
+            error: isAdminUpload
+              ? "Name on program doesn't match this teacher."
+              : "Name on program doesn't match your account.",
+            code: "TEACHER_NAME_MISMATCH",
+            usage,
+          });
+        }
+      }
+
       if (subjects.length === 0) {
         return res.status(422).json({
-          error: "No classes could be read from this file. Try a clearer photo or a PDF.",
+          error: "No classes found. Try a clearer photo or PDF.",
           usage,
         });
       }
