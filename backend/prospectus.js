@@ -234,7 +234,8 @@ const normalizeSemester = (value) => {
 };
 
 const cleanCode = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
-const codeKey = (value) => cleanCode(value).toLowerCase();
+// "AP1", "AP 1" and "ap-1" are the same course code.
+const codeKey = (value) => cleanCode(value).toLowerCase().replace(/[\s\-_.]+/g, "");
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
@@ -302,10 +303,38 @@ export function normalizeParsedCurriculum(raw) {
   const totalUnits = curriculum.reduce((n, e) => n + e.units, 0);
   if (totalUnits <= 0) throw new Error("The subjects in this file have no units, so it doesn't look like a prospectus.");
 
+  // Cross-check every semester's printed "Total" against the courses we read.
+  // A mismatch pinpoints a missed or misread course; if they all agree, any
+  // difference with the summary table is a problem in the document itself.
+  const computedBySemester = new Map();
+  for (const e of curriculum) {
+    const key = `${e.year}|${e.semester}`;
+    computedBySemester.set(key, (computedBySemester.get(key) || 0) + e.units);
+  }
+  let compared = 0;
+  let mismatched = 0;
+  for (const p of Array.isArray(raw?.printedSemesterTotals) ? raw.printedSemesterTotals : []) {
+    const year = parseInt(p?.year, 10);
+    const semester = normalizeSemester(p?.semester);
+    const printed = Number(p?.units);
+    if (!Number.isInteger(year) || !semester || p?.units === null || !Number.isFinite(printed)) continue;
+    const computed = computedBySemester.get(`${year}|${semester}`) || 0;
+    compared++;
+    if (computed !== printed) {
+      mismatched++;
+      warnings.push(
+        `${yearLabel(year)}, ${semester}: the file prints ${printed} units but the courses read add up to ${computed}. A course may be missing or misread.`
+      );
+    }
+  }
+
   const printedTotalUnits = toNumber(raw?.printedTotalUnits, null) || null;
-  if (printedTotalUnits && printedTotalUnits !== totalUnits) {
+  if (printedTotalUnits && printedTotalUnits !== totalUnits && mismatched === 0) {
+    const allChecked = compared >= Math.ceil(computedBySemester.size * 0.75);
     warnings.push(
-      `The file prints ${printedTotalUnits} total units but the listed subjects add up to ${totalUnits}. Progress uses the listed subjects.`
+      allChecked
+        ? `The summary table in the file prints ${printedTotalUnits} total units, but every semester total in the file matches the courses read (${totalUnits} units). The difference is in the document itself, so progress uses the listed courses.`
+        : `The file prints ${printedTotalUnits} total units but the listed subjects add up to ${totalUnits}. Please check that no course is missing. Progress uses the listed subjects.`
     );
   }
 
@@ -325,8 +354,10 @@ export function normalizeParsedCurriculum(raw) {
 }
 
 const PROSPECTUS_PROMPT = `
-You are reading a college PROSPECTUS (curriculum checklist) PDF. It contains one table per
-semester, grouped under headings FIRST YEAR, SECOND YEAR, THIRD YEAR, FOURTH YEAR.
+You are reading a college PROSPECTUS (curriculum checklist). It is supplied either as a PDF,
+as HTML converted from a Word document (tables are <table> elements), or as spreadsheet rows
+(tab-separated, one block per sheet). It contains one table per semester, grouped under
+headings FIRST YEAR, SECOND YEAR, THIRD YEAR, FOURTH YEAR.
 Columns: Course Code | Descriptive Title | Co-/Prerequisite | Units | Hours (Lec, Lab, Total) | Remarks.
 
 Return ONLY valid JSON in exactly this shape:
@@ -335,6 +366,7 @@ Return ONLY valid JSON in exactly this shape:
                "school": "<school name>", "cmo": "<CMO / policy reference>",
                "effectiveAY": "<effectivity, e.g. A.Y. 2023-2024>" },
   "printedTotalUnits": 173,
+  "printedSemesterTotals": [ { "year": 1, "semester": "1st Semester", "units": 25 } ],
   "subjects": [
     { "year": 1, "semester": "1st Semester", "code": "CC 112",
       "title": "Computer Programming 1 (Lec)",
@@ -358,12 +390,178 @@ RULES
 7. units, lec, lab are numbers. Use 0 where the cell shows "-" or is blank.
 8. aliases: [] unless the title has alternative names printed in it.
 9. printedTotalUnits = the grand "Total" of the curriculum summary table if one exists, else null.
-10. Read the "program" fields from the document heading; use "" for anything not printed.
-11. Do not invent courses. Do not skip rows. Output JSON only, no commentary.
+10. printedSemesterTotals = one entry per semester table: the Units value printed on that
+    table's "Total" row (null when blank or unreadable). Copy it, do NOT calculate it.
+11. Read the "program" fields from the document heading; use "" for anything not printed.
+12. Do not invent courses. Do not skip rows. Output JSON only, no commentary.
 `;
 
 const PROSPECTUS_DOC_ID = "prospectus";
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/* ------------------------------------------------------------------ */
+/* Upload limits + accepted formats                                    */
+/* ------------------------------------------------------------------ */
+// Change the size limit here (the admin screen reads it from the server).
+export const PROSPECTUS_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+export const PROSPECTUS_FORMATS = {
+  pdf: { label: "PDF", ext: ".pdf", mime: "application/pdf" },
+  docx: {
+    label: "Word (.docx)",
+    ext: ".docx",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  },
+  xlsx: {
+    label: "Excel (.xlsx)",
+    ext: ".xlsx",
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+};
+export const PROSPECTUS_ACCEPT_LABEL = "PDF, DOCX or Excel (.xlsx)";
+
+const formatBytes = (n) => (n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
+
+export class UploadError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const hasZipMagic = (buf) => buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
+
+/**
+ * Decides what an uploaded file really is. Checks the extension AND the file's
+ * contents, so a renamed file (e.g. a .txt called prospectus.pdf) is rejected.
+ * @returns "pdf" | "docx" | "xlsx"   (throws UploadError otherwise)
+ */
+export function detectFormat(fileName, buffer, PizZip) {
+  const name = String(fileName || "").toLowerCase();
+  const ext = (name.match(/\.[a-z0-9]+$/) || [""])[0];
+
+  if (ext === ".doc" || ext === ".xls") {
+    throw new UploadError(
+      `Old ${ext} files are not supported. Please save it as ${ext === ".doc" ? ".docx" : ".xlsx"} (or PDF) and upload again.`
+    );
+  }
+  const format = Object.keys(PROSPECTUS_FORMATS).find((k) => PROSPECTUS_FORMATS[k].ext === ext);
+  if (!format) throw new UploadError(`Only ${PROSPECTUS_ACCEPT_LABEL} files are allowed.`);
+
+  if (format === "pdf") {
+    if (buffer.slice(0, 5).toString("latin1") !== "%PDF-") throw new UploadError("That file is not a valid PDF.");
+    return format;
+  }
+
+  const required = format === "docx" ? "word/document.xml" : "xl/workbook.xml";
+  let ok = false;
+  try {
+    ok = hasZipMagic(buffer) && Boolean(new PizZip(buffer).file(required));
+  } catch {
+    ok = false;
+  }
+  if (!ok) throw new UploadError(`That file is not a valid ${PROSPECTUS_FORMATS[format].label} document.`);
+  return format;
+}
+
+const decodeXml = (t) =>
+  String(t)
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, "&");
+
+const colIndex = (ref) => {
+  const letters = (String(ref).match(/^[A-Z]+/i) || [""])[0].toUpperCase();
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+};
+
+/** .xlsx -> "=== Sheet: Name ===" blocks of tab-separated rows (columns preserved). */
+export function xlsxToText(buffer, PizZip) {
+  const zip = new PizZip(buffer);
+  const read = (path) => (zip.file(path) ? zip.file(path).asText() : "");
+
+  const shared = [];
+  for (const m of read("xl/sharedStrings.xml").matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)) {
+    shared.push(decodeXml([...m[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join("")));
+  }
+
+  const rels = {};
+  for (const m of read("xl/_rels/workbook.xml.rels").matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = (m[0].match(/\bId="([^"]+)"/) || [])[1];
+    const target = (m[0].match(/\bTarget="([^"]+)"/) || [])[1];
+    if (id && target) rels[id] = target.replace(/^\/?(xl\/)?/, "xl/");
+  }
+
+  const blocks = [];
+  for (const m of read("xl/workbook.xml").matchAll(/<sheet\b[^>]*>/g)) {
+    const name = decodeXml((m[0].match(/\bname="([^"]*)"/) || [])[1] || "Sheet");
+    const rid = (m[0].match(/\br:id="([^"]+)"/) || [])[1];
+    const xml = rels[rid] ? read(rels[rid]) : "";
+    if (!xml) continue;
+
+    const lines = [];
+    for (const rowM of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+      const cells = [];
+      for (const cM of rowM[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const attrs = cM[1];
+        const inner = cM[2] || "";
+        const ref = (attrs.match(/\br="([^"]+)"/) || [])[1];
+        const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
+        let value = "";
+        if (type === "inlineStr") {
+          value = decodeXml([...inner.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join(""));
+        } else {
+          const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+          if (v !== undefined) value = type === "s" ? shared[Number(v)] ?? "" : decodeXml(v);
+        }
+        value = value.replace(/[\t\r\n]+/g, " ").trim();
+        if (ref && value !== "") cells[colIndex(ref)] = value;
+      }
+      if (cells.some((c) => c !== undefined)) lines.push(Array.from(cells, (c) => c ?? "").join("\t"));
+    }
+    if (lines.length) blocks.push(`=== Sheet: ${name} ===\n${lines.join("\n")}`);
+  }
+  return blocks.join("\n\n");
+}
+
+const MAX_TEXT_CHARS = 400_000;
+
+/** Builds the Gemini request parts for the uploaded file. */
+async function buildAiParts(format, buffer, { mammoth, PizZip }) {
+  if (format === "pdf") {
+    return [{ text: PROSPECTUS_PROMPT }, { inlineData: { mimeType: "application/pdf", data: buffer.toString("base64") } }];
+  }
+
+  let body = "";
+  let intro = "";
+  if (format === "docx") {
+    try {
+      body = (await mammoth.convertToHtml({ buffer })).value || "";
+    } catch (e) {
+      throw new UploadError("Could not open this Word document. Please re-save it as .docx or upload a PDF.", 422);
+    }
+    intro = "The prospectus follows, converted from Word to HTML (tables are preserved):";
+  } else {
+    try {
+      body = xlsxToText(buffer, PizZip);
+    } catch (e) {
+      throw new UploadError("Could not open this Excel file. Please re-save it as .xlsx or upload a PDF.", 422);
+    }
+    intro = "The prospectus follows as spreadsheet rows (tab-separated; each sheet is its own block):";
+  }
+
+  if (body.replace(/<[^>]+>/g, "").trim().length < 100) {
+    throw new UploadError("No readable text or tables were found in this file. Please upload the full prospectus.", 422);
+  }
+  if (body.length > MAX_TEXT_CHARS) {
+    throw new UploadError("This file has too much content to read. Please upload only the program prospectus.", 422);
+  }
+  return [{ text: `${PROSPECTUS_PROMPT}\n\n${intro}\n\n${body}` }];
+}
 
 /* ------------------------------------------------------------------ */
 /* Routes                                                              */
@@ -380,9 +578,16 @@ export function registerProspectusRoutes(
     createReadSignedUrl,
     invalidateSignedUrlCache,
     sanitizeFileName,
+    mammoth,
+    PizZip,
   }
 ) {
   const docRef = () => db.collection("appConfig").doc(PROSPECTUS_DOC_ID);
+  const limits = {
+    maxBytes: PROSPECTUS_MAX_BYTES,
+    formats: Object.values(PROSPECTUS_FORMATS).map((f) => ({ ext: f.ext, label: f.label })),
+    label: PROSPECTUS_ACCEPT_LABEL,
+  };
 
   async function requireAdminProfile(req, res) {
     const profile = await findUserProfileByAuthUid(req.user.uid);
@@ -400,6 +605,8 @@ export function registerProspectusRoutes(
 
   const metaOf = (stored) => ({
     fileName: stored.fileName || null,
+    fileFormat: stored.fileFormat || null,
+    fileSize: stored.fileSize || null,
     hasFile: Boolean(stored.storagePath),
     uploadedAt: stored.uploadedAt?.toDate ? stored.uploadedAt.toDate().toISOString() : null,
     uploadedBy: stored.uploadedByName || null,
@@ -408,13 +615,15 @@ export function registerProspectusRoutes(
     warnings: stored.warnings || [],
   });
 
-  async function saveCurriculum({ parsed, fileName, storagePath, profile }) {
+  async function saveCurriculum({ parsed, fileName, storagePath, fileFormat, fileSize, profile }) {
     await docRef().set({
       program: parsed.program,
       curriculum: parsed.curriculum,
       totalUnits: parsed.totalUnits,
       warnings: parsed.warnings,
       fileName: fileName || null,
+      fileFormat: fileFormat || null,
+      fileSize: fileSize || null,
       storagePath: storagePath || null,
       uploadedAt: FieldValue.serverTimestamp(),
       uploadedBy: profile.id || null,
@@ -438,7 +647,7 @@ export function registerProspectusRoutes(
     try {
       if (!(await requireAdminProfile(req, res))) return;
       const stored = await loadStored();
-      if (!stored) return res.json({ success: true, exists: false });
+      if (!stored) return res.json({ success: true, exists: false, limits });
 
       let fileUrl = null;
       if (stored.storagePath) {
@@ -451,6 +660,7 @@ export function registerProspectusRoutes(
       return res.json({
         success: true,
         exists: true,
+        limits,
         program: stored.program,
         meta: metaOf(stored),
         fileUrl,
@@ -468,38 +678,47 @@ export function registerProspectusRoutes(
       const profile = await requireAdminProfile(req, res);
       if (!profile) return;
 
-      const { fileBase64, fileName, fileType } = req.body || {};
+      const { fileBase64, fileName } = req.body || {};
       if (!fileBase64 || !fileName) {
         return res.status(400).json({ error: "fileBase64 and fileName are required." });
-      }
-      const mime = String(fileType || "").toLowerCase();
-      if (mime !== "application/pdf" && !/\.pdf$/i.test(String(fileName))) {
-        return res.status(400).json({ error: "The prospectus must be a PDF file." });
       }
 
       const cleaned = String(fileBase64).includes(",") ? String(fileBase64).split(",")[1] : String(fileBase64);
       const buffer = Buffer.from(cleaned, "base64");
       if (buffer.length < 1000) return res.status(400).json({ error: "The file is empty or too small." });
-      if (buffer.length > MAX_FILE_BYTES) return res.status(400).json({ error: "File must be under 10MB." });
-      if (buffer.slice(0, 5).toString("latin1") !== "%PDF-") {
-        return res.status(400).json({ error: "That file is not a valid PDF." });
+      if (buffer.length > PROSPECTUS_MAX_BYTES) {
+        const actual = formatBytes(buffer.length);
+        const limit = formatBytes(PROSPECTUS_MAX_BYTES);
+        return res.status(413).json({
+          error: actual === limit ? `File must be ${limit} or smaller (this one is just over).` : `File must be ${limit} or smaller (this one is ${actual}).`,
+        });
+      }
+
+      // Extension + real file contents must agree: pdf | docx | xlsx only.
+      let format;
+      let parts;
+      try {
+        format = detectFormat(fileName, buffer, PizZip);
+        parts = await buildAiParts(format, buffer, { mammoth, PizZip });
+      } catch (formatError) {
+        if (formatError instanceof UploadError) {
+          return res.status(formatError.status).json({ error: formatError.message });
+        }
+        throw formatError;
       }
 
       // 1. Parse FIRST. If this fails the current prospectus is left untouched.
       let parsed;
       try {
-        const { value } = await generateGradeAIText(
-          [{ text: PROSPECTUS_PROMPT }, { inlineData: { mimeType: "application/pdf", data: cleaned } }],
-          {
-            label: "Prospectus Parse",
-            parse: (text) => {
-              const t = String(text).replace(/```json/gi, "").replace(/```/g, "").trim();
-              const match = t.match(/\{[\s\S]*\}/);
-              if (!match) throw new Error("No JSON object in AI response.");
-              return normalizeParsedCurriculum(JSON.parse(match[0]));
-            },
-          }
-        );
+        const { value } = await generateGradeAIText(parts, {
+          label: "Prospectus Parse",
+          parse: (text) => {
+            const t = String(text).replace(/```json/gi, "").replace(/```/g, "").trim();
+            const match = t.match(/\{[\s\S]*\}/);
+            if (!match) throw new Error("No JSON object in AI response.");
+            return normalizeParsedCurriculum(JSON.parse(match[0]));
+          },
+        });
         parsed = value;
       } catch (parseError) {
         console.error("[Prospectus] parse failed:", parseError.message);
@@ -507,20 +726,20 @@ export function registerProspectusRoutes(
         return res.status(422).json({
           error: readable
             ? parseError.message.replace(/^AI response format error:\s*/, "")
-            : "Could not read this prospectus right now. Please try again, or use a clearer PDF.",
+            : "Could not read this prospectus right now. Please try again, or use a clearer file.",
         });
       }
 
-      // 2. Store the PDF, write the new record, then remove the old file.
+      // 2. Store the file, write the new record, then remove the old file.
       const previous = await loadStored();
       const safeName = sanitizeFileName(fileName);
       const storagePath = `prospectus/${Date.now()}-${safeName}`;
       await bucket.file(storagePath).save(buffer, {
-        metadata: { contentType: "application/pdf", cacheControl: "private,max-age=0,no-transform" },
+        metadata: { contentType: PROSPECTUS_FORMATS[format].mime, cacheControl: "private,max-age=0,no-transform" },
         resumable: false,
       });
       try {
-        await saveCurriculum({ parsed, fileName: safeName, storagePath, profile });
+        await saveCurriculum({ parsed, fileName: safeName, storagePath, fileFormat: format, fileSize: buffer.length, profile });
       } catch (saveError) {
         await deleteStoredFile(storagePath);
         throw saveError;

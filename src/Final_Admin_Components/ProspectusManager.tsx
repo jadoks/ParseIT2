@@ -34,11 +34,16 @@ type CurriculumEntry = {
   lab: number;
 };
 
+type Limits = { maxBytes: number; label: string; formats: { ext: string; label: string }[] };
+
 type ProspectusData = {
   exists: boolean;
+  limits?: Limits;
   program?: { code?: string; name?: string; school?: string; cmo?: string; effectiveAY?: string };
   meta?: {
     fileName: string | null;
+    fileFormat: 'pdf' | 'docx' | 'xlsx' | null;
+    fileSize: number | null;
     hasFile: boolean;
     uploadedAt: string | null;
     uploadedBy: string | null;
@@ -53,7 +58,27 @@ type ProspectusData = {
 type ToastType = 'success' | 'error' | 'info';
 type Busy = null | 'loading' | 'uploading' | 'deleting';
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+// Defaults mirror the server (which is the one that actually enforces them and
+// sends the real values in GET /admin/prospectus).
+const DEFAULT_LIMITS: Limits = {
+  maxBytes: 10 * 1024 * 1024,
+  label: 'PDF, DOCX or Excel (.xlsx)',
+  formats: [
+    { ext: '.pdf', label: 'PDF' },
+    { ext: '.docx', label: 'Word (.docx)' },
+    { ext: '.xlsx', label: 'Excel (.xlsx)' },
+  ],
+};
+const MIME_BY_EXT: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+const FORMAT_LABEL: Record<string, string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel' };
+
+const formatBytes = (n: number) =>
+  n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.ceil(n / 1024))} KB`;
+const extOf = (name: string) => (String(name || '').toLowerCase().match(/\.[a-z0-9]+$/) || [''])[0];
 const SEMESTER_ORDER = ['1st Semester', '2nd Semester', 'Summer'];
 const ordinal = (n: number) => `${n}${['st', 'nd', 'rd'][n - 1] || 'th'} Year`;
 
@@ -86,6 +111,7 @@ const ProspectusManager = () => {
   const [busy, setBusy] = useState<Busy>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | 'replace' | 'delete'>(null);
+  const limits = data?.limits ?? DEFAULT_LIMITS;
   const [activeYear, setActiveYear] = useState<number>(1);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: ToastType }>({
     visible: false,
@@ -97,7 +123,7 @@ const ProspectusManager = () => {
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const applyData = (next: ProspectusData) => {
-    setData(next);
+    setData((prev) => ({ ...next, limits: next.limits ?? prev?.limits }));
     const years = [...new Set((next.curriculum || []).map((e) => e.year))].sort((a, b) => a - b);
     setActiveYear((prev) => (years.includes(prev) ? prev : years[0] ?? 1));
   };
@@ -124,19 +150,25 @@ const ProspectusManager = () => {
   const pickAndUpload = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: Object.values(MIME_BY_EXT),
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
 
-      const isPdf = asset.mimeType === 'application/pdf' || /\.pdf$/i.test(asset.name || '');
-      if (!isPdf) {
-        showToast('Please choose a PDF file.', 'error');
+      // The picker's type filter is only a hint (web lets people pick "All files"),
+      // so check the real extension and size here. The server checks again.
+      const ext = extOf(asset.name);
+      if (ext === '.doc' || ext === '.xls') {
+        showToast(`Old ${ext} files are not supported. Save as ${ext === '.doc' ? '.docx' : '.xlsx'} or PDF.`, 'error');
         return;
       }
-      if (asset.size && asset.size > MAX_FILE_BYTES) {
-        showToast('File must be under 10MB.', 'error');
+      if (!MIME_BY_EXT[ext]) {
+        showToast(`Only ${limits.label} files are allowed.`, 'error');
+        return;
+      }
+      if (asset.size && asset.size > limits.maxBytes) {
+        showToast(`File must be ${formatBytes(limits.maxBytes)} or smaller (this one is ${formatBytes(asset.size)}).`, 'error');
         return;
       }
 
@@ -149,7 +181,7 @@ const ProspectusManager = () => {
         body: JSON.stringify({
           fileBase64: base64,
           fileName: asset.name,
-          fileType: 'application/pdf',
+          fileType: MIME_BY_EXT[ext],
         }),
       });
       const json = await response.json().catch(() => ({}));
@@ -273,8 +305,8 @@ const ProspectusManager = () => {
   const confirmCopy = {
     replace: {
       title: 'Replace the prospectus?',
-      body: 'The current prospectus and its PDF will be replaced once the new file is read successfully. Student progress will be recalculated against the new one.',
-      action: 'Choose new PDF',
+      body: `The current prospectus and its file will be replaced once the new one is read successfully. Student progress will be recalculated against the new one. Accepted: ${limits.label}, up to ${formatBytes(limits.maxBytes)}.`,
+      action: 'Choose new file',
       onPress: () => {
         setConfirm(null);
         pickAndUpload();
@@ -296,8 +328,8 @@ const ProspectusManager = () => {
           <Text style={styles.eyebrow}>Admin Tools</Text>
           <Text style={styles.pageTitle}>Prospectus</Text>
           <Text style={styles.pageSubtitle}>
-            Upload the official program prospectus. Students see their curriculum progress checked against it. Only admins can
-            upload, replace or delete it.
+            Upload the official program prospectus ({limits.label}, up to {formatBytes(limits.maxBytes)}). Students see their
+            curriculum progress checked against it. Only admins can upload, replace or delete it.
           </Text>
         </View>
       </View>
@@ -327,14 +359,17 @@ const ProspectusManager = () => {
           </View>
           <Text style={styles.emptyTitle}>No prospectus uploaded yet</Text>
           <Text style={styles.emptyText}>
-            Upload the program prospectus as a PDF. Until one is uploaded, students will see that no prospectus is available.
+            Upload the program prospectus. Until one is uploaded, students will see that no prospectus is available.
           </Text>
           <View style={[styles.btnRow, isMobile && styles.btnRowMobile]}>
             <TouchableOpacity style={styles.primaryBtn} onPress={startUpload} activeOpacity={0.85}>
               <MaterialCommunityIcons name="upload" size={18} color="#FFFFFF" />
-              <Text style={styles.primaryBtnText}>Upload prospectus (PDF)</Text>
+              <Text style={styles.primaryBtnText}>Upload prospectus</Text>
             </TouchableOpacity>
           </View>
+          <Text style={styles.limitHint}>
+            Accepted: {limits.label} · Max {formatBytes(limits.maxBytes)}
+          </Text>
         </View>
       )}
 
@@ -346,8 +381,14 @@ const ProspectusManager = () => {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{data.program?.name || data.program?.code || 'Current prospectus'}</Text>
                 {!!programLine && <Text style={styles.cardSubtitle}>{programLine}</Text>}
-                <Text style={styles.fileLine}>
-                  {data.meta.fileName || 'Prospectus'}
+                <Text style={styles.fileLine}>{data.meta.fileName || 'Prospectus'}</Text>
+                <Text style={styles.cardSubtitle}>
+                  {[
+                    data.meta.fileFormat ? FORMAT_LABEL[data.meta.fileFormat] : null,
+                    data.meta.fileSize ? formatBytes(data.meta.fileSize) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Text>
                 <Text style={styles.cardSubtitle}>
                   Uploaded {formatDate(data.meta.uploadedAt)}
@@ -358,8 +399,12 @@ const ProspectusManager = () => {
               <View style={[styles.btnRow, isMobile && styles.btnRowMobile]}>
                 {data.fileUrl ? (
                   <TouchableOpacity style={styles.secondaryBtn} onPress={openPdf} activeOpacity={0.85}>
-                    <MaterialCommunityIcons name="file-pdf-box" size={18} color="#8B0000" />
-                    <Text style={styles.secondaryBtnText}>Open PDF</Text>
+                    <MaterialCommunityIcons
+                      name={data.meta.fileFormat === 'pdf' ? 'file-pdf-box' : 'file-download-outline'}
+                      size={18}
+                      color="#8B0000"
+                    />
+                    <Text style={styles.secondaryBtnText}>{data.meta.fileFormat === 'pdf' ? 'Open PDF' : 'Download file'}</Text>
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity style={styles.primaryBtn} onPress={startUpload} activeOpacity={0.85}>
@@ -388,6 +433,10 @@ const ProspectusManager = () => {
               </View>
             </View>
           </View>
+
+          <Text style={[styles.limitHint, { textAlign: 'left', marginTop: -6, marginBottom: 16 }]}>
+            Replace accepts: {limits.label} · Max {formatBytes(limits.maxBytes)}
+          </Text>
 
           {data.meta.warnings.length > 0 && (
             <View style={styles.warnBox}>
@@ -477,6 +526,7 @@ const styles = StyleSheet.create({
   cardMobile: { borderRadius: 18, padding: 14, marginBottom: 14 },
   cardTitle: { fontSize: 18, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#111827' },
   cardSubtitle: { marginTop: 4, fontSize: 12, color: '#6B7280', fontFamily: FONT_BODY, lineHeight: 18 },
+  limitHint: { marginTop: 8, fontSize: 12, color: '#6B7280', fontFamily: FONT_BODY, textAlign: 'center' },
   fileLine: { marginTop: 10, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#111827' },
 
   centerBox: { alignItems: 'center', justifyContent: 'center', padding: 28, gap: 8 },

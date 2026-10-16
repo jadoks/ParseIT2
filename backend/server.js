@@ -23474,6 +23474,9 @@ ${spec.rules}
     createReadSignedUrl,
     invalidateSignedUrlCache,
     sanitizeFileName,
+    // Already imported at the top of this file; used to read .docx / .xlsx uploads.
+    mammoth,
+    PizZip,
   });
   // ==================== END PROSPECTUS ====================
 
