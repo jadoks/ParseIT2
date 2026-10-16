@@ -106,7 +106,7 @@ const attemptStatus = (grade) => (grade <= PASSING_GRADE_MAX ? "passed" : "faile
 
 /**
  * @param terms  studentParsedGrades documents: { schoolYear, semester, subjects[], incSubjects[] }
- * @returns { years, summary, unmatched, hasGrades }
+ * @returns { irregular, years, summary, unmatched, hasGrades }
  */
 export function buildProspectus(terms, curriculum) {
   const index = buildIndex(curriculum);
@@ -200,33 +200,89 @@ export function buildProspectus(terms, curriculum) {
           };
         });
       if (subjects.length) {
+        // Which term(s) the student actually took this block's subjects in.
+        const termMap = new Map();
+        for (const sub of subjects) {
+          if (sub.status === "not_taken" || !sub.takenSchoolYear || !sub.takenSemester) continue;
+          const key = `${sub.takenSchoolYear}|${sub.takenSemester}`;
+          const cur = termMap.get(key) || { schoolYear: sub.takenSchoolYear, semester: sub.takenSemester, count: 0 };
+          cur.count++;
+          termMap.set(key, cur);
+        }
+        const takenTerms = [...termMap.values()].sort(
+          (a, b) => termOrder(a.schoolYear, a.semester) - termOrder(b.schoolYear, b.semester)
+        );
+        // Most common term (earliest on a tie): subjects taken in any other term get their own note.
+        const mainTerm =
+          [...takenTerms].sort(
+            (a, b) => b.count - a.count || termOrder(a.schoolYear, a.semester) - termOrder(b.schoolYear, b.semester)
+          )[0] || null;
         semesters.push({
           semester,
           totalUnits: subjects.reduce((n, s) => n + s.units, 0),
+          takenTerms,
+          mainTerm: mainTerm ? { schoolYear: mainTerm.schoolYear, semester: mainTerm.semester } : null,
           subjects,
         });
       }
     }
-    // The school year this year level was (mostly) taken in, e.g. "2024-2025".
-    // Irregular students can have a few subjects in other years: the most common
-    // one wins (earliest on a tie) and the odd ones are flagged per subject.
-    const syCounts = new Map();
+    // The school year shown for this year level is the EARLIEST school year in
+    // which any of its subjects was taken, e.g. "2023-2024". Irregular students
+    // take some subjects later; those are flagged per subject (takenSchoolYear).
+    const startOf = (sy) => parseInt(String(sy).match(/\d{4}/)?.[0] || "0", 10);
+    let schoolYear = null;
     for (const sem of semesters) {
       for (const sub of sem.subjects) {
-        if (sub.status !== "not_taken" && sub.takenSchoolYear) {
-          syCounts.set(sub.takenSchoolYear, (syCounts.get(sub.takenSchoolYear) || 0) + 1);
-        }
+        if (sub.status === "not_taken" || !sub.takenSchoolYear) continue;
+        if (!schoolYear || startOf(sub.takenSchoolYear) < startOf(schoolYear)) schoolYear = sub.takenSchoolYear;
       }
     }
-    const startOf = (sy) => parseInt(String(sy).match(/\d{4}/)?.[0] || "0", 10);
-    const schoolYear =
-      [...syCounts.entries()].sort((a, b) => b[1] - a[1] || startOf(a[0]) - startOf(b[0]))[0]?.[0] || null;
 
     years.push({ year, label: yearLabel(year), schoolYear, semesters });
   }
 
+  // Regular = the student followed the prospectus: each block was taken in ONE
+  // term, blocks follow each other in prospectus order with no missing term in
+  // between, every block taken is complete and passed, and nothing was skipped.
+  // Anything else is irregular: a subject taken in another term, a retake, a
+  // failed/incomplete subject, a leave of absence (gap), a block done only in
+  // part, a skipped block, or blocks taken out of order.
+  const termIndex = (sy, sem) => {
+    const o = termOrder(sy, sem);
+    const k = o % 10;
+    return k === 1 || k === 2 ? Math.floor(o / 10) * 2 + (k - 1) : null; // Summer -> no slot
+  };
+  let irregular = false;
+  let lastOrder = -Infinity;
+  let lastIdx = null;
+  let skippedBlock = false;
+  for (const y of years) {
+    for (const s of y.semesters) {
+      const taken = s.subjects.filter((x) => x.status !== "not_taken");
+      const notTaken = s.subjects.length - taken.length;
+      if (taken.some((x) => x.status !== "passed")) irregular = true; // failed / INC
+      if (taken.length && notTaken > 0) irregular = true; // block done only in part
+      if (taken.length && skippedBlock) irregular = true; // earlier block was skipped
+      if (!taken.length) {
+        skippedBlock = true;
+        continue;
+      }
+      if (s.takenTerms.length > 1) irregular = true;
+      const first = s.takenTerms[0];
+      const last = s.takenTerms[s.takenTerms.length - 1];
+      const o = termOrder(first.schoolYear, first.semester);
+      if (o <= lastOrder) irregular = true; // out of prospectus order
+      const firstIdx = termIndex(first.schoolYear, first.semester);
+      if (lastIdx !== null && firstIdx !== null && firstIdx - lastIdx > 1) irregular = true; // missing term
+      lastOrder = Math.max(lastOrder, termOrder(last.schoolYear, last.semester));
+      const lIdx = termIndex(last.schoolYear, last.semester);
+      if (lIdx !== null) lastIdx = lIdx;
+    }
+  }
+
   const totalSubjects = curriculum.length;
   return {
+    irregular,
     hasGrades: terms.some((t) => (t.subjects || []).length || (t.incSubjects || []).length),
     summary: {
       totalSubjects,

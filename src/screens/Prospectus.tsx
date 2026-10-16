@@ -34,9 +34,14 @@ type ProspectusSubject = {
   blockedBy: string[];
 };
 
+type TakenTerm = { schoolYear: string; semester: string; count: number };
+
 type ProspectusSemester = {
   semester: string;
   totalUnits: number;
+  // The term(s) the subjects in this block were really taken in.
+  takenTerms?: TakenTerm[];
+  mainTerm?: { schoolYear: string; semester: string } | null;
   subjects: ProspectusSubject[];
 };
 
@@ -58,6 +63,7 @@ type UnmatchedSubject = {
 };
 
 type ProspectusResponse = {
+  irregular?: boolean;
   success: boolean;
   // false until an admin uploads a prospectus; the fields below are then absent
   hasProspectus: boolean;
@@ -118,16 +124,26 @@ const SubjectNotes = ({
   subject,
   headingSchoolYear,
   blockSemester,
+  mainTerm,
 }: {
   subject: ProspectusSubject;
   headingSchoolYear?: string | null;
   blockSemester: string;
+  // Irregular students: compare against the term shown under the table instead.
+  mainTerm?: { schoolYear: string; semester: string } | null;
 }) => {
   const differences: string[] = [];
   if (subject.status !== 'not_taken') {
-    if (subject.takenSemester && subject.takenSemester !== blockSemester) differences.push(subject.takenSemester);
-    if (subject.takenSchoolYear && subject.takenSchoolYear !== headingSchoolYear) {
-      differences.push(`S.Y. ${subject.takenSchoolYear}`);
+    if (mainTerm) {
+      if (subject.takenSemester !== mainTerm.semester || subject.takenSchoolYear !== mainTerm.schoolYear) {
+        if (subject.takenSemester) differences.push(subject.takenSemester);
+        if (subject.takenSchoolYear) differences.push(`S.Y. ${subject.takenSchoolYear}`);
+      }
+    } else {
+      if (subject.takenSemester && subject.takenSemester !== blockSemester) differences.push(subject.takenSemester);
+      if (subject.takenSchoolYear && subject.takenSchoolYear !== headingSchoolYear) {
+        differences.push(`S.Y. ${subject.takenSchoolYear}`);
+      }
     }
   }
   return (
@@ -237,7 +253,12 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
     .filter(Boolean)
     .join(' · ');
 
-  const renderSubjectRow = (subject: ProspectusSubject, index: number, blockSemester: string) => {
+  const renderSubjectRow = (
+    subject: ProspectusSubject,
+    index: number,
+    blockSemester: string,
+    mainTerm?: { schoolYear: string; semester: string } | null
+  ) => {
     if (isMobile) {
       return (
         <View key={subject.code} style={styles.mobileCard}>
@@ -260,7 +281,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
               <Text style={styles.metaValue}>{subject.prerequisites}</Text>
             </View>
           </View>
-          <SubjectNotes subject={subject} headingSchoolYear={year.schoolYear} blockSemester={blockSemester} />
+          <SubjectNotes subject={subject} headingSchoolYear={year.schoolYear} blockSemester={blockSemester} mainTerm={mainTerm} />
         </View>
       );
     }
@@ -270,7 +291,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
         <Text style={[styles.td, styles.tdCode]}>{subject.codeLabel}</Text>
         <View style={[styles.td, styles.tdTitle]}>
           <Text style={styles.tdText}>{subject.title}</Text>
-          <SubjectNotes subject={subject} headingSchoolYear={year.schoolYear} blockSemester={blockSemester} />
+          <SubjectNotes subject={subject} headingSchoolYear={year.schoolYear} blockSemester={blockSemester} mainTerm={mainTerm} />
         </View>
         <Text style={[styles.td, styles.tdPrereq, styles.tdText]}>{subject.prerequisites}</Text>
         <Text style={[styles.td, styles.tdSmall, styles.tdText]}>{subject.units}</Text>
@@ -370,7 +391,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
       <View style={[styles.card, isMobile && styles.cardMobile]}>
         <Text style={styles.yearTitle}>
           {year.label}
-          {year.schoolYear ? <Text style={styles.yearTitleSy}> (S.Y. {year.schoolYear})</Text> : null}
+          {!data.irregular && year.schoolYear ? <Text style={styles.yearTitleSy}> (S.Y. {year.schoolYear})</Text> : null}
         </Text>
         {year.semesters.map((sem) => (
           <View key={sem.semester} style={styles.semBlock}>
@@ -380,7 +401,9 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
             </View>
 
             {isMobile ? (
-              <View style={styles.mobileList}>{sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester))}</View>
+              <View style={styles.mobileList}>
+                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester, data.irregular ? sem.mainTerm : null))}
+              </View>
             ) : (
               <View style={styles.tableWrap}>
                 <View style={[styles.tableRow, styles.tableHeader]}>
@@ -391,8 +414,21 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
                   <Text style={[styles.td, styles.tdSmall, styles.th]}>Grade</Text>
                   <Text style={[styles.td, styles.tdStatus, styles.th, styles.lastCell]}>Status</Text>
                 </View>
-                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester))}
+                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester, data.irregular ? sem.mainTerm : null))}
               </View>
+            )}
+
+            {/* Irregular students: show when this block was actually taken, below its subjects. */}
+            {data.irregular && sem.takenTerms && sem.takenTerms.length > 0 && (
+              <Text style={styles.takenFooter}>
+                Taken:{' '}
+                {sem.takenTerms
+                  .map(
+                    (t) =>
+                      `${t.semester} (S.Y. ${t.schoolYear})` + (sem.takenTerms!.length > 1 ? ` - ${t.count} subject${t.count === 1 ? '' : 's'}` : '')
+                  )
+                  .join('  ·  ')}
+              </Text>
             )}
           </View>
         ))}
@@ -495,6 +531,7 @@ const styles = StyleSheet.create({
   chip: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
   chipText: { fontSize: 11, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   noteWarn: { marginTop: 3, fontSize: 11, color: '#B54708', fontFamily: FONT_BODY },
+  takenFooter: { marginTop: 8, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#6B7280' },
   noteMuted: { marginTop: 3, fontSize: 11, color: '#6B7280', fontFamily: FONT_BODY },
 
   mobileList: { gap: 10 },
