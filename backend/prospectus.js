@@ -61,8 +61,20 @@ const MATCH_THRESHOLD = 0.8;
 // Older transcripts print "PHYSICAL EDUCATION 3" / "PE 3" for what the current
 // prospectus calls PATHFit 3, so those names count as the same course.
 function builtInAliases(entry) {
-  const m = String(entry.code || "").match(/^pathfit\s*-?\s*(\d+)$/i);
-  return m ? [`Physical Education ${m[1]}`, `PE ${m[1]}`] : [];
+  const aliases = [];
+  const code = String(entry.code || "");
+  const pe = code.match(/^pathfit\s*-?\s*(\d+)$/i);
+  if (pe) aliases.push(`Physical Education ${pe[1]}`, `PE ${pe[1]}`);
+  // The prospectus title is "National Service Training Program 1 (CWTS 1/LTS 1/ROTC 1)"
+  // but transcripts print just "NATIONAL SERVICE TRAINING PROGRAM 1".
+  const nstp = code.match(/^nstp\s*-?\s*(\d+)$/i);
+  if (nstp) aliases.push(`National Service Training Program ${nstp[1]}`);
+  // Any other title with a trailing note in parentheses, e.g. "(CWTS 1/LTS 1/ROTC 1)",
+  // also matches without it. Lec/Lab markers are kept: they decide which half a grade belongs to.
+  const title = String(entry.title || "");
+  const bare = title.replace(/\((?![^)]*\b(?:lec|lecture|lab|laboratory)\b)[^)]*\)/gi, " ").replace(/\s+/g, " ").trim();
+  if (bare && bare !== title) aliases.push(bare);
+  return aliases;
 }
 
 function buildIndex(curriculum) {
