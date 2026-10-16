@@ -335,20 +335,6 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
             )}
           </View>
 
-          {/* GWA ranges (from the server, so they stay in one place). */}
-          <View style={styles.statsRow}>
-            {result.bands.map((band) => {
-              const tone = HONOR_STYLE[band.key];
-              return (
-                <View key={band.key} style={[styles.statCard, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                  <Text style={[styles.statCount, { color: tone.fg }]}>{result.summary[band.key]}</Text>
-                  <Text style={[styles.statLabel, { color: tone.fg }]}>{band.label}</Text>
-                  <Text style={[styles.statRange, { color: tone.fg }]}>{formatRange(band)}</Text>
-                </View>
-              );
-            })}
-          </View>
-
           {result.qualified.length === 0 ? (
             <View style={styles.emptyBox}>
               <Ionicons name="ribbon-outline" size={34} color="#B8AFA7" />
@@ -367,7 +353,10 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
                   <View key={band.key} style={[styles.group, useColumns && styles.column]}>
                     <View style={[styles.groupHeader, { backgroundColor: tone.bg, borderColor: tone.border }]}>
                       <Ionicons name="ribbon" size={18} color={tone.fg} />
-                      <Text style={[styles.groupTitle, { color: tone.fg }]}>{band.label}</Text>
+                      <View style={styles.groupTitleWrap}>
+                        <Text style={[styles.groupTitle, { color: tone.fg }]}>{band.label}</Text>
+                        <Text style={[styles.groupRange, { color: tone.fg }]}>GWA {formatRange(band)}</Text>
+                      </View>
                       <Text style={[styles.groupCount, { color: tone.fg }]}>{students.length}</Text>
                     </View>
                     {students.length === 0 ? (
@@ -534,19 +523,6 @@ const styles = StyleSheet.create({
   },
   downloadBtnMobile: { width: '100%' },
   downloadBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: WEIGHT_EMPHASIS },
-  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
-  statCard: {
-    flexGrow: 1,
-    flexBasis: 150,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  statCount: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE },
-  statLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
-  statRange: { fontFamily: FONT_BODY, fontSize: 12, marginTop: 2, opacity: 0.85 },
-
   group: { marginBottom: 18 },
   // Large screens: Summa | Magna | Cum Laude side by side.
   columnsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
@@ -562,7 +538,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8,
   },
-  groupTitle: { fontFamily: FONT_BODY, flex: 1, fontSize: 15, fontWeight: WEIGHT_EMPHASIS },
+  groupTitleWrap: { flex: 1 },
+  groupTitle: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS },
+  groupRange: { fontFamily: FONT_BODY, fontSize: 12, marginTop: 1, opacity: 0.85 },
   groupCount: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
 
   studentCard: {
