@@ -129,12 +129,19 @@ const SubjectNotes = ({
   subject: ProspectusSubject;
   headingSchoolYear?: string | null;
   blockSemester: string;
-  // Irregular students: compare against the term shown under the table instead.
-  mainTerm?: { schoolYear: string; semester: string } | null;
+  // Irregular students:
+  //  - a term object: the whole block was taken in that one term (shown once under the table),
+  //    so only subjects taken in a different term get their own note.
+  //  - 'all': the block was taken across several terms, so EVERY taken subject shows its own
+  //    "Taken <semester> S.Y. <year>" note and there is no footer under the table.
+  mainTerm?: { schoolYear: string; semester: string } | 'all' | null;
 }) => {
   const differences: string[] = [];
   if (subject.status !== 'not_taken') {
-    if (mainTerm) {
+    if (mainTerm === 'all') {
+      if (subject.takenSemester) differences.push(subject.takenSemester);
+      if (subject.takenSchoolYear) differences.push(`S.Y. ${subject.takenSchoolYear}`);
+    } else if (mainTerm) {
       if (subject.takenSemester !== mainTerm.semester || subject.takenSchoolYear !== mainTerm.schoolYear) {
         if (subject.takenSemester) differences.push(subject.takenSemester);
         if (subject.takenSchoolYear) differences.push(`S.Y. ${subject.takenSchoolYear}`);
@@ -253,11 +260,18 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
     .filter(Boolean)
     .join(' · ');
 
+  // Irregular students: one term -> footer under the table; several terms -> note on every subject.
+  const irregularTermArg = (sem: { takenTerms?: TakenTerm[]; mainTerm?: { schoolYear: string; semester: string } | null }) => {
+    if (!data?.irregular) return null;
+    if ((sem.takenTerms?.length ?? 0) > 1) return 'all' as const;
+    return sem.mainTerm ?? null;
+  };
+
   const renderSubjectRow = (
     subject: ProspectusSubject,
     index: number,
     blockSemester: string,
-    mainTerm?: { schoolYear: string; semester: string } | null
+    mainTerm?: { schoolYear: string; semester: string } | 'all' | null
   ) => {
     if (isMobile) {
       return (
@@ -402,7 +416,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
 
             {isMobile ? (
               <View style={styles.mobileList}>
-                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester, data.irregular ? sem.mainTerm : null))}
+                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester, irregularTermArg(sem)))}
               </View>
             ) : (
               <View style={styles.tableWrap}>
@@ -414,20 +428,15 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
                   <Text style={[styles.td, styles.tdSmall, styles.th]}>Grade</Text>
                   <Text style={[styles.td, styles.tdStatus, styles.th, styles.lastCell]}>Status</Text>
                 </View>
-                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester, data.irregular ? sem.mainTerm : null))}
+                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester, irregularTermArg(sem)))}
               </View>
             )}
 
-            {/* Irregular students: show when this block was actually taken, below its subjects. */}
-            {data.irregular && sem.takenTerms && sem.takenTerms.length > 0 && (
+            {/* Irregular students: when the whole block was taken in ONE term, show it once below
+                the subjects. Blocks spread over several terms have a per-subject note instead. */}
+            {data.irregular && sem.takenTerms && sem.takenTerms.length === 1 && (
               <Text style={styles.takenFooter}>
-                Taken:{' '}
-                {sem.takenTerms
-                  .map(
-                    (t) =>
-                      `${t.semester} (S.Y. ${t.schoolYear})` + (sem.takenTerms!.length > 1 ? ` - ${t.count} subject${t.count === 1 ? '' : 's'}` : '')
-                  )
-                  .join('  ·  ')}
+                Taken: {sem.takenTerms[0].semester} (S.Y. {sem.takenTerms[0].schoolYear})
               </Text>
             )}
           </View>
