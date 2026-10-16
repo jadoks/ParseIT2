@@ -144,8 +144,10 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
       const json = await response.json();
       if (!response.ok || !json.success) throw new Error(json.error || 'Failed to load prospectus.');
       setData(json);
+      // No prospectus uploaded yet: the empty state is rendered below.
+      if (!json.hasProspectus) return;
       // Open the first year that still has something left to take.
-      const firstOpen = (json.years as ProspectusYear[]).find((y) =>
+      const firstOpen = ((json.years || []) as ProspectusYear[]).find((y) =>
         y.semesters.some((s) => s.subjects.some((sub) => sub.status !== 'passed'))
       );
       setActiveYear((prev) => prev ?? firstOpen?.year ?? 4);
@@ -162,7 +164,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
 
   const yearProgress = useMemo(() => {
     const map: Record<number, { earned: number; total: number }> = {};
-    data?.years.forEach((y) => {
+    (data?.years ?? []).forEach((y) => {
       let earned = 0;
       let total = 0;
       y.semesters.forEach((s) =>

@@ -577,7 +577,7 @@ export function registerProspectusRoutes(
 
       const stored = await loadStored();
       if (!stored?.curriculum?.length) {
-        return res.json({ success: true, hasProspectus: false });
+        return res.json({ success: true, hasProspectus: false, hasGrades: false, years: [], unmatched: [] });
       }
 
       const snapshot = await db
