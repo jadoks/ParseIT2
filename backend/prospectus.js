@@ -199,7 +199,22 @@ export function buildProspectus(terms, curriculum) {
         });
       }
     }
-    years.push({ year, label: yearLabel(year), semesters });
+    // The school year this year level was (mostly) taken in, e.g. "2024-2025".
+    // Irregular students can have a few subjects in other years: the most common
+    // one wins (earliest on a tie) and the odd ones are flagged per subject.
+    const syCounts = new Map();
+    for (const sem of semesters) {
+      for (const sub of sem.subjects) {
+        if (sub.status !== "not_taken" && sub.takenSchoolYear) {
+          syCounts.set(sub.takenSchoolYear, (syCounts.get(sub.takenSchoolYear) || 0) + 1);
+        }
+      }
+    }
+    const startOf = (sy) => parseInt(String(sy).match(/\d{4}/)?.[0] || "0", 10);
+    const schoolYear =
+      [...syCounts.entries()].sort((a, b) => b[1] - a[1] || startOf(a[0]) - startOf(b[0]))[0]?.[0] || null;
+
+    years.push({ year, label: yearLabel(year), schoolYear, semesters });
   }
 
   const totalSubjects = curriculum.length;

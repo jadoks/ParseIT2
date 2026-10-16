@@ -43,6 +43,7 @@ type ProspectusSemester = {
 type ProspectusYear = {
   year: number;
   label: string;
+  schoolYear?: string | null;
   semesters: ProspectusSemester[];
 };
 
@@ -95,7 +96,7 @@ const STATUS_META: Record<Status, { label: string; color: string; bg: string; bo
   passed: { label: 'Passed', color: '#067647', bg: '#ECFDF3', border: '#ABEFC6' },
   failed: { label: 'Failed', color: '#B42318', bg: '#FEF3F2', border: '#FECDCA' },
   incomplete: { label: 'INC', color: '#B54708', bg: '#FFFAEB', border: '#FEDF89' },
-  not_taken: { label: 'No grade submitted', color: '#667085', bg: '#F2F4F7', border: '#E4E7EC' },
+  not_taken: { label: 'Not yet taken', color: '#667085', bg: '#F2F4F7', border: '#E4E7EC' },
 };
 
 const yearShort = (n: number) => `${n}${['st', 'nd', 'rd'][n - 1] || 'th'} Year`;
@@ -111,19 +112,34 @@ const StatusChip = ({ status }: { status: Status }) => {
   );
 };
 
-const SubjectNotes = ({ subject }: { subject: ProspectusSubject }) => (
-  <>
-    {subject.status !== 'passed' && subject.blockedBy.length > 0 && (
-      <Text style={styles.noteWarn}>Prerequisite not yet passed: {subject.blockedBy.join(', ')}</Text>
-    )}
-    {subject.attempts > 1 && <Text style={styles.noteMuted}>Taken {subject.attempts} times</Text>}
-    {subject.takenSchoolYear && subject.status !== 'not_taken' && (
-      <Text style={styles.noteMuted}>
-        {subject.takenSemester} S.Y. {subject.takenSchoolYear}
-      </Text>
-    )}
-  </>
-);
+// The school year is shown once in the year heading, so a subject only gets a
+// "Taken ..." note when it was taken in a different school year or semester.
+const SubjectNotes = ({
+  subject,
+  headingSchoolYear,
+  blockSemester,
+}: {
+  subject: ProspectusSubject;
+  headingSchoolYear?: string | null;
+  blockSemester: string;
+}) => {
+  const differences: string[] = [];
+  if (subject.status !== 'not_taken') {
+    if (subject.takenSemester && subject.takenSemester !== blockSemester) differences.push(subject.takenSemester);
+    if (subject.takenSchoolYear && subject.takenSchoolYear !== headingSchoolYear) {
+      differences.push(`S.Y. ${subject.takenSchoolYear}`);
+    }
+  }
+  return (
+    <>
+      {subject.status !== 'passed' && subject.blockedBy.length > 0 && (
+        <Text style={styles.noteWarn}>Prerequisite not yet passed: {subject.blockedBy.join(', ')}</Text>
+      )}
+      {subject.attempts > 1 && <Text style={styles.noteMuted}>Taken {subject.attempts} times</Text>}
+      {differences.length > 0 && <Text style={styles.noteMuted}>Taken {differences.join(' ')}</Text>}
+    </>
+  );
+};
 
 const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
   const { width } = useWindowDimensions();
@@ -221,7 +237,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
     .filter(Boolean)
     .join(' · ');
 
-  const renderSubjectRow = (subject: ProspectusSubject, index: number) => {
+  const renderSubjectRow = (subject: ProspectusSubject, index: number, blockSemester: string) => {
     if (isMobile) {
       return (
         <View key={subject.code} style={styles.mobileCard}>
@@ -244,7 +260,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
               <Text style={styles.metaValue}>{subject.prerequisites}</Text>
             </View>
           </View>
-          <SubjectNotes subject={subject} />
+          <SubjectNotes subject={subject} headingSchoolYear={year.schoolYear} blockSemester={blockSemester} />
         </View>
       );
     }
@@ -254,7 +270,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
         <Text style={[styles.td, styles.tdCode]}>{subject.codeLabel}</Text>
         <View style={[styles.td, styles.tdTitle]}>
           <Text style={styles.tdText}>{subject.title}</Text>
-          <SubjectNotes subject={subject} />
+          <SubjectNotes subject={subject} headingSchoolYear={year.schoolYear} blockSemester={blockSemester} />
         </View>
         <Text style={[styles.td, styles.tdPrereq, styles.tdText]}>{subject.prerequisites}</Text>
         <Text style={[styles.td, styles.tdSmall, styles.tdText]}>{subject.units}</Text>
@@ -352,7 +368,10 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
 
       {/* ---------- Semester tables ---------- */}
       <View style={[styles.card, isMobile && styles.cardMobile]}>
-        <Text style={styles.yearTitle}>{year.label}</Text>
+        <Text style={styles.yearTitle}>
+          {year.label}
+          {year.schoolYear ? <Text style={styles.yearTitleSy}> (S.Y. {year.schoolYear})</Text> : null}
+        </Text>
         {year.semesters.map((sem) => (
           <View key={sem.semester} style={styles.semBlock}>
             <View style={styles.semHeader}>
@@ -361,7 +380,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
             </View>
 
             {isMobile ? (
-              <View style={styles.mobileList}>{sem.subjects.map((s, i) => renderSubjectRow(s, i))}</View>
+              <View style={styles.mobileList}>{sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester))}</View>
             ) : (
               <View style={styles.tableWrap}>
                 <View style={[styles.tableRow, styles.tableHeader]}>
@@ -372,7 +391,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
                   <Text style={[styles.td, styles.tdSmall, styles.th]}>Grade</Text>
                   <Text style={[styles.td, styles.tdStatus, styles.th, styles.lastCell]}>Status</Text>
                 </View>
-                {sem.subjects.map((s, i) => renderSubjectRow(s, i))}
+                {sem.subjects.map((s, i) => renderSubjectRow(s, i, sem.semester))}
               </View>
             )}
           </View>
@@ -453,6 +472,7 @@ const styles = StyleSheet.create({
   tabSubActive: { color: '#F5D5D5' },
 
   yearTitle: { fontSize: 20, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#111827', marginBottom: 14 },
+  yearTitleSy: { fontSize: 15, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#6B7280' },
   semBlock: { marginBottom: 20 },
   semHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   semTitle: { fontSize: 15, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8B0000', textTransform: 'uppercase', letterSpacing: 0.6 },
