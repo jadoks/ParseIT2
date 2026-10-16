@@ -218,39 +218,41 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
         ))}
       </View>
 
-      <View style={[styles.controls, isMobile && styles.controlsMobile]}>
-        <View style={styles.controlField}>
-          <Text style={styles.controlLabel}>Graduating Academic Start Year</Text>
-          <TextInput
-            style={styles.input}
-            value={startYear}
-            onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
-            placeholder="e.g. 2025"
-            placeholderTextColor="#8A8A8A"
-            keyboardType="number-pad"
-            maxLength={4}
-          />
-        </View>
-
-        <View style={styles.controlField}>
-          <Text style={styles.controlLabel}>Graduating School Year</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{graduatingLabel}</Text>
+      <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
+        <View style={[styles.controlsRow, isMobile && styles.controlsRowMobile]}>
+          <View style={isMobile ? styles.fieldMobile : styles.yearGroup}>
+            <Text style={styles.controlLabel}>Graduating Start Year</Text>
+            <TextInput
+              style={[styles.input, isMobile && styles.inputMobile]}
+              value={startYear}
+              onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
+              placeholder="e.g. 2025"
+              placeholderTextColor="#8A8A8A"
+              keyboardType="number-pad"
+              maxLength={4}
+            />
           </View>
-        </View>
 
-        <TouchableOpacity
-          style={[styles.generateBtn, isMobile && styles.generateBtnMobile, isGenerating && styles.generateBtnDisabled]}
-          onPress={handleGenerate}
-          disabled={isGenerating}
-          activeOpacity={0.85}
-        >
-          {isGenerating ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.generateBtnText}>Generate Latin Honors</Text>
-          )}
-        </TouchableOpacity>
+          <View style={isMobile ? styles.fieldMobile : styles.schoolYearGroup}>
+            <Text style={styles.controlLabel}>Graduating School Year</Text>
+            <View style={[styles.badge, isMobile && styles.badgeMobile]}>
+              <Text style={styles.badgeText}>{graduatingLabel}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.generateBtn, isMobile && styles.generateBtnMobile, isGenerating && styles.generateBtnDisabled]}
+            onPress={handleGenerate}
+            disabled={isGenerating}
+            activeOpacity={0.85}
+          >
+            {isGenerating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.generateBtnText}>Generate Latin Honors</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {!!error && (
@@ -379,28 +381,36 @@ const styles = StyleSheet.create({
   ruleIcon: { marginTop: 1, marginRight: 8 },
   ruleText: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, lineHeight: 19, color: '#344054' },
 
-  controls: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 14,
+  controlsCard: {
+    marginBottom: 25,
     padding: 18,
     borderWidth: 1,
     borderColor: '#E2E5EA',
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
-    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.035,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
-  controlsMobile: { flexDirection: 'column', alignItems: 'stretch' },
-  controlField: { flex: 1 },
+  controlsCardMobile: { marginBottom: 18, padding: 14, borderRadius: 14 },
+  controlsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' },
+  controlsRowMobile: { flexDirection: 'column', alignItems: 'stretch', gap: 14 },
+  yearGroup: { width: 210 },
+  schoolYearGroup: { width: 240 },
+  fieldMobile: { width: '100%' },
   controlLabel: {
     fontFamily: FONT_BODY,
-    fontSize: 13,
+    color: '#3B332E',
+    fontSize: 12,
     fontWeight: WEIGHT_EMPHASIS,
-    color: '#344054',
-    marginBottom: 6,
+    letterSpacing: 0.4,
+    marginBottom: 7,
+    textTransform: 'uppercase',
   },
   input: {
     fontFamily: FONT_BODY,
+    width: '100%',
     height: 46,
     borderWidth: 1,
     borderColor: '#B8AFA7',
@@ -411,16 +421,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  inputMobile: { height: 48, fontSize: 15 },
   badge: {
     minHeight: 46,
     borderWidth: 1,
     borderColor: '#DDE1E6',
     borderRadius: 16,
-    backgroundColor: '#F8F9FB',
-    paddingHorizontal: 14,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
+    paddingHorizontal: 14,
   },
-  badgeText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '700', color: '#344054' },
+  badgeMobile: { minHeight: 48 },
+  badgeText: { fontFamily: FONT_BODY, color: '#2D2926', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
   generateBtn: {
     backgroundColor: '#8B0000',
     minWidth: 210,
@@ -432,9 +444,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderBottomColor: '#5A0000',
   },
-  generateBtnMobile: { width: '100%', minWidth: 0, height: 50 },
+  generateBtnMobile: { width: '100%', minWidth: 0, height: 50, paddingHorizontal: 16 },
   generateBtnDisabled: { opacity: 0.65 },
-  generateBtnText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: 13, fontWeight: WEIGHT_EMPHASIS },
+  generateBtnText: {
+    fontFamily: FONT_BODY,
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+  },
 
   errorBox: {
     flexDirection: 'row',
