@@ -96,7 +96,7 @@ const STATUS_META: Record<Status, { label: string; color: string; bg: string; bo
   passed: { label: 'Passed', color: '#067647', bg: '#ECFDF3', border: '#ABEFC6' },
   failed: { label: 'Failed', color: '#B42318', bg: '#FEF3F2', border: '#FECDCA' },
   incomplete: { label: 'INC', color: '#B54708', bg: '#FFFAEB', border: '#FEDF89' },
-  not_taken: { label: 'Not yet taken', color: '#667085', bg: '#F2F4F7', border: '#E4E7EC' },
+  not_taken: { label: 'No grade submitted', color: '#667085', bg: '#F2F4F7', border: '#E4E7EC' },
 };
 
 const yearShort = (n: number) => `${n}${['st', 'nd', 'rd'][n - 1] || 'th'} Year`;

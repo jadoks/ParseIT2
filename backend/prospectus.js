@@ -58,18 +58,26 @@ function similarity(a, b) {
 
 const MATCH_THRESHOLD = 0.8;
 
+// Older transcripts print "PHYSICAL EDUCATION 3" / "PE 3" for what the current
+// prospectus calls PATHFit 3, so those names count as the same course.
+function builtInAliases(entry) {
+  const m = String(entry.code || "").match(/^pathfit\s*-?\s*(\d+)$/i);
+  return m ? [`Physical Education ${m[1]}`, `PE ${m[1]}`] : [];
+}
+
 function buildIndex(curriculum) {
   return curriculum.map((entry) => {
     const own = parseTitle(entry.title);
     const forms = [own.tokens];
-    for (const alias of [entry.code, ...entry.aliases]) forms.push(parseTitle(alias).tokens);
+    for (const alias of [entry.code, ...entry.aliases, ...builtInAliases(entry)]) forms.push(parseTitle(alias).tokens);
     return { entry, variant: own.variant, forms };
   });
 }
 
 const termOrder = (schoolYear, semester) => {
   const start = parseInt(String(schoolYear || "").match(/\d{4}/)?.[0] || "0", 10);
-  const sem = /second|2nd/i.test(String(semester || "")) ? 2 : /first|1st/i.test(String(semester || "")) ? 1 : 0;
+  // Summer comes after the 2nd semester of the same school year.
+  const sem = /summer|mid\s*-?year/i.test(String(semester || "")) ? 3 : /second|2nd/i.test(String(semester || "")) ? 2 : /first|1st/i.test(String(semester || "")) ? 1 : 0;
   return start * 10 + sem;
 };
 

@@ -6883,6 +6883,8 @@ app.post("/create-admin", async (req, res) => {
       The document is a TABLE and comes in one of two layouts:
       LAYOUT 1 - TRANSCRIPT with several semesters. Columns are:
       CODE | SUBJECT | DESCRIPTION | UNIT | TIME | DAY | ROOM | MIDTERM GRADE | FINAL TERM | FINAL GRADE | COMPLETION
+      Some transcripts only print: CODE | SUBJECT | DESCRIPTION | UNIT | TIME | DAY | ROOM | GRADE | COMP.
+      In that shorter form, GRADE is the FINAL GRADE column and COMP is the COMPLETION column.
       LAYOUT 2 - single-semester GRADE SLIP REPORT (it may be a photo or scan). Columns are:
       MIS Code | Subject Code | Descriptive Title | Final Grade | Re-Exam | UNIT
       In LAYOUT 2 the semester and school year are printed ONCE near the top (for example
@@ -6890,13 +6892,16 @@ app.post("/create-admin", async (req, res) => {
       For LAYOUT 2: subjectCode = MIS Code column (e.g. CS32), NOT the Subject Code column;
       subjectTitle = Descriptive Title column, copied as printed (it may be cut off); grade = Final Grade
       column; units = UNIT column; ignore Re-Exam (".NULL." means none). "AY" means the same as "SY".
-      Always return schoolYear as "YYYY-YYYY" and semester as "1st Semester" or "2nd Semester".
+      Always return schoolYear as "YYYY-YYYY" and semester as "1st Semester", "2nd Semester" or "Summer".
       The rules below are written for LAYOUT 1; apply the equivalent columns for LAYOUT 2.
       RULES:
       1. Extract ALL subjects.
       2. Each subject belongs to the nearest semester heading:
       - 1st Semester SY XXXX-XXXX
       - 2nd Semester SY XXXX-XXXX
+      - Summer SY XXXX-XXXX (return semester as "Summer")
+      Semesters can be out of order or skip years (irregular students, shifters, transferees): never assume
+      they are consecutive, and copy the printed school year of each heading exactly.
       3. CRITICAL GRADE MAPPING
       The grade MUST come ONLY from the FINAL GRADE column.
       Example:
@@ -6912,6 +6917,12 @@ app.post("/create-admin", async (req, res) => {
       9. MULTI-LINE DESCRIPTIONS: If a description spans multiple lines, combine them into one string.
       10. If FINAL GRADE is blank: grade = null
       10a. If FINAL GRADE is INC (Incomplete), return grade as the string "INC" (never null, never a number).
+      10b. COMPLETION (COMP) column: a subject that was INC, or whose FINAL GRADE cell is blank, can have a
+      number printed in the COMPLETION column (e.g. 1.6, or 5.0 for a failed completion). Return it ONLY in
+      "completionGrade" (a number). If the COMPLETION cell is empty, completionGrade = null.
+      Never put a COMPLETION value in "grade", and never copy a MIDTERM or FINAL TERM value into completionGrade.
+      Keep "grade" exactly as printed in FINAL GRADE ("INC", a number, or null if blank).
+      10c. Include rows from other programs / old codes (for example CT-coded rows) too; do not skip any row.
       11. Return ONLY valid JSON.
       Format:
       [
@@ -6920,6 +6931,7 @@ app.post("/create-admin", async (req, res) => {
       "subjectTitle": "MULTIMEDIA",
       "units": 3,
       "grade": 1.6,
+      "completionGrade": null,
       "schoolYear": "2023-2024",
       "semester": "1st Semester"
       }
@@ -6961,15 +6973,27 @@ app.post("/create-admin", async (req, res) => {
 
               // ... [Existing Grouping and Saving Logic remains exactly the same] ...
               const groupedGrades = {};
+              // A grade printed in the COMPLETION column replaces an INC or a blank
+              // FINAL GRADE (e.g. INC + COMP 1.6 -> 1.6; blank + COMP 5.0 -> 5.0, a
+              // failed completion that must still count against honors). Done here
+              // in code so we don't depend on the AI merging the two columns.
+              const effectiveGradeOf = (item) => {
+                  const compText = String(item?.completionGrade ?? "").trim();
+                  if (compText !== "" && Number.isFinite(Number(compText)) && Number(compText) > 0) {
+                      return Number(compText);
+                  }
+                  return item?.grade;
+              };
               for (const item of parsedGrades) {
+                  const effectiveGrade = effectiveGradeOf(item);
                   // A blank FINAL GRADE comes back as null; Number(null) is 0, which
                   // would be saved as a real grade of 0 - skip ungraded subjects.
                   // An INC (Incomplete) is not a numeric grade, so it never enters
                   // `subjects` / the GWA - but it is remembered in `incSubjects` because
                   // Latin Honors are void for any non-NSTP INC.
-                  const isIncomplete = /^inc(omplete)?\.?$/i.test(String(item.grade ?? "").trim());
-                  if (!isIncomplete && (item.grade === null || item.grade === undefined || String(item.grade).trim() === "")) continue;
-                  const grade = Number(item.grade);
+                  const isIncomplete = /^inc(omplete)?\.?$/i.test(String(effectiveGrade ?? "").trim());
+                  if (!isIncomplete && (effectiveGrade === null || effectiveGrade === undefined || String(effectiveGrade).trim() === "")) continue;
+                  const grade = Number(effectiveGrade);
                   if (!isIncomplete && isNaN(grade)) continue; 
                   const normalizedSY = String(item.schoolYear || "Unknown").trim();
                   const normalizedSem = String(item.semester || "Unknown").trim();
@@ -7110,7 +7134,20 @@ app.post("/create-admin", async (req, res) => {
                   }
               }
 
-              const firstSY = uniqueSchoolYears[0];
+              // Irregular students / shifters can have older terms from another program
+              // (e.g. CT-coded rows from 2021-2022 before moving to BSIT in 2023-2024).
+              // Those must not be taken as "1st Year", so the first-year / section
+              // guess is anchored on the first term made up mostly of CS-coded rows.
+              const isBsitTerm = (g) => {
+                  const codes = [...g.subjects, ...g.incSubjects].map((x) => String(x.subjectCode || ""));
+                  if (!codes.length) return false;
+                  return codes.filter((c) => /^cs\d/i.test(c)).length / codes.length >= 0.5;
+              };
+              const bsitKeys = Object.keys(groupedGrades).filter((k) => isBsitTerm(groupedGrades[k]));
+              const anchorSYs = (bsitKeys.length ? bsitKeys : Object.keys(groupedGrades))
+                  .map((k) => groupedGrades[k].schoolYear)
+                  .sort((a, b) => startYearOf(a) - startYearOf(b));
+              const firstSY = anchorSYs[0];
               const firstSYKeys = Object.keys(groupedGrades).filter(key => groupedGrades[key].schoolYear === firstSY);
               const firstSemesterKey = firstSYKeys.find(key => {
                   const sem = groupedGrades[key].semester.toLowerCase();
