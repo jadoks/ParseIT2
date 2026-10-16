@@ -48,6 +48,15 @@ import {
 // folder layout differs.
 import Toast from '../Final_Admin_Components/Toast';
 
+// Sections are managed by the Admin (Manage Sections) and served by
+// GET /section-config, so the grade-upload form no longer hardcodes them.
+// Adjust this path if programHelpers.ts lives elsewhere in your project.
+import {
+  DEFAULT_SECTION_CONFIG,
+  YEAR_IDS,
+  type SectionConfig,
+} from '../Final_Admin_Components/programHelpers';
+
 // Grade file upload — allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX, plus
 // JPG / PNG / WEBP photos (e.g. a photographed RO Form 4B grade slip).
 const ALLOWED_GRADE_FILE_MIME_TYPES = [
@@ -539,19 +548,11 @@ function GradeDropdown({
 }
 
 const GRADE_YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-// Display-only section names (same as SECTION_OPTIONS in TeacherDashboard.tsx).
-// The value stored/sent to the backend is still just 'A' | 'B' | 'C'.
-const GRADE_SECTION_LETTERS: Array<'A' | 'B' | 'C'> = ['A', 'B', 'C'];
-const GRADE_SECTION_NAMES: Record<number, Record<'A' | 'B' | 'C', string>> = {
-  1: { A: 'Microsoft', B: 'Google', C: 'Amazon' },
-  2: { A: 'Algorithm', B: 'Pseudocode', C: 'Binary' },
-  3: { A: 'Python', B: 'Java', C: 'C++' },
-  4: { A: 'Xamarin', B: 'Laravel', C: 'Flutter' },
-};
-const getGradeSectionLabel = (yearLevel: number | null, letter: 'A' | 'B' | 'C'): string =>
-  yearLevel && GRADE_SECTION_NAMES[yearLevel]
-    ? `${yearLevel}${letter} ${GRADE_SECTION_NAMES[yearLevel][letter]}`
-    : `Section ${letter}`;
+// Sections come from the Admin's Manage Sections (GET /section-config), e.g.
+// { "1st": [{ id: "1B", label: "1B Google" }, ...] }. The section id ("1B") is
+// what the student picks; the backend still receives only the letter ("B").
+const gradeSectionsForYear = (config: SectionConfig, yearLevel: number | null) =>
+  yearLevel ? config[YEAR_IDS[yearLevel - 1]] || [] : [];
 
 const DrawerMenu = ({
   isFixed,
@@ -590,7 +591,11 @@ const DrawerMenu = ({
   // Year level = the level during the LATEST school year on the file; the
   // server counts earlier school years back from it.
   const [isGradeInfoModalVisible, setGradeInfoModalVisible] = useState(false);
-  const [selectedSection, setSelectedSection] = useState<'A' | 'B' | 'C' | null>(null);
+  // Full section id from the Admin config, e.g. "1B" (null until picked).
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  // Live section list (Admin > Manage Sections). Starts with the defaults and is
+  // refreshed from the server every time the grade-upload flow opens.
+  const [gradeSectionConfig, setGradeSectionConfig] = useState<SectionConfig>(DEFAULT_SECTION_CONFIG);
   const [selectedYearLevel, setSelectedYearLevel] = useState<1 | 2 | 3 | 4 | null>(null);
   const [openGradeDropdown, setOpenGradeDropdown] = useState<'year' | 'section' | null>(null);
   // e.g. "2nd Semester S.Y. 2025-2026" - the semester the grade file is for (from the server).
@@ -1025,6 +1030,18 @@ const DrawerMenu = ({
         }
       } catch {}
 
+      // Pull the latest sections the Admin configured. Falls back to whatever we
+      // already have (defaults on first load) if the request fails.
+      try {
+        const configResponse = await sharedApiFetch('/section-config', { method: 'GET' });
+        const configData = await configResponse.json().catch(() => null);
+        if (configResponse.ok && configData?.data?.years) {
+          setGradeSectionConfig({ ...DEFAULT_SECTION_CONFIG, ...configData.data.years });
+          // Drop a stale pick if the Admin removed/renamed that section meanwhile.
+          setSelectedSection(null);
+        }
+      } catch {}
+
       // Ask for section + year level first; the file picker opens after they confirm.
       setGradeInfoModalVisible(true);
     } catch (error: any) {
@@ -1068,7 +1085,7 @@ const DrawerMenu = ({
     setTimeout(() => { startGradeUpload(selectedSection, selectedYearLevel); }, Platform.OS === 'ios' ? 400 : 0);
   };
 
-  const startGradeUpload = async (section: 'A' | 'B' | 'C', yearLevel: number) => {
+  const startGradeUpload = async (sectionId: string, yearLevel: number) => {
     try {
       onFilePickerOpen?.(); 
       
@@ -1140,7 +1157,9 @@ const DrawerMenu = ({
           fileName: asset.name,
           fileType: asset.mimeType || 'application/octet-stream',
           studentId: userId,
-          section,
+          // Backend stores the section letter ("1B" -> "B"); it resolves the
+          // display name from the Admin's section config.
+          section: sectionId.slice(1),
           yearLevel,
         },
         (percent) => {
@@ -1773,7 +1792,10 @@ const DrawerMenu = ({
                 placeholder="Select year level"
                 label="Select Year Level"
                 onSelect={(option) => {
-                  setSelectedYearLevel((GRADE_YEAR_OPTIONS.indexOf(option) + 1) as 1 | 2 | 3 | 4);
+                  const nextYear = (GRADE_YEAR_OPTIONS.indexOf(option) + 1) as 1 | 2 | 3 | 4;
+                  setSelectedYearLevel(nextYear);
+                  // Sections belong to a year level – clear a pick from another year.
+                  setSelectedSection((prev) => (prev && prev.startsWith(String(nextYear)) ? prev : null));
                   setOpenGradeDropdown(null);
                 }}
                 visible={openGradeDropdown === 'year'}
@@ -1785,15 +1807,23 @@ const DrawerMenu = ({
             <Text style={styles.gradeInfoLabel}>Section</Text>
             <View style={[styles.gradeDropdownField, openGradeDropdown === 'section' && styles.gradeDropdownFieldOpen]}>
               <GradeDropdown
-                value={selectedSection ? getGradeSectionLabel(selectedYearLevel, selectedSection) : null}
-                options={GRADE_SECTION_LETTERS.map((letter) => getGradeSectionLabel(selectedYearLevel, letter))}
-                placeholder={selectedYearLevel ? 'Select section' : 'Select year level first'}
+                value={
+                  selectedSection
+                    ? gradeSectionsForYear(gradeSectionConfig, selectedYearLevel).find((sec) => sec.id === selectedSection)?.label ?? null
+                    : null
+                }
+                options={gradeSectionsForYear(gradeSectionConfig, selectedYearLevel).map((sec) => sec.label)}
+                placeholder={
+                  !selectedYearLevel
+                    ? 'Select year level first'
+                    : gradeSectionsForYear(gradeSectionConfig, selectedYearLevel).length === 0
+                      ? 'No sections available'
+                      : 'Select section'
+                }
                 label="Select Section"
                 onSelect={(option) => {
-                  const index = GRADE_SECTION_LETTERS.findIndex(
-                    (letter) => getGradeSectionLabel(selectedYearLevel, letter) === option,
-                  );
-                  if (index >= 0) setSelectedSection(GRADE_SECTION_LETTERS[index]);
+                  const match = gradeSectionsForYear(gradeSectionConfig, selectedYearLevel).find((sec) => sec.label === option);
+                  if (match) setSelectedSection(match.id);
                   setOpenGradeDropdown(null);
                 }}
                 visible={openGradeDropdown === 'section'}
@@ -1846,7 +1876,9 @@ const DrawerMenu = ({
               <View style={styles.gradeConfirmDivider} />
               <View style={styles.gradeConfirmRow}>
                 <Text style={styles.gradeConfirmRowLabel}>Section</Text>
-                <Text style={styles.gradeConfirmRowValue}>{selectedSection ? getGradeSectionLabel(selectedYearLevel, selectedSection) : '-'}</Text>
+                <Text style={styles.gradeConfirmRowValue}>{selectedSection
+                    ? gradeSectionsForYear(gradeSectionConfig, selectedYearLevel).find((sec) => sec.id === selectedSection)?.label ?? selectedSection
+                    : '-'}</Text>
               </View>
               <View style={styles.gradeConfirmDivider} />
               <View style={styles.gradeConfirmRow}>

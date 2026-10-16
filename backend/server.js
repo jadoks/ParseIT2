@@ -33,7 +33,7 @@ import {
 } from "./liveEvents.js";
 import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster.js";
 // Teacher program upload + admin-configurable sections (see teacherPrograms.js)
-import { registerTeacherProgramRoutes } from "./teacherPrograms.js";
+import { DEFAULT_SECTION_CONFIG, registerTeacherProgramRoutes } from "./teacherPrograms.js";
 
   import officeparser from "officeparser";
 
@@ -6686,11 +6686,23 @@ app.post("/create-admin", async (req, res) => {
 
       // Section (A/B/C) and year level (1-4) chosen by the student on the upload
       // screen. Optional for older clients, but if sent they must be valid.
+      // Sections are admin-configurable (appConfig/sections, see /section-config),
+      // so the letter is validated against that list instead of a fixed A/B/C.
+      let sectionConfigYears = DEFAULT_SECTION_CONFIG;
+      try {
+        const sectionConfigSnap = await db.collection("appConfig").doc("sections").get();
+        if (sectionConfigSnap.exists && sectionConfigSnap.data()?.years) sectionConfigYears = sectionConfigSnap.data().years;
+      } catch (configError) {
+        console.warn("Section config unavailable, using defaults:", configError?.message);
+      }
+      const configuredSectionLetters = new Set(
+        Object.values(sectionConfigYears).flat().map((sec) => String(sec.id || "").slice(1).toUpperCase())
+      );
       let sectionLetterFromClient = null;
       if (requestedSection !== undefined && requestedSection !== null && String(requestedSection).trim() !== "") {
         sectionLetterFromClient = String(requestedSection).trim().toUpperCase().replace(/^SECTION\s*/, "");
-        if (!["A", "B", "C"].includes(sectionLetterFromClient)) {
-          return res.status(400).json({ error: "section must be A, B or C." });
+        if (!configuredSectionLetters.has(sectionLetterFromClient)) {
+          return res.status(400).json({ error: "Invalid section." });
         }
       }
       let yearLevelFromClient = null;
@@ -7027,12 +7039,18 @@ app.post("/create-admin", async (req, res) => {
               uniqueSchoolYears.sort((a, b) => startYearOf(a) - startYearOf(b));
               const ordinalYear = (n) => `${n}${["st", "nd", "rd"][n - 1] || "th"} Year`;
 
-              const sectionNameMap = {
-                  "1st Year": { "A": "Microsoft", "B": "Google", "C": "Amazon" },
-                  "2nd Year": { "A": "Algorithm", "B": "Pseudocode", "C": "Binary" },
-                  "3rd Year": { "A": "Python", "B": "Java", "C": "C++" },
-                  "4th Year": { "A": "Xamarin", "B": "Laravel", "C": "Flutter" }
-              };
+              // Section names come from the admin config. Keyed by "1st Year" etc. and
+              // the section letter, e.g. sectionNameMap["2nd Year"]["B"] -> "Pseudocode".
+              const sectionNameMap = {};
+              ["1st", "2nd", "3rd", "4th"].forEach((yearKey, idx) => {
+                  const map = {};
+                  (sectionConfigYears[yearKey] || []).forEach((sec) => {
+                      const id = String(sec.id || "");
+                      const name = String(sec.label || "").slice(id.length).trim();
+                      map[id.slice(1)] = name || `Section ${id.slice(1)}`;
+                  });
+                  sectionNameMap[`${yearKey} Year`] = map;
+              });
 
               // Each BSIT section is enrolled under its own block of CODE-column
               // values (CS#), but only the FIRST semester of the first year is a
@@ -7077,8 +7095,8 @@ app.post("/create-admin", async (req, res) => {
                   for (const prevDoc of previousSnap.docs) {
                       const prev = prevDoc.data() || {};
                       if (!sectionLetter) {
-                          const byName = ["A", "B", "C"].find(
-                              (l) => sectionNameMap[prev.yearLevel]?.[l] === prev.section
+                          const byName = Object.keys(sectionNameMap[prev.yearLevel] || {}).find(
+                              (l) => sectionNameMap[prev.yearLevel][l] === prev.section
                           );
                           sectionLetter = prev.sectionLetter || byName || null;
                       }
@@ -16557,6 +16575,94 @@ app.get(
       } catch (error) {
         console.error("Latin honors error:", error);
         return res.status(500).json({ error: error.message || "Failed to generate Latin Honors." });
+      }
+    }
+  );
+
+  /**
+   * LATIN HONORS WORD (.docx) EXPORT (admin only)
+   * Fills templates/latin-honors-template.docx (CTU letterhead + signatories are
+   * already in the template). Template tags: {date}, {schoolYear},
+   * {#students}{no} {name} {gwa} {latinHonor}{/students}.
+   *
+   * Body (built by LatinHonors.tsx from the on-screen QUALIFIED list, so the form
+   * always matches what the admin sees; not-qualified students are never sent):
+   *   { schoolYear: "2025",   // graduating start year (or "S.Y 2025 - 2026")
+   *     students: [{ name, gwa, honor: "summa" | "magna" | "cumLaude" }, ...] }
+   */
+  app.post(
+    "/latin-honors/export-docx",
+    requireAuth,
+    requireRoleOrSelf({ allowedRoles: [] }),
+    async (req, res) => {
+      try {
+        const rawYear = String(req.body?.schoolYear || "").replace(/[^0-9]/g, "");
+        const startYear = Number(rawYear.slice(0, 4));
+        if (rawYear.slice(0, 4).length !== 4 || !Number.isInteger(startYear)) {
+          return res.status(400).json({ error: "schoolYear must contain a valid 4-digit year." });
+        }
+
+        const incoming = Array.isArray(req.body?.students) ? req.body.students : [];
+        const bandOrder = LATIN_HONOR_BANDS.map((band) => band.key);
+        const cleaned = incoming
+          .map((student) => ({
+            name: String(student?.name || "").trim(),
+            gwa: Number(student?.gwa),
+            band: LATIN_HONOR_BANDS.find((item) => item.key === student?.honor),
+          }))
+          .filter((student) => student.name && Number.isFinite(student.gwa) && student.band);
+
+        if (cleaned.length === 0) {
+          return res.status(400).json({ error: "There are no Latin Honors students to export." });
+        }
+
+        // Summa -> Magna -> Cum Laude, then best (lowest) GWA first.
+        cleaned.sort(
+          (a, b) =>
+            bandOrder.indexOf(a.band.key) - bandOrder.indexOf(b.band.key) ||
+            a.gwa - b.gwa ||
+            a.name.localeCompare(b.name)
+        );
+
+        const templatePath = path.join(process.cwd(), "templates", "latin-honors-template.docx");
+        if (!fs.existsSync(templatePath)) {
+          return res.status(500).json({
+            error: "Latin Honors template is missing on the server (templates/latin-honors-template.docx).",
+          });
+        }
+
+        const zip = new PizZip(fs.readFileSync(templatePath, "binary"));
+        const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+        doc.render({
+          date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+          schoolYear: `${startYear}-${startYear + 1}`, // template reads "Academic Year {schoolYear}"
+          students: cleaned.map((student, index) => ({
+            no: String(index + 1),
+            name: student.name,
+            gwa: student.gwa.toFixed(3),
+            latinHonor: student.band.label,
+          })),
+        });
+
+        const buffer = doc.getZip().generate({ type: "nodebuffer" });
+        const fileName = `latin-honors-form-${startYear}-${startYear + 1}.docx`;
+
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+        return res.send(buffer);
+      } catch (error) {
+        console.error("Latin honors docx export error:", error);
+        const templateErrors = error?.properties?.errors;
+        const detail = Array.isArray(templateErrors)
+          ? templateErrors.map((e) => e?.properties?.explanation).filter(Boolean).join("; ")
+          : null;
+        return res.status(500).json({
+          error: detail || error.message || "Failed to generate the Latin Honors Word form.",
+        });
       }
     }
   );

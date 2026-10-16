@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -30,7 +33,6 @@ type LatinStudent = {
   semesters: SemesterGwa[];
   honor?: HonorKey;
   honorLabel?: string;
-  reasons?: string[];
 };
 
 type Band = { key: HonorKey; label: string; min: number; max: number };
@@ -45,10 +47,8 @@ type LatinHonorsResult = {
     summa: number;
     magna: number;
     cumLaude: number;
-    notQualified: number;
   };
   qualified: LatinStudent[];
-  notQualified: LatinStudent[];
 };
 
 type Props = {
@@ -73,16 +73,36 @@ const formatGwa = (value: number | null | undefined) =>
 
 const formatRange = (band: Band) => `${band.min.toFixed(3)} – ${band.max.toFixed(3)}`;
 
+// Side-by-side columns (Summa | Magna | Cum Laude) from this width up.
+const COLUMNS_MIN_WIDTH = 1100;
+
+// ArrayBuffer -> base64 (React Native has no Buffer; used to save the .docx on native).
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer);
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    out += B64[a >> 2] + B64[((a & 3) << 4) | (b >> 4)];
+    out += i + 1 < bytes.length ? B64[((b & 15) << 2) | (c >> 6)] : '=';
+    out += i + 2 < bytes.length ? B64[c & 63] : '=';
+  }
+  return out;
+};
+
 export default function LatinHonors({ apiBaseUrl }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
+  const useColumns = width >= COLUMNS_MIN_WIDTH;
 
   const [startYear, setStartYear] = useState('2025');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<LatinHonorsResult | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showNotQualified, setShowNotQualified] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const startYearNumber = Number(startYear);
   const hasValidYear = startYear.length === 4 && Number.isInteger(startYearNumber);
@@ -112,6 +132,66 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
       setError(err?.message || 'Failed to generate Latin Honors.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Downloads the Latin Honors Word form (server fills templates/latin-honors-template.docx).
+  // Only the qualified students are sent.
+  const handleDownloadForm = async () => {
+    if (!result || result.qualified.length === 0 || isDownloading) return;
+
+    setIsDownloading(true);
+    setError('');
+
+    try {
+      const response = await apiFetch('/latin-honors/export-docx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolYear: startYear,
+          students: result.qualified.map((student) => ({
+            name: student.name,
+            gwa: student.gwa,
+            honor: student.honor,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to download the Latin Honors form.');
+      }
+
+      const fileName = `latin-honors-form-${startYearNumber}-${startYearNumber + 1}.docx`;
+
+      if (Platform.OS === 'web') {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const uri = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.writeAsStringAsync(uri, arrayBufferToBase64(await response.arrayBuffer()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            dialogTitle: 'Latin Honors Form',
+          });
+        } else {
+          throw new Error('Sharing is not available on this device.');
+        }
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to download the Latin Honors form.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -153,43 +233,6 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
           <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#98A2B3" />
         </TouchableOpacity>
         {isOpen && renderSemesterBreakdown(student)}
-      </View>
-    );
-  };
-
-  const renderNotQualifiedRow = (student: LatinStudent) => {
-    const isOpen = expandedId === `nq-${student.id}`;
-
-    return (
-      <View key={student.id} style={styles.studentCard}>
-        <TouchableOpacity
-          style={styles.studentRow}
-          onPress={() => setExpandedId(isOpen ? null : `nq-${student.id}`)}
-          activeOpacity={0.8}
-        >
-          <View style={styles.studentInfo}>
-            <Text style={styles.studentName} numberOfLines={2}>
-              {student.name}
-            </Text>
-            <Text style={styles.studentMeta}>
-              {student.section} · {student.reasons?.length ?? 0} issue
-              {(student.reasons?.length ?? 0) === 1 ? '' : 's'}
-            </Text>
-          </View>
-          <Text style={[styles.studentGwa, styles.studentGwaMuted]}>{formatGwa(student.gwa)}</Text>
-          <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#98A2B3" />
-        </TouchableOpacity>
-        {isOpen && (
-          <View style={styles.breakdown}>
-            {(student.reasons ?? []).map((reason, index) => (
-              <View key={index} style={styles.reasonRow}>
-                <Ionicons name="alert-circle-outline" size={15} color="#B42318" style={styles.reasonIcon} />
-                <Text style={styles.reasonText}>{reason}</Text>
-              </View>
-            ))}
-            {student.semesters.length > 0 && student.gwa !== null && renderSemesterBreakdown(student)}
-          </View>
-        )}
       </View>
     );
   };
@@ -271,9 +314,26 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
 
       {result && (
         <>
-          <Text style={styles.coverage}>
-            Graduating {result.graduatingSchoolYear} · grades from {result.coverage}
-          </Text>
+          <View style={[styles.coverageRow, isMobile && styles.coverageRowMobile]}>
+            <Text style={styles.coverage}>
+              Graduating {result.graduatingSchoolYear} · grades from {result.coverage}
+            </Text>
+            {result.qualified.length > 0 && (
+              <TouchableOpacity
+                style={[styles.downloadBtn, isMobile && styles.downloadBtnMobile, isDownloading && styles.generateBtnDisabled]}
+                onPress={handleDownloadForm}
+                disabled={isDownloading}
+                activeOpacity={0.85}
+              >
+                {isDownloading ? (
+                  <ActivityIndicator size="small" color="#8B0000" />
+                ) : (
+                  <Ionicons name="download-outline" size={18} color="#8B0000" />
+                )}
+                <Text style={styles.downloadBtnText}>{isDownloading ? 'Preparing...' : 'Download Form'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* GWA ranges (from the server, so they stay in one place). */}
           <View style={styles.statsRow}>
@@ -287,11 +347,6 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
                 </View>
               );
             })}
-            <View style={[styles.statCard, { backgroundColor: '#FFF6F5', borderColor: '#FDA29B' }]}>
-              <Text style={[styles.statCount, { color: '#B42318' }]}>{result.summary.notQualified}</Text>
-              <Text style={[styles.statLabel, { color: '#B42318' }]}>Not qualified</Text>
-              <Text style={[styles.statRange, { color: '#B42318' }]}>of {result.summary.candidates} candidates</Text>
-            </View>
           </View>
 
           {result.qualified.length === 0 ? (
@@ -300,37 +355,29 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
               <Text style={styles.emptyText}>No student qualifies for Latin Honors for this school year.</Text>
             </View>
           ) : (
-            result.bands.map((band) => {
-              const students = result.qualified.filter((student) => student.honor === band.key);
-              if (students.length === 0) return null;
-              const tone = HONOR_STYLE[band.key];
+            <View style={useColumns ? styles.columnsRow : undefined}>
+              {result.bands.map((band) => {
+                const students = result.qualified.filter((student) => student.honor === band.key);
+                // Stacked layout hides empty honors; the 3-column table keeps all
+                // three so Summa | Magna | Cum Laude always line up.
+                if (students.length === 0 && !useColumns) return null;
+                const tone = HONOR_STYLE[band.key];
 
-              return (
-                <View key={band.key} style={styles.group}>
-                  <View style={[styles.groupHeader, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                    <Ionicons name="ribbon" size={18} color={tone.fg} />
-                    <Text style={[styles.groupTitle, { color: tone.fg }]}>{band.label}</Text>
-                    <Text style={[styles.groupCount, { color: tone.fg }]}>{students.length}</Text>
+                return (
+                  <View key={band.key} style={[styles.group, useColumns && styles.column]}>
+                    <View style={[styles.groupHeader, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                      <Ionicons name="ribbon" size={18} color={tone.fg} />
+                      <Text style={[styles.groupTitle, { color: tone.fg }]}>{band.label}</Text>
+                      <Text style={[styles.groupCount, { color: tone.fg }]}>{students.length}</Text>
+                    </View>
+                    {students.length === 0 ? (
+                      <Text style={styles.columnEmpty}>No students</Text>
+                    ) : (
+                      students.map(renderQualifiedRow)
+                    )}
                   </View>
-                  {students.map(renderQualifiedRow)}
-                </View>
-              );
-            })
-          )}
-
-          {result.notQualified.length > 0 && (
-            <View style={styles.group}>
-              <TouchableOpacity
-                style={[styles.groupHeader, styles.groupHeaderNeutral]}
-                onPress={() => setShowNotQualified((prev) => !prev)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="close-circle-outline" size={18} color="#B42318" />
-                <Text style={[styles.groupTitle, { color: '#344054' }]}>Not qualified</Text>
-                <Text style={[styles.groupCount, { color: '#344054' }]}>{result.notQualified.length}</Text>
-                <Ionicons name={showNotQualified ? 'chevron-up' : 'chevron-down'} size={18} color="#667085" />
-              </TouchableOpacity>
-              {showNotQualified && result.notQualified.map(renderNotQualifiedRow)}
+                );
+              })}
             </View>
           )}
         </>
@@ -470,7 +517,23 @@ const styles = StyleSheet.create({
   emptyBox: { alignItems: 'center', paddingVertical: 36, gap: 10 },
   emptyText: { fontFamily: FONT_BODY, fontSize: 14, color: '#667085', textAlign: 'center' },
 
-  coverage: { fontFamily: FONT_BODY, fontSize: 12, color: '#667085', marginBottom: 12 },
+  coverageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  coverageRowMobile: { flexDirection: 'column', alignItems: 'stretch' },
+  coverage: { fontFamily: FONT_BODY, flex: 1, fontSize: 12, color: '#667085' },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 42,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#8B0000',
+    backgroundColor: '#FFF6F5',
+  },
+  downloadBtnMobile: { width: '100%' },
+  downloadBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: WEIGHT_EMPHASIS },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   statCard: {
     flexGrow: 1,
@@ -485,6 +548,10 @@ const styles = StyleSheet.create({
   statRange: { fontFamily: FONT_BODY, fontSize: 12, marginTop: 2, opacity: 0.85 },
 
   group: { marginBottom: 18 },
+  // Large screens: Summa | Magna | Cum Laude side by side.
+  columnsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  column: { flex: 1, minWidth: 0 },
+  columnEmpty: { fontFamily: FONT_BODY, fontSize: 13, color: '#98A2B3', textAlign: 'center', paddingVertical: 18 },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -495,7 +562,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8,
   },
-  groupHeaderNeutral: { backgroundColor: '#F8F9FB', borderColor: '#E2E5EA' },
   groupTitle: { fontFamily: FONT_BODY, flex: 1, fontSize: 15, fontWeight: WEIGHT_EMPHASIS },
   groupCount: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
 
@@ -525,7 +591,4 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: { fontFamily: FONT_BODY, flex: 1, fontSize: 12, color: '#475467', paddingRight: 10 },
   breakdownValue: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: '#111827' },
-  reasonRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8 },
-  reasonIcon: { marginTop: 1, marginRight: 6 },
-  reasonText: { fontFamily: FONT_BODY, flex: 1, fontSize: 12, lineHeight: 17, color: '#B42318' },
 });
