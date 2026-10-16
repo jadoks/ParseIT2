@@ -26,6 +26,7 @@ import ManageClass from "./Final_Admin_Components/ManageClass";
 import ManageStudent from "./Final_Admin_Components/ManageStudent";
 import ManageTeacher from "./Final_Admin_Components/ManageTeacher";
 import ManageUserData from "./Final_Admin_Components/ManageUserData";
+import ProspectusManager from "./Final_Admin_Components/ProspectusManager";
 import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
 import StudentAtRisk from "./Final_Admin_Components/StudentAtRisk";
@@ -309,6 +310,10 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
 
     if (activeSideNav === "Latin Honors") {
       return <LatinHonors apiBaseUrl={API_BASE_URL} />;
+    }
+
+    if (activeSideNav === "Prospectus") {
+      return <ProspectusManager />;
     }
 
     if (activeSideNav === "Analytics") {

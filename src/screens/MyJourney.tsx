@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
+import Prospectus from './Prospectus';
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -76,6 +77,8 @@ const MyJourney = ({
   const [startYearInput, setStartYearInput] = useState(() => getDefaultStartYear());
   const [sem, setSem] = useState(SEMS[0]);
   const [show, setShow] = useState(false);
+  // 'record' = one-semester grade record, 'prospectus' = full curriculum checklist
+  const [view, setView] = useState<'record' | 'prospectus'>('record');
 
   // 👇 NEW: focus tracking for the year input, so it gets the same
   // highlighted-border focus behavior used elsewhere in the app (e.g.
@@ -262,11 +265,41 @@ const MyJourney = ({
           <Text style={styles.pageEyebrow}>Academic Record</Text>
           <Text style={styles.pageTitle}>My Journey</Text>
           <Text style={styles.pageSubtitle}>
-            View your official academic record from your uploaded grade file.
+            View your official academic record and curriculum progress from your uploaded grade file.
           </Text>
         </View>
       </View>
 
+      <View style={styles.viewSwitch}>
+        {([
+          { key: 'record', label: 'Semester Record', icon: 'file-document-outline' },
+          { key: 'prospectus', label: 'Prospectus', icon: 'format-list-checks' },
+        ] as const).map((tab) => {
+          const active = view === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.viewSwitchBtn, active && styles.viewSwitchBtnActive]}
+              onPress={() => setView(tab.key)}
+              activeOpacity={0.85}
+            >
+              <MaterialCommunityIcons name={tab.icon} size={18} color={active ? '#FFFFFF' : '#6B7280'} />
+              <Text style={[styles.viewSwitchText, active && styles.viewSwitchTextActive]}>{tab.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {view === 'prospectus' && (
+        <Prospectus
+          currentStudent={currentStudent}
+          studentName={resolvedStudentName}
+          apiBaseUrl={apiBaseUrl}
+        />
+      )}
+
+      {view === 'record' && (
+      <>
       <View style={[styles.filterCard, isMobile && styles.filterCardMobile]}>
         <View style={[styles.filterHeaderRow, isMobile && styles.filterHeaderRowMobile]}>
           <View>
@@ -459,12 +492,19 @@ const MyJourney = ({
       )}
 
       {renderSemesterDropdown()}
+      </>
+      )}
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F4F7FB' },
+  viewSwitch: { flexDirection: 'row', gap: 6, padding: 5, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 18 },
+  viewSwitchBtn: { flex: 1, height: 44, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  viewSwitchBtnActive: { backgroundColor: '#8B0000' },
+  viewSwitchText: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#6B7280' },
+  viewSwitchTextActive: { color: '#FFFFFF' },
   container: { width: '100%', maxWidth: 1280, alignSelf: 'center', padding: 24, paddingBottom: 44 },
   containerTablet: { paddingHorizontal: 20 },
   containerMobile: { padding: 14, paddingBottom: 28 },

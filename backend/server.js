@@ -34,6 +34,8 @@ import {
 import { createUserDataRoster, ROSTER_REJECTION_MESSAGE } from "./userDataRoster.js";
 // Teacher program upload + admin-configurable sections (see teacherPrograms.js)
 import { DEFAULT_SECTION_CONFIG, registerTeacherProgramRoutes } from "./teacherPrograms.js";
+// BSIT prospectus + per-student curriculum progress (see prospectus.js)
+import { registerProspectusRoutes } from "./prospectus.js";
 
   import officeparser from "officeparser";
 
@@ -23460,6 +23462,20 @@ ${spec.rules}
     getCurrentAcademicTerm: typeof getCurrentAcademicTerm === "function" ? getCurrentAcademicTerm : undefined,
   });
   // ==================== END TEACHER PROGRAM + SECTION CONFIG ====================
+
+  // ====================== PROSPECTUS ======================
+  registerProspectusRoutes(app, {
+    db,
+    bucket,
+    FieldValue,
+    requireAuth,
+    findUserProfileByAuthUid,
+    generateGradeAIText,
+    createReadSignedUrl,
+    invalidateSignedUrlCache,
+    sanitizeFileName,
+  });
+  // ==================== END PROSPECTUS ====================
 
   const PORT = process.env.PORT || 5000;
 
