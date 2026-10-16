@@ -819,7 +819,15 @@ function DeansListFlowModal({ visible, onClose, isMobile, isLargeScreen }: FlowM
 }
 
 // UPDATED: Accept apiBaseUrl as a prop
-export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
+// `embedded` = rendered inside the admin shell (AdminApp already pads the page), so the screen
+// drops its own outer padding/background and the card lines up with Latin Honors.
+export default function HonorsScreen({
+  apiBaseUrl,
+  embedded = false,
+}: {
+  apiBaseUrl: string;
+  embedded?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const isLargeScreen = width >= 1024;
@@ -2097,12 +2105,13 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, embedded && styles.containerEmbedded]}>
       <ScrollView
         contentContainerStyle={[
           styles.content,
           isMobile && styles.contentMobile,
           isLargeScreen && styles.contentLarge,
+          embedded && styles.contentEmbedded,
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -2110,7 +2119,11 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         {/* 🔥 NEW: title/subtitle/Download Excel row, the filter controls,
             and the results area now all share one outer white card. */}
         <View style={styles.deansListCard}>
-          <View style={styles.headerRow}>
+          <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
+            <View style={styles.headerTitleBlock}>
+            <View style={styles.headerIcon}>
+              <Ionicons name="medal-outline" size={26} color="#8B0000" />
+            </View>
             <View style={styles.titleColumn}>
               <View style={styles.titleRow}>
                 <Text
@@ -2136,6 +2149,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               <Text style={styles.subHeadingText}>
                 Provide the academic start year and semester to view the qualified Deans List students
               </Text>
+            </View>
             </View>
 
             <View style={[styles.exportButtonsRow, isMobile && styles.exportButtonsRowMobile]}>
@@ -2708,6 +2722,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F4F7FB',
   },
+  containerEmbedded: { backgroundColor: 'transparent' },
+  contentEmbedded: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
   content: {
     paddingHorizontal: 40,
     paddingTop: 30,
@@ -2737,7 +2757,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 24,
+    marginBottom: 18,
+  },
+  headerRowMobile: { flexDirection: 'column', alignItems: 'stretch', gap: 12 },
+  headerTitleBlock: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  headerIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#F1E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
   },
   titleColumn: {
     flex: 1,

@@ -304,7 +304,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
 
   const renderContent = () => {
     if (activeSideNav === "Dean's List") {
-      return <Honors apiBaseUrl={API_BASE_URL} />;
+      return <Honors apiBaseUrl={API_BASE_URL} embedded />;
     }
 
     if (activeSideNav === "Latin Honors") {
