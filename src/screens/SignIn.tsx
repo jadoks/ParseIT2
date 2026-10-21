@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import React, { useEffect, useRef, useState } from 'react';
@@ -128,6 +129,16 @@ const SCREEN_SLIDE_DISTANCE = 24;
 const MAX_FREE_ATTEMPTS = 5;
 const BASE_LOCK_SECONDS = 30;
 const MAX_LOCK_SECONDS = 15 * 60;
+// Saved on the device so the lock survives an app restart / page reload.
+const LOCKOUT_STORAGE_KEY = 'signin_lockout_v1';
+
+// Lives at module level (outside the component) so the lockout keeps counting
+// down even when SignIn unmounts — e.g. the user goes to Landing or Register
+// and comes back. Component state is initialised from this and synced to it.
+const lockoutStore: { failedAttempts: number; lockedUntil: number | null } = {
+  failedAttempts: 0,
+  lockedUntil: null,
+};
 
 const getLockSeconds = (failedAttempts: number) => {
   if (failedAttempts < MAX_FREE_ATTEMPTS) return 0;
@@ -196,8 +207,57 @@ const SignIn = ({
   const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
 
   // ── Login lockout state ─────────────────────────────────────────────────
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(lockoutStore.failedAttempts);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(
+    lockoutStore.lockedUntil && lockoutStore.lockedUntil > Date.now()
+      ? lockoutStore.lockedUntil
+      : null
+  );
+
+  // Keep the module-level store in sync so a remount restores the countdown.
+  useEffect(() => {
+    lockoutStore.failedAttempts = failedAttempts;
+  }, [failedAttempts]);
+  useEffect(() => {
+    lockoutStore.lockedUntil = lockedUntil;
+  }, [lockedUntil]);
+
+  // Restore the lock from device storage after an app restart / page reload,
+  // and save it again whenever it changes.
+  const [lockoutLoaded, setLockoutLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(LOCKOUT_STORAGE_KEY);
+        if (raw && !cancelled) {
+          const saved = JSON.parse(raw);
+          const savedAttempts = Number(saved?.failedAttempts) || 0;
+          const savedUntil =
+            typeof saved?.lockedUntil === 'number' ? saved.lockedUntil : null;
+          setFailedAttempts((prev) => Math.max(prev, savedAttempts));
+          if (savedUntil && savedUntil > Date.now()) {
+            setLockedUntil((prev) => Math.max(prev ?? 0, savedUntil));
+          }
+        }
+      } catch {
+        // Storage unavailable — fall back to in-memory lockout only.
+      } finally {
+        if (!cancelled) setLockoutLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lockoutLoaded) return;
+    AsyncStorage.setItem(
+      LOCKOUT_STORAGE_KEY,
+      JSON.stringify({ failedAttempts, lockedUntil })
+    ).catch(() => {});
+  }, [failedAttempts, lockedUntil, lockoutLoaded]);
   const [now, setNow] = useState(Date.now());
 
   const secondsLeft = lockedUntil
@@ -435,10 +495,32 @@ const SignIn = ({
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data?.error || 'Unable to find user.');
+      const lookupError: any = new Error(data?.error || 'Unable to find user.');
+      // 429 = the server says this account is locked (e.g. attempts made on
+      // another device). Carry the remaining seconds to the catch block.
+      if (response.status === 429) {
+        lookupError.lockSeconds = Number(data?.secondsLeft) || BASE_LOCK_SECONDS;
+      }
+      throw lookupError;
     }
 
     return data;
+  };
+
+  // Tell the backend about a wrong password. Returns how many seconds the
+  // server has locked this account for (0 if none / request failed).
+  const reportLoginFailure = async (userId: string): Promise<number> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/login-failed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId }),
+      });
+      const data = await response.json();
+      return response.ok ? Number(data?.secondsLeft) || 0 : 0;
+    } catch {
+      return 0;
+    }
   };
 
   const createBackendSession = async (idToken: string) => {
@@ -650,13 +732,27 @@ const SignIn = ({
         await signOut(auth);
       } catch {}
 
+      // The server says this account is locked — show its countdown here too.
+      if (typeof error?.lockSeconds === 'number') {
+        setLockedUntil(Date.now() + error.lockSeconds * 1000);
+        setNow(Date.now());
+        showFeedback(
+          'error',
+          'Too Many Attempts',
+          `Sign in is locked for ${formatWait(error.lockSeconds)}.`
+        );
+        return;
+      }
+
       // Count the failure toward the lockout, but not network problems
       // (fetch throws a TypeError when the server can't be reached).
       const isNetworkError = error instanceof TypeError;
       if (!isNetworkError) {
         const attempts = failedAttempts + 1;
         setFailedAttempts(attempts);
-        const lockSeconds = getLockSeconds(attempts);
+        // Also record it on the backend; use whichever lock is longer.
+        const serverLockSeconds = await reportLoginFailure(enteredId);
+        const lockSeconds = Math.max(getLockSeconds(attempts), serverLockSeconds);
 
         if (lockSeconds > 0) {
           setLockedUntil(Date.now() + lockSeconds * 1000);

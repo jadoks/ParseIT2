@@ -4054,6 +4054,53 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
 
 
   /**
+   * LOGIN LOCKOUT (server-side)
+   *
+   * Failed logins are tracked per account ID in Firestore (collection
+   * "loginLockouts"), so the lock survives server restarts, works across
+   * several server instances, and applies on every device.
+   * 5 failures -> locked 30s; each further failure after the lock ends doubles
+   * the wait (30s, 60s, 120s ...) up to 15 minutes. Must match SignIn.tsx.
+   */
+  const LOGIN_MAX_FREE_ATTEMPTS = 5;
+  const LOGIN_BASE_LOCK_SECONDS = 30;
+  const LOGIN_MAX_LOCK_SECONDS = 15 * 60;
+  // If the last failure is older than this, the failure counter starts over.
+  const LOGIN_ATTEMPT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+  const getLoginLockSeconds = (failedAttempts) => {
+    if (failedAttempts < LOGIN_MAX_FREE_ATTEMPTS) return 0;
+    const level = failedAttempts - LOGIN_MAX_FREE_ATTEMPTS;
+    return Math.min(
+      LOGIN_BASE_LOCK_SECONDS * Math.pow(2, level),
+      LOGIN_MAX_LOCK_SECONDS
+    );
+  };
+
+  // Hash the ID so characters like "/" can never break the Firestore path.
+  const loginLockRef = (canonicalId) =>
+    db
+      .collection("loginLockouts")
+      .doc(
+        crypto
+          .createHash("sha256")
+          .update(String(canonicalId).trim().toLowerCase())
+          .digest("hex")
+      );
+
+  const getCanonicalLoginId = (match) => {
+    const d = match.data || {};
+    return d.studentId || d.teacherId || d.adminId || match.id;
+  };
+
+  const getLoginLockSecondsLeft = async (canonicalId) => {
+    const snap = await loginLockRef(canonicalId).get();
+    if (!snap.exists) return 0;
+    const lockedUntil = Number(snap.data().lockedUntil) || 0;
+    return Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000));
+  };
+
+  /**
    * AUTH ROUTES
    */
 
@@ -4085,6 +4132,16 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       });
 
       const profile = await findUserProfileByAuthUid(decodedToken.uid);
+
+      // Successful login -> clear this account's failed-attempt lockout.
+      if (profile?.id) {
+        try {
+          await loginLockRef(profile.id).delete();
+        } catch (lockErr) {
+          console.error("Failed to clear login lockout:", lockErr);
+        }
+      }
+
       if (profile?.ref) {
         await profile.ref.set(
           {
@@ -4319,6 +4376,63 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
     }
   });
 
+  // Called by the app after a wrong password. Records the failure and returns
+  // how many seconds this account is now locked for (0 = not locked).
+  app.post("/auth/login-failed", async (req, res) => {
+    try {
+      const { id } = req.body;
+
+      if (!id || typeof id !== "string" || !id.trim()) {
+        return res.status(400).json({ error: "ID is required." });
+      }
+
+      const matches = await findUsersByIdAcrossAllRoles(id.trim());
+
+      // Unknown / ambiguous IDs are not tracked (avoids junk documents).
+      if (matches.length !== 1) {
+        return res.json({ success: true, secondsLeft: 0 });
+      }
+
+      const ref = loginLockRef(getCanonicalLoginId(matches[0]));
+
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? snap.data() : {};
+        const now = Date.now();
+
+        // Already locked: don't pile on extra failures.
+        const lockedUntil = Number(data.lockedUntil) || 0;
+        if (lockedUntil > now) {
+          return { secondsLeft: Math.ceil((lockedUntil - now) / 1000) };
+        }
+
+        let failedAttempts = Number(data.failedAttempts) || 0;
+        const lastFailedAt = Number(data.lastFailedAt) || 0;
+        if (lastFailedAt && now - lastFailedAt > LOGIN_ATTEMPT_WINDOW_MS) {
+          failedAttempts = 0;
+        }
+
+        failedAttempts += 1;
+        const lockSeconds = getLoginLockSeconds(failedAttempts);
+
+        tx.set(ref, {
+          failedAttempts,
+          lockedUntil: lockSeconds > 0 ? now + lockSeconds * 1000 : 0,
+          lastFailedAt: now,
+        });
+
+        return { secondsLeft: lockSeconds };
+      });
+
+      return res.json({ success: true, secondsLeft: result.secondsLeft });
+    } catch (error) {
+      console.error("Login failed report error:", error);
+      return res.status(500).json({
+        error: error.message || "Failed to record login attempt.",
+      });
+    }
+  });
+
   app.post("/auth/lookup-user", async (req, res) => {
     try {
       const { id } = req.body;
@@ -4347,6 +4461,19 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
 
       const matchedUser = matches[0];
       const userData = matchedUser.data || {};
+
+      // Refuse while this account is locked from too many failed logins.
+      const lockSecondsLeft = await getLoginLockSecondsLeft(
+        getCanonicalLoginId(matchedUser)
+      );
+      if (lockSecondsLeft > 0) {
+        res.set("Retry-After", String(lockSecondsLeft));
+        return res.status(429).json({
+          error: "Too many failed attempts. Please try again later.",
+          locked: true,
+          secondsLeft: lockSecondsLeft,
+        });
+      }
 
       return res.json({
         success: true,
