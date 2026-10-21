@@ -120,6 +120,27 @@ const API_BASE_URL = getApiBaseUrl();
 const SCREEN_TRANSITION_DURATION = 280;
 const SCREEN_SLIDE_DISTANCE = 24;
 
+// ─── Login lockout ──────────────────────────────────────────────────────────
+// After MAX_FREE_ATTEMPTS wrong logins the Sign In button is locked for
+// BASE_LOCK_SECONDS. Every further failed attempt once the lock ends locks it
+// again for double the previous time (30s → 60s → 120s → ...), up to
+// MAX_LOCK_SECONDS. A successful login resets everything.
+const MAX_FREE_ATTEMPTS = 5;
+const BASE_LOCK_SECONDS = 30;
+const MAX_LOCK_SECONDS = 15 * 60;
+
+const getLockSeconds = (failedAttempts: number) => {
+  if (failedAttempts < MAX_FREE_ATTEMPTS) return 0;
+  const level = failedAttempts - MAX_FREE_ATTEMPTS; // 0 for the 5th failure
+  return Math.min(BASE_LOCK_SECONDS * Math.pow(2, level), MAX_LOCK_SECONDS);
+};
+
+const formatWait = (totalSeconds: number) => {
+  const m = Math.floor(totalSeconds / 60);
+  const sec = totalSeconds % 60;
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+};
+
 const SignIn = ({
   onLogIn,
   onGoToLanding,
@@ -173,6 +194,38 @@ const SignIn = ({
   // acknowledged the message (see the password-reset success case below).
   // Toast auto-dismisses, so we run that follow-up when it hides instead.
   const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
+
+  // ── Login lockout state ─────────────────────────────────────────────────
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  const secondsLeft = lockedUntil
+    ? Math.max(0, Math.ceil((lockedUntil - now) / 1000))
+    : 0;
+  const isLocked = secondsLeft > 0;
+
+  // Tick once a second while locked so the countdown updates and the button
+  // unlocks by itself when the time is up.
+  useEffect(() => {
+    if (!lockedUntil) return;
+    setNow(Date.now());
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= lockedUntil) {
+        clearInterval(timer);
+        setLockedUntil(null);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockedUntil]);
+
+  const signInButtonLabel = isLoading
+    ? 'Signing in...'
+    : isLocked
+    ? `Try again in ${formatWait(secondsLeft)}`
+    : 'Sign In';
 
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
@@ -533,6 +586,15 @@ const SignIn = ({
   };
 
   const handleLogIn = async () => {
+    if (isLocked) {
+      showFeedback(
+        'error',
+        'Too Many Attempts',
+        `Please wait ${formatWait(secondsLeft)} before trying again.`
+      );
+      return;
+    }
+
     if (!id.trim() || !password.trim()) {
       showFeedback('error', 'Missing Fields', 'Enter your ID and password.');
       return;
@@ -561,6 +623,10 @@ const SignIn = ({
 
       await firebasePasswordSignIn(user.email, enteredPassword);
 
+      // Correct credentials — clear the lockout counter.
+      setFailedAttempts(0);
+      setLockedUntil(null);
+
       if (user.mustChangePassword) {
         // ✅ Skip the PIN step entirely — jump straight to setting a real
         // password using the temp password as proof of ownership.
@@ -584,7 +650,30 @@ const SignIn = ({
         await signOut(auth);
       } catch {}
 
-      showFeedback('error', 'Login Failed', error?.message || 'Invalid ID or password.');
+      // Count the failure toward the lockout, but not network problems
+      // (fetch throws a TypeError when the server can't be reached).
+      const isNetworkError = error instanceof TypeError;
+      if (!isNetworkError) {
+        const attempts = failedAttempts + 1;
+        setFailedAttempts(attempts);
+        const lockSeconds = getLockSeconds(attempts);
+
+        if (lockSeconds > 0) {
+          setLockedUntil(Date.now() + lockSeconds * 1000);
+          setNow(Date.now());
+          showFeedback(
+            'error',
+            'Too Many Attempts',
+            `Sign in is locked for ${formatWait(lockSeconds)}.`
+          );
+          return;
+        }
+
+        showFeedback('error', 'Login Failed', error?.message || 'Invalid ID or password.');
+        return;
+      }
+
+      showFeedback('error', 'Login Failed', error?.message || 'Unable to sign in.');
     } finally {
       setIsLoading(false);
     }
@@ -912,14 +1001,12 @@ const SignIn = ({
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.logInButton, isLoading && styles.disabledButton]}
+        style={[styles.logInButton, (isLoading || isLocked) && styles.disabledButton]}
         onPress={handleLogIn}
         activeOpacity={0.9}
-        disabled={isLoading}
+        disabled={isLoading || isLocked}
       >
-        <Text style={styles.logInText}>
-          {isLoading ? 'Signing in...' : 'Sign In'}
-        </Text>
+        <Text style={styles.logInText}>{signInButtonLabel}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.registerButton}
@@ -1008,15 +1095,13 @@ const SignIn = ({
           style={[
             styles.mPrimaryButton,
             !isReadyToSignIn && styles.mPrimaryButtonIdle,
-            isLoading && styles.disabledButton,
+            (isLoading || isLocked) && styles.disabledButton,
           ]}
           onPress={handleLogIn}
           activeOpacity={0.9}
-          disabled={isLoading}
+          disabled={isLoading || isLocked}
         >
-          <Text style={styles.mPrimaryButtonText}>
-            {isLoading ? 'Signing in...' : 'Sign In'}
-          </Text>
+          <Text style={styles.mPrimaryButtonText}>{signInButtonLabel}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
