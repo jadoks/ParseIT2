@@ -1532,10 +1532,12 @@ export default function AddClassModal({
                   </View>
                 )}
 
-                <View
-                  style={[styles.modalRow, isCompact && styles.modalRowStack]}
-                >
-                  <View style={[styles.modalCol, isCompact && styles.modalColStack]}>
+                {/* Instructor ID + School Year.
+                    Phones: Instructor ID on its own line, then S.Y. Start / End side-by-side.
+                    Wider: all three in one row. Plain (non-flex) wrappers on phones so the
+                    block always sizes to its content and can't collapse into the banner section. */}
+                <View style={[styles.modalSection, !isCompact && styles.instructorYearRowWide]}>
+                  <View style={isCompact ? styles.instructorColCompact : styles.instructorColWide}>
                     <Text style={styles.fieldLabel}>Instructor ID</Text>
                     <FormInput
                       icon="card-outline"
@@ -1549,32 +1551,31 @@ export default function AddClassModal({
                     />
                   </View>
 
-                  {/* Start/End school year stay side-by-side, even on phones. */}
                   <View style={[styles.yearPair, isCompact ? styles.yearPairCompact : styles.yearPairWide]}>
-                  <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>{isCompact ? "S.Y. Start" : "Academic Year (Start)"}</Text>
-                    <FormInput
-                      icon="calendar-outline"
-                      value={startYear}
-                      onChangeText={(text) =>
-                        setStartYear(text.replace(/[^0-9]/g, ""))
-                      }
-                      placeholder="2025"
-                      keyboardType="number-pad"
-                      maxLength={4}
-                    />
-                  </View>
+                    <View style={styles.yearCol}>
+                      <Text style={styles.fieldLabel}>{isCompact ? "S.Y. Start" : "Academic Year (Start)"}</Text>
+                      <FormInput
+                        icon="calendar-outline"
+                        value={startYear}
+                        onChangeText={(text) =>
+                          setStartYear(text.replace(/[^0-9]/g, ""))
+                        }
+                        placeholder="2025"
+                        keyboardType="number-pad"
+                        maxLength={4}
+                      />
+                    </View>
 
-                  <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>{isCompact ? "S.Y. End" : "Academic Year (End)"}</Text>
-                    <FormInput
-                      icon="calendar-outline"
-                      value={endYear}
-                      onChangeText={() => {}}
-                      placeholder="Auto"
-                      editable={false}
-                    />
-                  </View>
+                    <View style={styles.yearCol}>
+                      <Text style={styles.fieldLabel}>{isCompact ? "S.Y. End" : "Academic Year (End)"}</Text>
+                      <FormInput
+                        icon="calendar-outline"
+                        value={endYear}
+                        onChangeText={() => {}}
+                        placeholder="Auto"
+                        editable={false}
+                      />
+                    </View>
                   </View>
                 </View>
                   </>
@@ -1720,11 +1721,16 @@ const styles = StyleSheet.create({
   dayChipCompact: { flex: 1, minWidth: 0, paddingHorizontal: 0, paddingVertical: 10 },
   scheduleTimeRow: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 14 },
   scheduleRoomCol: { flexBasis: 180, minWidth: 180 },
-  yearPair: { flexDirection: "row", gap: 14 },
+  // Instructor ID + School Year block (see JSX). No zIndex here: it used to be 20,
+  // which painted this row on top of the banner section below it.
+  instructorYearRowWide: { flexDirection: "row", gap: 14 },
+  instructorColWide: { flex: 1 },
+  instructorColCompact: { marginBottom: 14 },
+  yearPair: { flexDirection: "row", gap: 12 },
   yearPairWide: { flex: 2 },
-  // Stacked (phone) layout: size to content. `flex: 0` collapses to zero height on RN Web.
-  yearPairCompact: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", gap: 12 },
-  modalColStack: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
+  yearPairCompact: { alignSelf: "stretch" },
+  // minWidth: 0 lets each half shrink evenly instead of overflowing a narrow phone.
+  yearCol: { flex: 1, minWidth: 0 },
   bannerPreviewCompact: { height: 120 },
   modalFooterCompact: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, gap: 10 },
   footerCancelCompact: { flex: 1, marginRight: 0, paddingHorizontal: 12 },
