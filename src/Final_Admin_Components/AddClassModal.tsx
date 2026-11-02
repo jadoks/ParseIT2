@@ -1535,7 +1535,7 @@ export default function AddClassModal({
                 <View
                   style={[styles.modalRow, isCompact && styles.modalRowStack]}
                 >
-                  <View style={styles.modalCol}>
+                  <View style={[styles.modalCol, isCompact && styles.modalColStack]}>
                     <Text style={styles.fieldLabel}>Instructor ID</Text>
                     <FormInput
                       icon="card-outline"
@@ -1550,7 +1550,7 @@ export default function AddClassModal({
                   </View>
 
                   {/* Start/End school year stay side-by-side, even on phones. */}
-                  <View style={[styles.yearPair, isCompact && styles.yearPairCompact]}>
+                  <View style={[styles.yearPair, isCompact ? styles.yearPairCompact : styles.yearPairWide]}>
                   <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>{isCompact ? "S.Y. Start" : "Academic Year (Start)"}</Text>
                     <FormInput
@@ -1720,8 +1720,11 @@ const styles = StyleSheet.create({
   dayChipCompact: { flex: 1, minWidth: 0, paddingHorizontal: 0, paddingVertical: 10 },
   scheduleTimeRow: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 14 },
   scheduleRoomCol: { flexBasis: 180, minWidth: 180 },
-  yearPair: { flex: 2, flexDirection: "row", gap: 14 },
-  yearPairCompact: { flex: 0, gap: 12 },
+  yearPair: { flexDirection: "row", gap: 14 },
+  yearPairWide: { flex: 2 },
+  // Stacked (phone) layout: size to content. `flex: 0` collapses to zero height on RN Web.
+  yearPairCompact: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", gap: 12 },
+  modalColStack: { flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   bannerPreviewCompact: { height: 120 },
   modalFooterCompact: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, gap: 10 },
   footerCancelCompact: { flex: 1, marginRight: 0, paddingHorizontal: 12 },
