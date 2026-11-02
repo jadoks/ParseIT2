@@ -2,7 +2,7 @@ import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   DimensionValue,
   Modal,
@@ -13,12 +13,14 @@ import {
   View,
 } from "react-native";
 
+import { apiFetch as authApiFetch } from "../services/api"; // adds the Bearer token (program routes use requireAuth)
 import AddAdminModal from "./AddAdminModal";
-import AddClassModal, { AddClassModalPayload } from "./AddClassModal";
+import AddClassModal, { AddClassModalPayload, TeacherOption } from "./AddClassModal";
 import AddStudentModal from "./AddStudentModal";
 import AddTeacherModal from "./AddTeacherModal";
 import Chatbot from "./Chatbot";
 import ModifyChatbotModal from "./ModifyChatbotModal";
+import { useSectionConfig } from "./programHelpers";
 import Toast from "./Toast";
 
 import type { AdminFormPayload } from "./adminTypes";
@@ -204,8 +206,21 @@ export default function AdminDashboard({
       schoolYear?: string | null;
       semester?: string;
       schedule?: AddClassModalPayload["schedule"];
+      courseCode?: string | null; // used to hide already-created program subjects
+      status?: string | null;
     }[]
   >([]);
+
+  // Same data the Manage Class screen feeds the Add Class modal, so the
+  // "From Program" flow (pick a teacher + subject) works from the dashboard too.
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+
+  // Path-only fetcher used by the program picker and section config.
+  const programFetcher = useCallback(
+    (path: string, init?: any) => authApiFetch(path, init),
+    []
+  );
+  const { config: sectionConfig } = useSectionConfig(programFetcher);
 
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -258,6 +273,7 @@ export default function AdminDashboard({
 
       if (teachersRes.ok) {
         setTeacherCount(Array.isArray(teachersData) ? teachersData.length : 0);
+        if (Array.isArray(teachersData)) setTeachers(teachersData);
       }
 
       if (adminsRes.ok) {
@@ -639,7 +655,12 @@ export default function AdminDashboard({
           schoolYear: klass.schoolYear ?? null,
           semester: klass.semester,
           schedule: klass.schedule ?? null,
+          courseCode: klass.courseCode ?? null,
+          status: klass.status ?? null,
         }))}
+        teachers={teachers}
+        programFetcher={programFetcher}
+        sectionConfig={sectionConfig}
       />
 
       <Chatbot
