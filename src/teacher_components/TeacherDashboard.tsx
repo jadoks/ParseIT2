@@ -1098,7 +1098,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being saved</Text>
               </View>
             )}
-            <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
+            <ScrollView style={styles.transparentScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalInnerContent, isMobile && styles.modalInnerContentCompact]} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
               <CreateModeToggle mode={createMode} onChange={switchCreateMode} disabled={isCreatingClass} />
 
               {createMode === 'program' && (
@@ -1205,11 +1205,11 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                         )}
                       </View>
                       <Text style={styles.inputLabel}>Days</Text>
-                      <View style={styles.dayChipRow}>
+                      <View style={[styles.dayChipRow, isMobile && styles.dayChipRowCompact]}>
                         {DAY_OPTIONS.map((day) => {
                           const isActive = block.days.includes(day);
                           return (
-                            <TouchableOpacity key={day} style={[styles.dayChip, isActive && styles.dayChipActive]} onPress={() => toggleScheduleDay(block.id, day)}>
+                            <TouchableOpacity key={day} style={[styles.dayChip, isMobile && styles.dayChipCompact, isActive && styles.dayChipActive]} onPress={() => toggleScheduleDay(block.id, day)}>
                               <Text style={[styles.dayChipText, isActive && styles.dayChipTextActive]}>{day}</Text>
                             </TouchableOpacity>
                           );
@@ -1306,7 +1306,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being updated</Text>
               </View>
             )}
-            <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
+            <ScrollView style={styles.transparentScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalInnerContent, isMobile && styles.modalInnerContentCompact]} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
                   <MaterialCommunityIcons name="school-outline" size={18} color="#8B0000" />
@@ -1389,11 +1389,11 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                         )}
                       </View>
                       <Text style={styles.inputLabel}>Days</Text>
-                      <View style={styles.dayChipRow}>
+                      <View style={[styles.dayChipRow, isMobile && styles.dayChipRowCompact]}>
                         {DAY_OPTIONS.map((day) => {
                           const isActive = block.days.includes(day);
                           return (
-                            <TouchableOpacity key={day} style={[styles.dayChip, isActive && styles.dayChipActive]} onPress={() => toggleEditScheduleDay(block.id, day)}>
+                            <TouchableOpacity key={day} style={[styles.dayChip, isMobile && styles.dayChipCompact, isActive && styles.dayChipActive]} onPress={() => toggleEditScheduleDay(block.id, day)}>
                               <Text style={[styles.dayChipText, isActive && styles.dayChipTextActive]}>{day}</Text>
                             </TouchableOpacity>
                           );
@@ -1832,12 +1832,13 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   menuText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.28)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12 },
-  createModalContainerWide: { width: '100%', maxWidth: 700, maxHeight: '90%', backgroundColor: '#fff', borderRadius: 22, overflow: 'hidden' },
+  createModalContainerWide: { width: '100%', maxWidth: 700, maxHeight: '94%', backgroundColor: '#fff', borderRadius: 22, overflow: 'hidden' },
   createModalContainerLarge: { maxWidth: 960 },
   modalHeader: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F1F1', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: WEIGHT_TITLE, color: '#202124' },
   transparentScroll: { flexGrow: 0 },
   modalInnerContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 22 },
+  modalInnerContentCompact: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 18 },
   modalSection: { marginBottom: 18 },
   modalSectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   modalSectionTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: WEIGHT_TITLE, color: '#202124' },
@@ -1897,12 +1898,14 @@ const styles = StyleSheet.create({
   dayChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   dayChip: { minWidth: 42, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#fff', alignItems: 'center' },
   dayChipActive: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
+  dayChipRowCompact: { flexWrap: 'nowrap', gap: 4 },
+  dayChipCompact: { flex: 1, minWidth: 0, paddingHorizontal: 0, paddingVertical: 10 },
   dayChipText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#374151' },
   dayChipTextActive: { color: '#FFFFFF' },
-  scheduleTimeRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
-  scheduleTimeCol: { flex: 1 },
+  scheduleTimeRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 14, marginBottom: 14 },
+  scheduleTimeCol: { flexGrow: 1, flexShrink: 1, flexBasis: 240, minWidth: 220 },
   timeInputRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  timeInputWrap: { flex: 1 },
+  timeInputWrap: { flex: 1, minWidth: 84 },
   meridiemToggle: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -1911,7 +1914,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     overflow: 'hidden',
   },
-  meridiemBtn: { paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  meridiemBtn: { paddingHorizontal: 14, minWidth: 48, justifyContent: 'center', alignItems: 'center' },
   meridiemBtnActive: { backgroundColor: '#8B0000' },
   meridiemBtnText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: '#9AA0A6' },
   meridiemBtnTextActive: { color: '#FFFFFF' },

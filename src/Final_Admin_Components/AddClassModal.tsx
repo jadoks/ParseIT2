@@ -574,6 +574,8 @@ export default function AddClassModal({
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 1200;
   const isTabletUp = width >= 768;
+  // Phones / narrow windows: tighter chrome, 2-col option grids, stacked fields.
+  const isCompact = !isTabletUp;
   const optionGridItemStyle = !isTabletUp
     ? styles.optionGridItemMobile
     : isLargeScreen
@@ -1082,24 +1084,37 @@ export default function AddClassModal({
 
   return (
     <>
-      <Modal visible={visible} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
+      <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
+        <View style={[styles.modalOverlay, isCompact && styles.modalOverlayCompact]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
 
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
+          <View
+            style={[
+              styles.modalCard,
+              isLargeScreen && styles.modalCardLarge,
+              isCompact && styles.modalCardCompact,
+            ]}
+          >
+            <View style={[styles.modalHeader, isCompact && styles.modalHeaderCompact]}>
               <View style={styles.modalHeaderLeft}>
-                <View style={styles.modalIconBox}>
+                <View style={[styles.modalIconBox, isCompact && styles.modalIconBoxCompact]}>
                   <Ionicons name="school-outline" size={22} color="#8B0000" />
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.modalTitle}>
+                  <Text style={[styles.modalTitle, isCompact && styles.modalTitleCompact]}>
                     {isEditMode ? "Edit Class" : "Add Class"}
                   </Text>
-                  <Text style={styles.modalSubtitle}>
+                  <Text
+                    style={[styles.modalSubtitle, isCompact && styles.modalSubtitleCompact]}
+                    numberOfLines={isCompact ? 2 : undefined}
+                  >
                     {isEditMode
-                      ? "Update class details with existing values already selected."
+                      ? isCompact
+                        ? "Update the class details."
+                        : "Update class details with existing values already selected."
+                      : isCompact
+                      ? "Fill in the class details below."
                       : "Create a class by selecting year, semester, section, entering course code, course name, units, teacher ID, school year, optional description, and an optional banner file."}
                   </Text>
                 </View>
@@ -1108,6 +1123,7 @@ export default function AddClassModal({
               <TouchableOpacity
                 style={[
                   styles.modalCloseButton,
+                  isCompact && styles.modalCloseButtonCompact,
                   isBusy && styles.modalSecondaryButtonDisabled,
                 ]}
                 onPress={handleClose}
@@ -1121,7 +1137,12 @@ export default function AddClassModal({
             <View style={styles.addClassModalBodyWrap}>
               <ScrollView
                 showsVerticalScrollIndicator={true}
-                contentContainerStyle={styles.modalContent}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={[
+                  styles.modalContent,
+                  isCompact && styles.modalContentCompact,
+                  isLargeScreen && styles.modalContentLarge,
+                ]}
               >
                 {!isEditMode && !!programFetcher && (
                   <CreateModeToggle mode={createMode} onChange={switchCreateMode} disabled={isBusy} />
@@ -1237,7 +1258,7 @@ export default function AddClassModal({
                     <Text style={styles.modalSectionTitle}>Select Year</Text>
                   </View>
 
-                  <View style={styles.optionsGrid}>
+                  <View style={[styles.optionsGrid, isCompact && styles.optionsGridCompact]}>
                     {YEAR_OPTIONS.map((year) => {
                       const isChecked = selectedYear === year.id;
 
@@ -1372,7 +1393,7 @@ export default function AddClassModal({
                       </Text>
                     </View>
 
-                    <View style={styles.optionsGrid}>
+                    <View style={[styles.optionsGrid, isCompact && styles.optionsGridCompact]}>
                       {SECTION_OPTIONS[selectedYear].map((section) => {
                         const isChecked = selectedSection === section.id;
 
@@ -1420,7 +1441,10 @@ export default function AddClassModal({
                     </View>
 
                     {scheduleBlocks.map((block, index) => (
-                      <View key={block.id} style={styles.scheduleBlockCard}>
+                      <View
+                        key={block.id}
+                        style={[styles.scheduleBlockCard, isCompact && styles.scheduleBlockCardCompact]}
+                      >
                         <View style={styles.scheduleBlockHeaderRow}>
                           <Text style={styles.scheduleBlockTitle}>
                             Schedule {index + 1}
@@ -1440,13 +1464,17 @@ export default function AddClassModal({
                         </View>
 
                         <Text style={styles.fieldLabel}>Days</Text>
-                        <View style={styles.dayChipRow}>
+                        <View style={[styles.dayChipRow, isCompact && styles.dayChipRowCompact]}>
                           {DAY_OPTIONS.map((day) => {
                             const isActive = block.days.includes(day);
                             return (
                               <TouchableOpacity
                                 key={day}
-                                style={[styles.dayChip, isActive && styles.dayChipActive]}
+                                style={[
+                                  styles.dayChip,
+                                  isCompact && styles.dayChipCompact,
+                                  isActive && styles.dayChipActive,
+                                ]}
                                 onPress={() => toggleScheduleDay(block.id, day)}
                               >
                                 <Text
@@ -1462,6 +1490,8 @@ export default function AddClassModal({
                           })}
                         </View>
 
+                        {/* Start / End / Room wrap on their own: 1 column on phones,
+                            2 on tablets, 3 on wide modals (no breakpoint needed). */}
                         <View style={styles.scheduleTimeRow}>
                           <View style={styles.scheduleTimeCol}>
                             <Text style={styles.fieldLabel}>Start Time</Text>
@@ -1483,14 +1513,15 @@ export default function AddClassModal({
                               placeholder="10:30"
                             />
                           </View>
+                          <View style={[styles.scheduleTimeCol, styles.scheduleRoomCol]}>
+                            <Text style={styles.fieldLabel}>Room (Optional)</Text>
+                            <PlainField
+                              value={block.room || ""}
+                              onChangeText={(text) => updateScheduleField(block.id, "room", text)}
+                              placeholder="e.g., Room 301"
+                            />
+                          </View>
                         </View>
-
-                        <Text style={styles.fieldLabel}>Room (Optional)</Text>
-                        <PlainField
-                          value={block.room || ""}
-                          onChangeText={(text) => updateScheduleField(block.id, "room", text)}
-                          placeholder="e.g., Room 301"
-                        />
                       </View>
                     ))}
 
@@ -1502,7 +1533,7 @@ export default function AddClassModal({
                 )}
 
                 <View
-                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
+                  style={[styles.modalRow, isCompact && styles.modalRowStack]}
                 >
                   <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Instructor ID</Text>
@@ -1518,8 +1549,10 @@ export default function AddClassModal({
                     />
                   </View>
 
+                  {/* Start/End school year stay side-by-side, even on phones. */}
+                  <View style={[styles.yearPair, isCompact && styles.yearPairCompact]}>
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Academic Year (Start)</Text>
+                    <Text style={styles.fieldLabel}>{isCompact ? "S.Y. Start" : "Academic Year (Start)"}</Text>
                     <FormInput
                       icon="calendar-outline"
                       value={startYear}
@@ -1533,7 +1566,7 @@ export default function AddClassModal({
                   </View>
 
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Academic Year (End)</Text>
+                    <Text style={styles.fieldLabel}>{isCompact ? "S.Y. End" : "Academic Year (End)"}</Text>
                     <FormInput
                       icon="calendar-outline"
                       value={endYear}
@@ -1541,6 +1574,7 @@ export default function AddClassModal({
                       placeholder="Auto"
                       editable={false}
                     />
+                  </View>
                   </View>
                 </View>
                   </>
@@ -1566,7 +1600,7 @@ export default function AddClassModal({
                   </TouchableOpacity>
 
                   {bannerFile?.uri ? (
-                    <View style={styles.bannerPreview}>
+                    <View style={[styles.bannerPreview, isCompact && styles.bannerPreviewCompact]}>
                       <Image
                         source={{ uri: bannerFile.uri }}
                         style={StyleSheet.absoluteFillObject}
@@ -1594,10 +1628,11 @@ export default function AddClassModal({
               </ScrollView>
             </View>
 
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, isCompact && styles.modalFooterCompact]}>
               <TouchableOpacity
                 style={[
                   styles.modalSecondaryButton,
+                  isCompact && styles.footerCancelCompact,
                   isBusy && styles.modalSecondaryButtonDisabled,
                 ]}
                 onPress={handleClose}
@@ -1610,6 +1645,7 @@ export default function AddClassModal({
               <TouchableOpacity
                 style={[
                   styles.modalPrimaryButton,
+                  isCompact && styles.footerPrimaryCompact,
                   isBusy && styles.modalPrimaryButtonDisabled,
                 ]}
                 activeOpacity={0.85}
@@ -1665,6 +1701,31 @@ export default function AddClassModal({
 }
 
 const styles = StyleSheet.create({
+  // ── Responsive additions ─────────────────────────────────────────────
+  modalOverlayCompact: { padding: 8 },
+  modalCardLarge: { maxWidth: 1040 },
+  modalCardCompact: { maxHeight: "96%", borderRadius: 22 },
+  modalHeaderCompact: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12 },
+  modalIconBoxCompact: { width: 40, height: 40, borderRadius: 14, marginRight: 10 },
+  modalTitleCompact: { fontSize: 18, marginBottom: 2 },
+  modalSubtitleCompact: { fontSize: 13, lineHeight: 18 },
+  modalCloseButtonCompact: { width: 36, height: 36, borderRadius: 12 },
+  modalContentCompact: { padding: 14, paddingBottom: 16 },
+  modalContentLarge: { padding: 28, paddingBottom: 16 },
+  // Two columns on phones for Year / Section (4 rows -> 2).
+  optionsGridCompact: { columnGap: 8 },
+  scheduleBlockCardCompact: { padding: 12 },
+  // All seven days fit on one line on a phone.
+  dayChipRowCompact: { flexWrap: "nowrap", gap: 4 },
+  dayChipCompact: { flex: 1, minWidth: 0, paddingHorizontal: 0, paddingVertical: 10 },
+  scheduleTimeRow: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 14 },
+  scheduleRoomCol: { flexBasis: 180, minWidth: 180 },
+  yearPair: { flex: 2, flexDirection: "row", gap: 14 },
+  yearPairCompact: { flex: 0, gap: 12 },
+  bannerPreviewCompact: { height: 120 },
+  modalFooterCompact: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, gap: 10 },
+  footerCancelCompact: { flex: 1, marginRight: 0, paddingHorizontal: 12 },
+  footerPrimaryCompact: { flex: 2, paddingHorizontal: 12 },
   teacherCount: { fontSize: 12, fontWeight: "700", color: "#8A6F6F", marginTop: 10 },
   // About three rows tall; more teachers scroll instead of being cut off.
   teacherScroll: { maxHeight: 260, marginTop: 8 },
@@ -1786,7 +1847,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     columnGap: 12,
   },
-  optionGridItemMobile: { width: "100%" },
+  optionGridItemMobile: { width: "48%" },
   optionGridItemTablet: { width: "48%" },
   optionGridItemLarge: { width: "31.5%" },
   formGridRow: { flexDirection: "row", gap: 16 },
@@ -1997,10 +2058,9 @@ const styles = StyleSheet.create({
     color: "#7A4A4A",
   },
   dayChipTextActive: { color: "#FFFFFF" },
-  scheduleTimeRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
-  scheduleTimeCol: { flex: 1 },
+  scheduleTimeCol: { flexGrow: 1, flexShrink: 1, flexBasis: 240, minWidth: 220 },
   timeInputRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
-  timeInputWrap: { flex: 1 },
+  timeInputWrap: { flex: 1, minWidth: 84 },
   meridiemToggle: {
     flexDirection: "row",
     borderWidth: 1,
@@ -2009,7 +2069,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FAF5F5",
     overflow: "hidden",
   },
-  meridiemBtn: { paddingHorizontal: 12, justifyContent: "center", alignItems: "center" },
+  meridiemBtn: { paddingHorizontal: 14, minWidth: 48, justifyContent: "center", alignItems: "center" },
   meridiemBtnActive: { backgroundColor: "#8B0000" },
   meridiemBtnText: { fontSize: 12, fontWeight: "800", color: "#B79A9A" },
   meridiemBtnTextActive: { color: "#FFFFFF" },
