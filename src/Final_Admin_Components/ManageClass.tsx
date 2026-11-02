@@ -33,6 +33,10 @@ type ManageClassProps = {
     lastName?: string;
     email?: string;
   };
+  // When true on mount, the Add Class modal opens right away (used by the
+  // dashboard's "+ Add" shortcut). onAutoOpenHandled lets the parent reset it.
+  autoOpenAddModal?: boolean;
+  onAutoOpenHandled?: () => void;
 };
 
 type BackendClassItem = {
@@ -205,7 +209,12 @@ function SortableHeader({
   );
 }
 
-export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
+export default function ManageClass({
+  width,
+  currentAdmin,
+  autoOpenAddModal,
+  onAutoOpenHandled,
+}: ManageClassProps) {
   const [classes, setClasses] = useState<TableClassItem[]>([]);
   const [rawClasses, setRawClasses] = useState<BackendClassItem[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -230,6 +239,16 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     y: number;
   } | null>(null);
   const rowMenuButtonRefs = React.useRef<Record<string, View | null>>({});
+
+  // Opened from the dashboard's "+ Add": show the Add Class modal as soon as
+  // this screen mounts, then tell the parent we've handled the request.
+  useEffect(() => {
+    if (!autoOpenAddModal) return;
+    setIsEditMode(false);
+    setSelectedClass(null);
+    setIsAddModalVisible(true);
+    onAutoOpenHandled?.();
+  }, [autoOpenAddModal]);
 
   const [toast, setToast] = useState<{
     visible: boolean;

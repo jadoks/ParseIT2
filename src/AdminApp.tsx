@@ -106,6 +106,11 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
   const [studentAtRiskVisible, setStudentAtRiskVisible] = useState(false);
 
+  // Set by the dashboard's "+ Add" on the Manage Class card. ManageClass reads
+  // it on mount, opens the Add Class modal, then clears it via
+  // onAutoOpenHandled so it doesn't re-open on later visits.
+  const [openAddClassOnArrival, setOpenAddClassOnArrival] = useState(false);
+
   // Remembers whatever screen the user was on right before we navigated
   // to Settings/Analytics, so "close" can send them back to it instead
   // of always hardcoding Dashboard.
@@ -262,6 +267,11 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     setSidebarVisible(false);
   };
 
+  const handleAddClassFromDashboard = () => {
+    setOpenAddClassOnArrival(true);
+    handleNavigateToManageClass();
+  };
+
   const handleNavigateToManageAdmin = () => {
     setPreviousScreen(captureCurrentScreen());
     setActiveTopNav("Admin");
@@ -341,7 +351,14 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     }
 
     if (activeTopNav === "Class" || activeContentScreen === "Class") {
-      return <ManageClass width={width} currentAdmin={currentAdmin} />;
+      return (
+        <ManageClass
+          width={width}
+          currentAdmin={currentAdmin}
+          autoOpenAddModal={openAddClassOnArrival}
+          onAutoOpenHandled={() => setOpenAddClassOnArrival(false)}
+        />
+      );
     }
 
     if (activeTopNav === "Admin" || activeContentScreen === "Admin") {
@@ -365,6 +382,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
         <AdminDashboard
           width={width}
           onOpenManageClass={handleNavigateToManageClass}
+          onAddClass={handleAddClassFromDashboard}
           onOpenManageAdmin={handleNavigateToManageAdmin}
           onOpenManageStudent={handleNavigateToManageStudent}
           onOpenManageTeacher={handleNavigateToManageTeacher}

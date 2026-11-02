@@ -2,7 +2,7 @@ import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   DimensionValue,
   Modal,
@@ -13,14 +13,11 @@ import {
   View,
 } from "react-native";
 
-import { apiFetch as authApiFetch } from "../services/api"; // adds the Bearer token (program routes use requireAuth)
 import AddAdminModal from "./AddAdminModal";
-import AddClassModal, { AddClassModalPayload, TeacherOption } from "./AddClassModal";
 import AddStudentModal from "./AddStudentModal";
 import AddTeacherModal from "./AddTeacherModal";
 import Chatbot from "./Chatbot";
 import ModifyChatbotModal from "./ModifyChatbotModal";
-import { useSectionConfig } from "./programHelpers";
 import Toast from "./Toast";
 
 import type { AdminFormPayload } from "./adminTypes";
@@ -44,6 +41,7 @@ type DashboardCardProps = {
 type AdminDashboardProps = {
   width: number;
   onOpenManageClass: () => void;
+  onAddClass: () => void;
   onOpenManageAdmin: () => void;
   onOpenManageStudent: () => void;
   onOpenManageTeacher: () => void;
@@ -152,30 +150,10 @@ function SummaryCard({
   );
 }
 
-const fileUriToBase64 = async (uri: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result === "string") {
-        resolve(result);
-      } else {
-        reject(new Error("Failed to convert image to base64."));
-      }
-    };
-
-    reader.onerror = () => reject(new Error("Failed to read selected image."));
-    reader.readAsDataURL(blob);
-  });
-};
-
 export default function AdminDashboard({
   width,
   onOpenManageClass,
+  onAddClass,
   onOpenManageAdmin,
   onOpenManageStudent,
   onOpenManageTeacher,
@@ -186,42 +164,12 @@ export default function AdminDashboard({
     useState(false);
   const [isAddTeacherModalVisible, setIsAddTeacherModalVisible] =
     useState(false);
-  const [isAddClassModalVisible, setIsAddClassModalVisible] = useState(false);
   const [isChatbotModalVisible, setIsChatbotModalVisible] = useState(false);
   const [isModifyChatbotModalVisible, setIsModifyChatbotModalVisible] =
     useState(false);
   const [classCount, setClassCount] = useState(0);
   const [adminCount, setAdminCount] = useState(0);
   const [studentCount, setStudentCount] = useState(0);
-  // Raw class list (schedule + assigned instructor included) so the Add
-  // Class modal can check the new class's schedule against every class its
-  // instructor already teaches — the same cross-class conflict check
-  // Teacher Dashboard's own Create Class flow already does.
-  const [allClasses, setAllClasses] = useState<
-    {
-      id: string;
-      name?: string;
-      section?: string;
-      assignedTeacherId?: string;
-      schoolYear?: string | null;
-      semester?: string;
-      schedule?: AddClassModalPayload["schedule"];
-      courseCode?: string | null; // used to hide already-created program subjects
-      status?: string | null;
-    }[]
-  >([]);
-
-  // Same data the Manage Class screen feeds the Add Class modal, so the
-  // "From Program" flow (pick a teacher + subject) works from the dashboard too.
-  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
-
-  // Path-only fetcher used by the program picker and section config.
-  const programFetcher = useCallback(
-    (path: string, init?: any) => authApiFetch(path, init),
-    []
-  );
-  const { config: sectionConfig } = useSectionConfig(programFetcher);
-
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -273,7 +221,6 @@ export default function AdminDashboard({
 
       if (teachersRes.ok) {
         setTeacherCount(Array.isArray(teachersData) ? teachersData.length : 0);
-        if (Array.isArray(teachersData)) setTeachers(teachersData);
       }
 
       if (adminsRes.ok) {
@@ -282,7 +229,6 @@ export default function AdminDashboard({
 
       if (classesRes.ok) {
         setClassCount(Array.isArray(classesData) ? classesData.length : 0);
-        setAllClasses(Array.isArray(classesData) ? classesData : []);
       }
     } catch (error) {
       console.error("Error loading dashboard counts:", error);
@@ -327,63 +273,6 @@ export default function AdminDashboard({
       // the exact same instant this toast opens. Two RN <Modal>s changing
       // visibility in the same render commit causes the native modal host
       // to drop the newly-presented one, so the toast never actually shows.
-      throw error;
-    }
-  };
-
-  const handleAddSharedClass = async (payload: AddClassModalPayload) => {
-    try {
-      let bannerBase64: string | null = null;
-
-      if (payload.bannerLocalUri) {
-        bannerBase64 = await fileUriToBase64(payload.bannerLocalUri);
-      }
-
-      const response = await apiFetch(`${API_BASE_URL}/create-class`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: payload.className,
-          courseCode: payload.courseCode,
-          section: payload.section,
-          semester: payload.semester,
-          schoolYear: payload.schoolYear,
-          description: payload.description,
-          bannerBase64,
-          bannerFileName: payload.bannerFileName,
-          bannerMimeType: payload.bannerMimeType,
-          instructorIdentifier: payload.instructorIdentifier,
-          memberCount: payload.classMembers,
-          units: payload.units,
-          schedule: payload.schedule,
-          createdByUid: "admin_uid_001",
-          createdByRole: "admin",
-          createdByName: "Jadoks",
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create class");
-      }
-
-      await loadDashboardCounts();
-      setIsAddClassModalVisible(false);
-
-      showToast(
-        `Class created successfully. Class Code: ${data?.data?.classCode || payload.classCode}`,
-        "success"
-      );
-    } catch (error) {
-      console.error("Error saving class:", error);
-      showToast(
-        error instanceof Error ? error.message : "Something went wrong. Try again.",
-        "error"
-      );
-      // Re-throw — see handleAddSharedTeacher for why this matters.
       throw error;
     }
   };
@@ -520,7 +409,7 @@ export default function AdminDashboard({
             {
               label: "+ Add",
               primary: true,
-              onPress: () => setIsAddClassModalVisible(true),
+              onPress: onAddClass,
             },
             {
               label: "View",
@@ -640,27 +529,6 @@ export default function AdminDashboard({
         onClose={() => setIsAddTeacherModalVisible(false)}
         isMobile={isMobile}
         onSubmitTeacher={handleAddSharedTeacher}
-      />
-
-      <AddClassModal
-        visible={isAddClassModalVisible}
-        onClose={() => setIsAddClassModalVisible(false)}
-        isMobile={isMobile}
-        onCreateClass={handleAddSharedClass}
-        existingClasses={allClasses.map((klass) => ({
-          id: klass.id,
-          className: klass.name,
-          section: klass.section,
-          instructorIdentifier: klass.assignedTeacherId ?? null,
-          schoolYear: klass.schoolYear ?? null,
-          semester: klass.semester,
-          schedule: klass.schedule ?? null,
-          courseCode: klass.courseCode ?? null,
-          status: klass.status ?? null,
-        }))}
-        teachers={teachers}
-        programFetcher={programFetcher}
-        sectionConfig={sectionConfig}
       />
 
       <Chatbot
