@@ -291,8 +291,8 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   // Responsive text: phones keep the base sizes; tablets and larger screens scale up.
   const fontScale = width >= 1440 ? 1.3 : width >= 1024 ? 1.2 : width >= 768 ? 1.1 : 1;
   const styles = useMemo(
-    () => createStyles((n: number) => Math.round(n * fontScale)),
-    [fontScale]
+    () => createStyles((n: number) => Math.round(n * fontScale), optionsInRow),
+    [fontScale, optionsInRow]
   );
 
   // The question card normally flexes to fill leftover space, so with big text and
@@ -1519,7 +1519,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   );
 }
 
-const createStyles = (fs: (n: number) => number) => StyleSheet.create({
+const createStyles = (fs: (n: number) => number, wide: boolean = false) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
   topBar: {
     flexDirection: 'row',
@@ -1582,7 +1582,8 @@ const createStyles = (fs: (n: number) => number) => StyleSheet.create({
     borderRadius: 16,
     marginTop: 16,
     alignItems: 'center',
-    width: '100%',
+    // Wide screens: centered button with a sensible width instead of full-bleed.
+    ...(wide ? { alignSelf: 'center' as const, minWidth: 280 } : { width: '100%' as const }),
   },
   nextButtonDisabled: { backgroundColor: '#CCC' },
   nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS },

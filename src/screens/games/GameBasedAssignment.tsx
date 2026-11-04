@@ -1608,7 +1608,7 @@ const createStyles = (r: ResponsiveInfo) => {
       justifyContent: 'center',
       minHeight: r.touchTarget,
       alignSelf: r.isDesktop ? 'center' : 'stretch',
-      minWidth: r.isDesktop ? 240 : undefined,
+      minWidth: r.isDesktop ? 280 : undefined,
       ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
     },
     nextButtonDisabled: { backgroundColor: '#CCC' },
@@ -1682,7 +1682,9 @@ const createStyles = (r: ResponsiveInfo) => {
       textAlign: 'center',
       marginBottom: 2,
     },
-    feedbackNextButton: { marginTop: r.spacing.sm, alignSelf: 'stretch', minWidth: undefined },
+    feedbackNextButton: r.isDesktop
+      ? { marginTop: r.spacing.sm, alignSelf: 'center', minWidth: 280 }
+      : { marginTop: r.spacing.sm, alignSelf: 'stretch', minWidth: undefined },
     fixedInput: { minHeight: 48, maxHeight: 96 },
     flashcardScrollFill: { alignSelf: 'stretch' },
     flashcardScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
