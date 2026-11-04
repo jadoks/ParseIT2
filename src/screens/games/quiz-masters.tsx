@@ -1510,7 +1510,6 @@ const createStyles = (fs: (n: number) => number) => StyleSheet.create({
     backgroundColor: '#8B0000',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    paddingTop: 50,
   },
   backBtn: {
     width: 40,
@@ -1570,7 +1569,7 @@ const createStyles = (fs: (n: number) => number) => StyleSheet.create({
   nextButtonDisabled: { backgroundColor: '#CCC' },
   nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS },
   // Fixed (no-scroll) game layout
-  fixedShell: { flex: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
+  fixedShell: { flex: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 32 },
   fixedFill: { flex: 1 },
   fixedQuestionCard: {
     flexGrow: 1,

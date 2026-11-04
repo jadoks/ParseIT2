@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
 // ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
@@ -269,7 +269,6 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   studentId,
 }) => {
   const r = useResponsive();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(r), [r]);
 
   // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
@@ -1352,7 +1351,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <View style={[styles.topBar, { paddingTop: styles.topBar.paddingVertical + insets.top }]}>
+      <View style={styles.topBar}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Go back">
           <Ionicons name="arrow-back" size={r.isSmallPhone ? 20 : 24} color="#FFF" />
         </TouchableOpacity>
@@ -1594,7 +1593,7 @@ const createStyles = (r: ResponsiveInfo) => {
       flex: 1,
       paddingHorizontal: r.horizontalPadding,
       paddingTop: r.spacing.sm,
-      paddingBottom: r.spacing.md,
+      paddingBottom: r.spacing.xl,
       alignItems: 'center',
     },
     fixedContent: {
