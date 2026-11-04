@@ -824,7 +824,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         </View>
 
         <Text style={styles.reviewTitle}>Review Your Answers</Text>
-        <ScrollView style={styles.reviewList} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.reviewList} showsVerticalScrollIndicator persistentScrollbar>
           {questions.map((q, idx) => {
             const userAns = userAnswers[idx];
             const isAnsCorrect = userAns?.isCorrect || false;
@@ -1401,7 +1401,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         ) : (
           <ScrollView
             contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator
+            persistentScrollbar
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.centeredContent}>{renderGame()}</View>

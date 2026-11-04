@@ -1503,7 +1503,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </View>
         </KeyboardAvoidingView>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator persistentScrollbar>
           <View
             style={
               isLargeScreen
