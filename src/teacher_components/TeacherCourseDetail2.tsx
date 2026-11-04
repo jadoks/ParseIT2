@@ -6523,14 +6523,27 @@ useEffect(() => {
 
     return (
       <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
-        {renderAssignmentTypeSelector({
-          disabled: hasSubmissionsForSelected,
-          warningText: hasSubmissionsForSelected
-            ? 'Type is locked because students have already submitted work for this assignment.'
-            : undefined,
-        })}
-        {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf, 'flex-start')}
         <View style={styles.fullWidthSection}>
+          {/* Row 1 mirrors the Create modal: Assignment Type on the left and,
+              for a Game-Based Learning Assignment, Select Game beside it, each
+              at the same dropdownWrapHalf width as the Header / Due Date row
+              below so the columns line up. */}
+          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+              {renderAssignmentTypeSelector({
+                disabled: hasSubmissionsForSelected,
+                warningText: hasSubmissionsForSelected
+                  ? 'Type is locked because students have already submitted work for this assignment.'
+                  : undefined,
+              })}
+            </View>
+            {assignmentType === 'game_based' && (
+              <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+                <View style={styles.sectionBlock}>{renderSelectGameField()}</View>
+              </View>
+            )}
+          </View>
+
           {isMobile ? (
             // Mobile: natural reading order, each field full width.
             <>
