@@ -1663,6 +1663,8 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     feedbackBar: {
       width: '100%',
+      // Large screens: keep the feedback container compact and centered.
+      ...(r.isDesktop ? { maxWidth: 720, alignSelf: 'center' as const } : null),
       borderRadius: 16,
       paddingVertical: r.spacing.sm + 2,
       paddingHorizontal: r.cardPadding,

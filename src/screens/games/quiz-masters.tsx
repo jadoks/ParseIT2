@@ -1609,7 +1609,14 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
   fixedFooterMin: { minHeight: 134 },
   footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
   footerHintText: { fontFamily: FONT_BODY, color: '#8A8F98', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS },
-  feedbackBar: { borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
+  feedbackBar: {
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    // Wide screens: keep the feedback container compact and centered.
+    ...(wide ? { width: '100%' as const, maxWidth: 720, alignSelf: 'center' as const } : null),
+  },
   feedbackTitle: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
   feedbackLines: { maxHeight: 84, alignSelf: 'stretch', marginTop: 4 },
   feedbackLine: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#555', textAlign: 'center', marginBottom: 2 },
@@ -1764,8 +1771,11 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
   modalButtonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 6, paddingHorizontal: 16 },
   // Results screen actions: stacked full-width buttons (Play Again is the
   // primary), so three labels fit on a narrow phone.
-  resultsActions: { gap: 10, marginTop: 6, paddingHorizontal: 16 },
-  resultsBtn: { flex: 0, alignSelf: 'stretch' },
+  // On wide screens the three actions sit side by side in one row.
+  resultsActions: wide
+    ? { flexDirection: 'row' as const, gap: 12, marginTop: 6, paddingHorizontal: 16 }
+    : { gap: 10, marginTop: 6, paddingHorizontal: 16 },
+  resultsBtn: wide ? { flex: 1, alignSelf: 'stretch' as const } : { flex: 0, alignSelf: 'stretch' as const },
   cancelBtn: {
     flex: 1,
     minHeight: 46,
