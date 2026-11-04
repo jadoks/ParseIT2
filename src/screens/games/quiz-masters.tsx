@@ -286,6 +286,13 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
+  // Responsive text: phones keep the base sizes; tablets and larger screens scale up.
+  const fontScale = width >= 1440 ? 1.3 : width >= 1024 ? 1.2 : width >= 768 ? 1.1 : 1;
+  const styles = useMemo(
+    () => createStyles((n: number) => Math.round(n * fontScale)),
+    [fontScale]
+  );
+
   // 0 = questions in their generated order. "Play Again" sets a new non-zero
   // seed, which reshuffles the question order (and the answer options) of the
   // same quiz without generating anything new.
@@ -1494,7 +1501,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (fs: (n: number) => number) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
   topBar: {
     flexDirection: 'row',
@@ -1513,14 +1520,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topBarTitle: { fontFamily: FONT_TITLE, color: '#FFF', fontSize: 18, fontWeight: WEIGHT_TITLE, flex: 1, textAlign: 'center' },
+  topBarTitle: { fontFamily: FONT_TITLE, color: '#FFF', fontSize: fs(18), fontWeight: WEIGHT_TITLE, flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16, paddingBottom: 40 },
   contentWrapSmall: { width: '100%' },
   contentWrapLarge: { maxWidth: 900, minWidth: 480, alignSelf: 'center' },
   gameContainer: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  progressText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#555' },
-  scoreText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
+  progressText: { fontFamily: FONT_BODY, fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS, color: '#555' },
+  scoreText: { fontFamily: FONT_BODY, fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
   questionCard: {
     backgroundColor: '#FFF',
     padding: 24,
@@ -1531,7 +1538,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
-  questionText: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: WEIGHT_EMPHASIS, color: '#222', lineHeight: 26 },
+  questionText: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, color: '#222', lineHeight: fs(26) },
   optionsContainer: { gap: 10 },
   optionButton: {
     backgroundColor: '#FFF',
@@ -1544,12 +1551,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  optionText: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS },
+  optionText: { fontFamily: FONT_BODY, fontSize: fs(15), fontWeight: WEIGHT_EMPHASIS },
   feedbackCard: { marginTop: 24, padding: 20, borderRadius: 16, alignItems: 'center' },
   feedbackCorrect: { backgroundColor: '#E8F5E9' },
   feedbackWrong: { backgroundColor: '#FFEBEE' },
-  feedbackText: { fontFamily: FONT_BODY, fontSize: 20, fontWeight: WEIGHT_EMPHASIS, marginBottom: 8 },
-  feedbackSubtext: { fontFamily: FONT_BODY, fontSize: 14, color: '#555', marginBottom: 16, textAlign: 'center' },
+  feedbackText: { fontFamily: FONT_BODY, fontSize: fs(20), fontWeight: WEIGHT_EMPHASIS, marginBottom: 8 },
+  feedbackSubtext: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#555', marginBottom: 16, textAlign: 'center' },
   feedbackMessage: { fontFamily: FONT_BODY, textAlign: 'center', color: '#2196F3', fontWeight: WEIGHT_EMPHASIS, marginTop: 12, marginBottom: 12 },
   nextButton: {
     backgroundColor: '#8B0000',
@@ -1561,7 +1568,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   nextButtonDisabled: { backgroundColor: '#CCC' },
-  nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: 16, fontWeight: WEIGHT_EMPHASIS },
+  nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS },
   // Fixed (no-scroll) game layout
   fixedShell: { flex: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
   fixedFill: { flex: 1 },
@@ -1583,11 +1590,11 @@ const styles = StyleSheet.create({
   fixedFooter: { flexShrink: 0, marginTop: 8, justifyContent: 'flex-end', gap: 8 },
   fixedFooterMin: { minHeight: 134 },
   footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
-  footerHintText: { fontFamily: FONT_BODY, color: '#8A8F98', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
+  footerHintText: { fontFamily: FONT_BODY, color: '#8A8F98', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS },
   feedbackBar: { borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
-  feedbackTitle: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
+  feedbackTitle: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
   feedbackLines: { maxHeight: 84, alignSelf: 'stretch', marginTop: 4 },
-  feedbackLine: { fontFamily: FONT_BODY, fontSize: 14, color: '#555', textAlign: 'center', marginBottom: 2 },
+  feedbackLine: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#555', textAlign: 'center', marginBottom: 2 },
   feedbackNextButton: { marginTop: 8, paddingVertical: 12 },
   fixedInput: { minHeight: 48, maxHeight: 96 },
   flashcardScrollFill: { alignSelf: 'stretch' },
@@ -1620,9 +1627,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 24,
   },
-  flashcardQuestion: { fontFamily: FONT_BODY, fontSize: 20, fontWeight: WEIGHT_EMPHASIS, color: '#222', textAlign: 'center', marginTop: 16 },
-  flashcardAnswerText: { fontFamily: FONT_BODY, fontSize: 22, fontWeight: WEIGHT_EMPHASIS, color: '#2E7D32', textAlign: 'center', marginTop: 16 },
-  flashcardExplanation: { fontFamily: FONT_BODY, marginTop: 10, color: '#555', fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  flashcardQuestion: { fontFamily: FONT_BODY, fontSize: fs(20), fontWeight: WEIGHT_EMPHASIS, color: '#222', textAlign: 'center', marginTop: 16 },
+  flashcardAnswerText: { fontFamily: FONT_BODY, fontSize: fs(22), fontWeight: WEIGHT_EMPHASIS, color: '#2E7D32', textAlign: 'center', marginTop: 16 },
+  flashcardExplanation: { fontFamily: FONT_BODY, marginTop: 10, color: '#555', fontSize: fs(14), textAlign: 'center', lineHeight: fs(21) },
   flashcardInputContainer: { gap: 12 },
   flashcardInput: { fontFamily: FONT_BODY, 
     backgroundColor: '#FFF',
@@ -1630,15 +1637,15 @@ const styles = StyleSheet.create({
     borderColor: '#DDD',
     borderRadius: 16,
     padding: 16,
-    fontSize: 16,
+    fontSize: fs(16),
     minHeight: 60,
     textAlignVertical: 'top',
   },
-  memoryMatchInstructions: { fontFamily: FONT_BODY, fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20, fontWeight: WEIGHT_EMPHASIS },
+  memoryMatchInstructions: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#666', textAlign: 'center', marginBottom: 20, fontWeight: WEIGHT_EMPHASIS },
   memoryMatchContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 10 },
   memoryColumn: { flex: 1, paddingHorizontal: 10 },
   memoryColumnHeader: { fontFamily: FONT_BODY, 
-    fontSize: 16,
+    fontSize: fs(16),
     fontWeight: WEIGHT_EMPHASIS,
     color: '#222',
     textAlign: 'center',
@@ -1683,15 +1690,15 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   matchBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  matchBadgeText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: 14 },
-  matchCardText: { fontFamily: FONT_BODY, flex: 1, color: '#222', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
+  matchBadgeText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: fs(14) },
+  matchCardText: { fontFamily: FONT_BODY, flex: 1, color: '#222', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS },
   matchChip: { minWidth: 30, height: 30, borderRadius: 15, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  matchChipText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: 13 },
+  matchChipText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: fs(13) },
   matchProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   matchDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#CFD4DA', backgroundColor: '#FFF' },
-  matchPrompt: { fontFamily: FONT_BODY, textAlign: 'center', marginBottom: 14, color: '#2196F3', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
-  memoryCardText: { fontFamily: FONT_BODY, color: '#222', fontSize: 14, fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
-  memoryCardSubtext: { fontFamily: FONT_BODY, fontSize: 12, color: '#4CAF50', marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
+  matchPrompt: { fontFamily: FONT_BODY, textAlign: 'center', marginBottom: 14, color: '#2196F3', fontWeight: WEIGHT_EMPHASIS, fontSize: fs(14) },
+  memoryCardText: { fontFamily: FONT_BODY, color: '#222', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
+  memoryCardSubtext: { fontFamily: FONT_BODY, fontSize: fs(12), color: '#4CAF50', marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
   memoryCardRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1702,20 +1709,20 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: '#8B0000',
     fontWeight: WEIGHT_EMPHASIS,
-    fontSize: 14,
+    fontSize: fs(14),
   },
   memoryCardLetter: { fontFamily: FONT_BODY, 
     fontWeight: WEIGHT_EMPHASIS,
     color: '#8B0000',
     marginBottom: 4,
-    fontSize: 16,
+    fontSize: fs(16),
   },
   summaryHeader: { alignItems: 'center', marginBottom: 24, padding: 20 },
-  summaryTitle: { fontFamily: FONT_TITLE, fontSize: 24, fontWeight: WEIGHT_TITLE, color: '#222', marginTop: 12 },
-  summaryScore: { fontFamily: FONT_BODY, fontSize: 28, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', marginTop: 8 },
-  summaryPercentage: { fontFamily: FONT_BODY, fontSize: 18, fontWeight: WEIGHT_EMPHASIS, color: '#555', marginTop: 4 },
-  summarySubtext: { fontFamily: FONT_BODY, fontSize: 14, color: '#777', marginTop: 8, textAlign: 'center' },
-  reviewTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#222', marginBottom: 12, paddingHorizontal: 16 },
+  summaryTitle: { fontFamily: FONT_TITLE, fontSize: fs(24), fontWeight: WEIGHT_TITLE, color: '#222', marginTop: 12 },
+  summaryScore: { fontFamily: FONT_BODY, fontSize: fs(28), fontWeight: WEIGHT_EMPHASIS, color: '#8B0000', marginTop: 8 },
+  summaryPercentage: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, color: '#555', marginTop: 4 },
+  summarySubtext: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#777', marginTop: 8, textAlign: 'center' },
+  reviewTitle: { fontFamily: FONT_TITLE, fontSize: fs(18), fontWeight: WEIGHT_TITLE, color: '#222', marginBottom: 12, paddingHorizontal: 16 },
   reviewList: { paddingHorizontal: 16, marginBottom: 16 },
   reviewItem: {
     backgroundColor: '#FFF',
@@ -1731,11 +1738,11 @@ const styles = StyleSheet.create({
   reviewCorrect: { borderLeftColor: '#4CAF50' },
   reviewWrong: { borderLeftColor: '#F44336' },
   reviewItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  reviewQuestionText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#222', flex: 1 },
+  reviewQuestionText: { fontFamily: FONT_BODY, fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS, color: '#222', flex: 1 },
   reviewAnswers: { marginLeft: 28 },
-  reviewUserAnswer: { fontFamily: FONT_BODY, fontSize: 13, color: '#555', marginBottom: 4 },
-  reviewCorrectAnswer: { fontFamily: FONT_BODY, fontSize: 13, color: '#4CAF50', fontWeight: WEIGHT_EMPHASIS },
-  reviewExplanation: { fontFamily: FONT_BODY, fontSize: 13, color: '#2196F3', marginTop: 4, fontStyle: 'italic' },
+  reviewUserAnswer: { fontFamily: FONT_BODY, fontSize: fs(13), color: '#555', marginBottom: 4 },
+  reviewCorrectAnswer: { fontFamily: FONT_BODY, fontSize: fs(13), color: '#4CAF50', fontWeight: WEIGHT_EMPHASIS },
+  reviewExplanation: { fontFamily: FONT_BODY, fontSize: fs(13), color: '#2196F3', marginTop: 4, fontStyle: 'italic' },
   modalButtonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 6, paddingHorizontal: 16 },
   // Results screen actions: stacked full-width buttons (Play Again is the
   // primary), so three labels fit on a narrow phone.
@@ -1752,7 +1759,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#fff',
   },
-  cancelBtnText: { fontFamily: FONT_BODY, color: '#444', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
+  cancelBtnText: { fontFamily: FONT_BODY, color: '#444', fontWeight: WEIGHT_EMPHASIS, fontSize: fs(14) },
   saveBtn: {
     flex: 1,
     minHeight: 46,
@@ -1762,11 +1769,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#8B0000',
   },
-  saveBtnText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
+  saveBtnText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: WEIGHT_EMPHASIS, fontSize: fs(14) },
   headerSection: { alignItems: 'center', marginBottom: 24, marginTop: 10 },
-  eyebrow: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
-  title: { fontFamily: FONT_TITLE, fontSize: 26, fontWeight: WEIGHT_TITLE, color: '#222', textAlign: 'center', marginBottom: 8 },
-  subtitle: { fontFamily: FONT_BODY, fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22 },
+  eyebrow: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: fs(13), fontWeight: WEIGHT_EMPHASIS, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  title: { fontFamily: FONT_TITLE, fontSize: fs(26), fontWeight: WEIGHT_TITLE, color: '#222', textAlign: 'center', marginBottom: 8 },
+  subtitle: { fontFamily: FONT_BODY, fontSize: fs(15), color: '#555', textAlign: 'center', lineHeight: fs(22) },
   modeGrid: { gap: 14, paddingHorizontal: 16 },
   modeCard: {
     backgroundColor: '#FFF',
@@ -1783,6 +1790,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   modeIconBox: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  modeTitle: { fontFamily: FONT_TITLE, color: '#122033', fontSize: 18, fontWeight: WEIGHT_TITLE, marginBottom: 4 },
-  modeDescription: { fontFamily: FONT_BODY, color: '#5A6B7F', fontSize: 14, lineHeight: 20 },
+  modeTitle: { fontFamily: FONT_TITLE, color: '#122033', fontSize: fs(18), fontWeight: WEIGHT_TITLE, marginBottom: 4 },
+  modeDescription: { fontFamily: FONT_BODY, color: '#5A6B7F', fontSize: fs(14), lineHeight: fs(20) },
 });

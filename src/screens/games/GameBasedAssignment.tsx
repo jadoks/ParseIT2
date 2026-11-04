@@ -204,13 +204,17 @@ const useResponsive = (): ResponsiveInfo => {
       xl: isSmallPhone ? 20 : isMobile ? 28 : isTablet ? 36 : 44,
     };
 
+    // Extra scale for wide monitors on top of the per-breakpoint sizes below.
+    const fontScale = width >= 1440 ? 1.2 : width >= 1100 ? 1.1 : 1;
+    const fs = (n: number) => Math.round(n * fontScale);
+
     const font = {
-      heading: isSmallPhone ? 18 : isMobile ? 20 : isTablet ? 25 : 30,
-      subheading: isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 18 : 20,
-      body: isSmallPhone ? 14 : isMobile ? 15 : isTablet ? 16 : 18,
-      question: isSmallPhone ? 18 : isMobile ? 19 : isTablet ? 23 : 26,
-      caption: isSmallPhone ? 12 : isMobile ? 13 : 14,
-      button: isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 17 : 18,
+      heading: fs(isSmallPhone ? 18 : isMobile ? 20 : isTablet ? 25 : 30),
+      subheading: fs(isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 18 : 20),
+      body: fs(isSmallPhone ? 14 : isMobile ? 15 : isTablet ? 16 : 18),
+      question: fs(isSmallPhone ? 18 : isMobile ? 19 : isTablet ? 23 : 26),
+      caption: fs(isSmallPhone ? 12 : isMobile ? 13 : 14),
+      button: fs(isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 17 : 18),
     };
 
     // Flashcards: scale width with screen, keep a comfortable aspect ratio.
@@ -1818,7 +1822,7 @@ const createStyles = (r: ResponsiveInfo) => {
       fontFamily: FONT_BODY,
       fontWeight: WEIGHT_EMPHASIS,
       color: '#FFF',
-      fontSize: 14,
+      fontSize: r.font.caption,
     },
     matchCardText: {
       fontFamily: FONT_BODY,
@@ -1839,7 +1843,7 @@ const createStyles = (r: ResponsiveInfo) => {
       fontFamily: FONT_BODY,
       fontWeight: WEIGHT_EMPHASIS,
       color: '#FFF',
-      fontSize: 13,
+      fontSize: r.font.caption,
     },
     matchProgressRow: {
       flexDirection: 'row',
