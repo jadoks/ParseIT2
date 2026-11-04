@@ -94,7 +94,7 @@ function addStudentSheet(workbook, student, used) {
   });
 
   // Column widths copied from the template.
-  [11.56, 38.78, 12.33, 9.78, 8.89, 7.11].forEach((w, i) => (ws.getColumn(i + 1).width = w));
+  [11.56, 38.78, 12.33, 12.5, 12.5, 12.5].forEach((w, i) => (ws.getColumn(i + 1).width = w));
 
   // Title + student info (rows 2-4)
   ws.mergeCells("A2:F2");
@@ -113,6 +113,7 @@ function addStudentSheet(workbook, student, used) {
 
   let row = 6;
   const totalRows = []; // row numbers of each semester's total line
+  const semTotals = []; // { units, weighted, gwa } per semester (cached results for the formulas)
 
   for (const sem of student.semesters) {
     // Semester banner, e.g. "1ST SEMESTER 2022-2023"
@@ -131,6 +132,8 @@ function addStudentSheet(workbook, student, used) {
     row += 1;
 
     const first = row;
+    let semUnits = 0;
+    let semWeighted = 0;
     for (const subject of sem.subjects) {
       ws.getCell(row, 1).value = subject.code || "";
       style(ws.getCell(row, 1));
@@ -143,19 +146,27 @@ function addStudentSheet(workbook, student, used) {
 
       // NSTP: grade is shown but units are left blank, so it adds nothing to the totals
       // (same as the NSTP rows in the template).
-      ws.getCell(row, 4).value = subject.isNstp ? null : Number(subject.units) || 0;
+      const rowUnits = subject.isNstp ? 0 : Number(subject.units) || 0;
+      ws.getCell(row, 4).value = subject.isNstp ? null : rowUnits;
       style(ws.getCell(row, 4), { align: "center" });
 
-      ws.getCell(row, 5).value = { formula: `C${row}*D${row}` };
+      // `result` stores the calculated value in the file, so viewers that don't recalculate
+      // formulas (phone previews, Drive preview, ...) still show the numbers.
+      const rowWeighted = Number.isFinite(grade) ? grade * rowUnits : 0;
+      semUnits += rowUnits;
+      semWeighted += rowWeighted;
+      ws.getCell(row, 5).value = { formula: `C${row}*D${row}`, result: rowWeighted };
       style(ws.getCell(row, 5), { align: "center" });
       row += 1;
     }
     const last = row - 1;
 
     // Semester totals: units, grade x units, semester GWA
-    ws.getCell(row, 4).value = { formula: `SUM(D${first}:D${last})` };
-    ws.getCell(row, 5).value = { formula: `SUM(E${first}:E${last})` };
-    ws.getCell(row, 6).value = { formula: `IF(D${row}=0,0,E${row}/D${row})` };
+    const semGwa = semUnits > 0 ? semWeighted / semUnits : 0;
+    ws.getCell(row, 4).value = { formula: `SUM(D${first}:D${last})`, result: semUnits };
+    ws.getCell(row, 5).value = { formula: `SUM(E${first}:E${last})`, result: semWeighted };
+    ws.getCell(row, 6).value = { formula: `IF(D${row}=0,0,E${row}/D${row})`, result: semGwa };
+    semTotals.push({ units: semUnits, weighted: semWeighted, gwa: semGwa });
     [4, 5, 6].forEach((c) => style(ws.getCell(row, c), { align: "center" }));
     ws.getCell(row, 6).numFmt = "0.000";
     totalRows.push(row);
@@ -163,15 +174,30 @@ function addStudentSheet(workbook, student, used) {
     row += 2; // blank line before the next semester
   }
 
-  // Grand total row (yellow): total units, total grade x units, final GWA.
-  // Final GWA = average of the semester GWAs, which is the rule the app/server uses to
-  // decide the honor (so the sheet always agrees with the on-screen GWA).
-  const grand = row; // one blank row after the last semester total
+  // Grand total: a labelled row, then the yellow values row.
+  //   Total Units | Total GWA (sum of grade x units) | Final GWA = Total GWA / Total Units
+  // NOTE: this is the overall unit-weighted GWA (the original template's formula). The app
+  // decides the honor from the AVERAGE of the 8 semester GWAs, so the two can differ slightly.
+  const labelRow = row;
+  const grand = row + 1;
+  [["Total Units", 4], ["Total GWA", 5], ["Final GWA", 6]].forEach(([text, col]) => {
+    const cell = ws.getCell(labelRow, col);
+    cell.value = text;
+    style(cell, { bold: true, align: "center" });
+  });
+
   const sumOf = (col) => totalRows.map((r) => `${col}${r}`).join("+");
-  ws.getCell(grand, 4).value = { formula: sumOf("D") };
-  ws.getCell(grand, 5).value = { formula: sumOf("E") };
-  ws.getCell(grand, 6).value = { formula: `AVERAGE(${totalRows.map((r) => `F${r}`).join(",")})` };
+  const sumField = (key) => semTotals.reduce((n, t) => n + t[key], 0);
+  const totalUnits = sumField("units");
+  const totalWeighted = sumField("weighted");
+  ws.getCell(grand, 4).value = { formula: sumOf("D"), result: totalUnits };
+  ws.getCell(grand, 5).value = { formula: sumOf("E"), result: totalWeighted };
+  ws.getCell(grand, 6).value = {
+    formula: `IF(D${grand}=0,0,E${grand}/D${grand})`,
+    result: totalUnits > 0 ? totalWeighted / totalUnits : 0,
+  };
   [4, 5, 6].forEach((c) => style(ws.getCell(grand, c), { bold: true, align: "center", fill: YELLOW }));
+  ws.getCell(grand, 5).numFmt = "0.00";
   ws.getCell(grand, 6).numFmt = "0.000";
 
   ws.mergeCells(`D${grand + 1}:F${grand + 1}`);
@@ -200,6 +226,7 @@ async function buildLatinHonorsWorkbook(students) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ParseIT";
   workbook.created = new Date();
+  workbook.calcProperties.fullCalcOnLoad = true; // Excel recalculates on open
   const used = new Set();
   students.forEach((student) => addStudentSheet(workbook, student, used));
   return workbook.xlsx.writeBuffer();
