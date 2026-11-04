@@ -139,6 +139,8 @@ export function buildProspectus(terms, curriculum) {
       order: termOrder(term.schoolYear, term.semester),
     };
     if (!entries.length) {
+      // An ungraded row that matches nothing in the curriculum isn't worth listing.
+      if (status === "no_grade") return;
       unmatched.push({
         subjectCode: rawSubject.subjectCode || null,
         subjectTitle: rawSubject.subjectTitle || "Unknown Subject",
@@ -157,9 +159,19 @@ export function buildProspectus(terms, curriculum) {
   };
 
   for (const term of ordered) {
+    const incTitles = new Set(
+      (term.incSubjects || []).map((s) => String(s.subjectTitle || "").trim().toLowerCase())
+    );
     for (const s of term.subjects || []) {
       const grade = Number(s.grade);
-      if (!Number.isFinite(grade) || grade <= 0) continue;
+      if (!Number.isFinite(grade) || grade <= 0) {
+        // In the grade file but no final grade yet ("Grade pending"). INC subjects are
+        // recorded below as "incomplete", so don't count them twice.
+        if (!incTitles.has(String(s.subjectTitle || "").trim().toLowerCase())) {
+          addAttempt(s, term, "no_grade", null);
+        }
+        continue;
+      }
       addAttempt(s, term, attemptStatus(grade), grade);
     }
     for (const s of term.incSubjects || []) addAttempt(s, term, "incomplete", null);
@@ -180,7 +192,7 @@ export function buildProspectus(terms, curriculum) {
 
   const years = [];
   let totalUnits = 0, earnedUnits = 0;
-  const counts = { passed: 0, failed: 0, incomplete: 0, not_taken: 0 };
+  const counts = { passed: 0, failed: 0, incomplete: 0, no_grade: 0, not_taken: 0 };
 
   const yearNumbers = [...new Set(curriculum.map((e) => e.year))].sort((a, b) => a - b);
   for (const year of yearNumbers) {
@@ -272,7 +284,7 @@ export function buildProspectus(terms, curriculum) {
     for (const s of y.semesters) {
       const taken = s.subjects.filter((x) => x.status !== "not_taken");
       const notTaken = s.subjects.length - taken.length;
-      if (taken.some((x) => x.status !== "passed")) irregular = true; // failed / INC
+      if (taken.some((x) => x.status === "failed" || x.status === "incomplete")) irregular = true; // failed / INC (a pending grade is fine)
       if (taken.length && notTaken > 0) irregular = true; // block done only in part
       if (taken.length && skippedBlock) irregular = true; // earlier block was skipped
       if (!taken.length) {
@@ -306,6 +318,7 @@ export function buildProspectus(terms, curriculum) {
       failed: counts.failed,
       incomplete: counts.incomplete,
       notTaken: counts.not_taken,
+      noGrade: counts.no_grade,
     },
     years,
     unmatched,

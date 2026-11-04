@@ -103,6 +103,7 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
   const [result, setResult] = useState<LatinHonorsResult | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
 
   const startYearNumber = Number(startYear);
   const hasValidYear = startYear.length === 4 && Number.isInteger(startYearNumber);
@@ -192,6 +193,65 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
       setError(err?.message || 'Failed to download the Latin Honors form.');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Downloads the Latin Honors Excel evaluation (one sheet per qualified student, same layout as
+  // latin_honors_evaluation.xlsx). The server re-reads the grades and builds the workbook, so only
+  // the student ids are sent.
+  const handleDownloadExcel = async () => {
+    if (!result || result.qualified.length === 0 || isDownloadingExcel) return;
+
+    setIsDownloadingExcel(true);
+    setError('');
+
+    try {
+      const response = await apiFetch('/latin-honors/export-xlsx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolYear: startYear,
+          studentIds: result.qualified.map((student) => student.id),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to download the Latin Honors Excel file.');
+      }
+
+      const fileName = `latin-honors-evaluation-${startYearNumber}-${startYearNumber + 1}.xlsx`;
+      const xlsxMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+      if (Platform.OS === 'web') {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const uri = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.writeAsStringAsync(uri, arrayBufferToBase64(await response.arrayBuffer()), {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: xlsxMimeType,
+            UTI: 'org.openxmlformats.spreadsheetml.sheet',
+            dialogTitle: 'Latin Honors Evaluation',
+          });
+        } else {
+          throw new Error('Sharing is not available on this device.');
+        }
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to download the Latin Honors Excel file.');
+    } finally {
+      setIsDownloadingExcel(false);
     }
   };
 
@@ -319,19 +379,34 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
               Graduating {result.graduatingSchoolYear} · grades from {result.coverage}
             </Text>
             {result.qualified.length > 0 && (
-              <TouchableOpacity
-                style={[styles.downloadBtn, isMobile && styles.downloadBtnMobile, isDownloading && styles.generateBtnDisabled]}
-                onPress={handleDownloadForm}
-                disabled={isDownloading}
-                activeOpacity={0.85}
-              >
-                {isDownloading ? (
-                  <ActivityIndicator size="small" color="#8B0000" />
-                ) : (
-                  <Ionicons name="download-outline" size={18} color="#8B0000" />
-                )}
-                <Text style={styles.downloadBtnText}>{isDownloading ? 'Preparing...' : 'Download Form'}</Text>
-              </TouchableOpacity>
+              <View style={[styles.downloadBtnRow, isMobile && styles.downloadBtnRowMobile]}>
+                <TouchableOpacity
+                  style={[styles.downloadBtn, isMobile && styles.downloadBtnMobile, isDownloading && styles.generateBtnDisabled]}
+                  onPress={handleDownloadForm}
+                  disabled={isDownloading}
+                  activeOpacity={0.85}
+                >
+                  {isDownloading ? (
+                    <ActivityIndicator size="small" color="#8B0000" />
+                  ) : (
+                    <Ionicons name="download-outline" size={18} color="#8B0000" />
+                  )}
+                  <Text style={styles.downloadBtnText}>{isDownloading ? 'Preparing...' : 'Download Form'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.downloadBtn, isMobile && styles.downloadBtnMobile, isDownloadingExcel && styles.generateBtnDisabled]}
+                  onPress={handleDownloadExcel}
+                  disabled={isDownloadingExcel}
+                  activeOpacity={0.85}
+                >
+                  {isDownloadingExcel ? (
+                    <ActivityIndicator size="small" color="#8B0000" />
+                  ) : (
+                    <Ionicons name="download-outline" size={18} color="#8B0000" />
+                  )}
+                  <Text style={styles.downloadBtnText}>{isDownloadingExcel ? 'Preparing...' : 'Download Excel'}</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -522,6 +597,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF6F5',
   },
   downloadBtnMobile: { width: '100%' },
+  downloadBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  downloadBtnRowMobile: { flexDirection: 'column', alignItems: 'stretch' },
   downloadBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: WEIGHT_EMPHASIS },
   group: { marginBottom: 18 },
   // Large screens: Summa | Magna | Cum Laude side by side.

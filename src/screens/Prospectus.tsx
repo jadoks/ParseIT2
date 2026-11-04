@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
@@ -16,7 +16,7 @@ const apiFetch = (url: string, options: any = {}) =>
     ...options,
   });
 
-type Status = 'passed' | 'failed' | 'incomplete' | 'not_taken';
+type Status = 'passed' | 'failed' | 'incomplete' | 'no_grade' | 'not_taken';
 
 type ProspectusSubject = {
   code: string;
@@ -80,6 +80,7 @@ type ProspectusResponse = {
     failed: number;
     incomplete: number;
     notTaken: number;
+    noGrade?: number;
   };
   years: ProspectusYear[];
   unmatched: UnmatchedSubject[];
@@ -102,7 +103,10 @@ const STATUS_META: Record<Status, { label: string; color: string; bg: string; bo
   passed: { label: 'Passed', color: '#067647', bg: '#ECFDF3', border: '#ABEFC6' },
   failed: { label: 'Failed', color: '#B42318', bg: '#FEF3F2', border: '#FECDCA' },
   incomplete: { label: 'INC', color: '#B54708', bg: '#FFFAEB', border: '#FEDF89' },
-  not_taken: { label: 'No grade submitted', color: '#667085', bg: '#F2F4F7', border: '#E4E7EC' },
+  // Listed in the student's grade file, but no final grade yet.
+  no_grade: { label: 'Grade pending', color: '#175CD3', bg: '#EFF8FF', border: '#B2DDFF' },
+  // Not in any uploaded grade file.
+  not_taken: { label: 'Not yet taken', color: '#667085', bg: '#F2F4F7', border: '#E4E7EC' },
 };
 
 const yearShort = (n: number) => `${n}${['st', 'nd', 'rd'][n - 1] || 'th'} Year`;
@@ -349,7 +353,7 @@ const Prospectus = ({ currentStudent, apiBaseUrl }: ProspectusProps) => {
           </View>
           <View style={styles.statBox}>
             <Text style={styles.metaLabel}>Remaining</Text>
-            <Text style={styles.statValue}>{summary.notTaken}</Text>
+            <Text style={styles.statValue}>{summary.notTaken + (summary.noGrade ?? 0)}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.metaLabel}>Failed / INC</Text>

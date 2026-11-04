@@ -15,6 +15,8 @@ import zlib from "zlib";
 // /deans-list/export-docx route below.
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
+// Builds the Latin Honors Excel evaluation (one sheet per student) — see /latin-honors/export-xlsx.
+import ExcelJS from "exceljs";
 
   import mammoth from "mammoth";
 import { createRequire } from "module";
@@ -41,6 +43,167 @@ import { registerProspectusRoutes } from "./prospectus.js";
 
   import { Resend } from "resend";
   const resend = new Resend(process.env.RESEND_API_KEY);
+
+// ─── Latin Honors Excel (.xlsx) builder — used by /latin-honors/export-xlsx ───
+// latinHonorsExcel.js
+// Builds the "Evaluation for Latin Honors" workbook: ONE SHEET PER STUDENT, laid out
+// exactly like latin_honors_evaluation.xlsx (8 semester blocks, grade x units formulas,
+// per-semester totals, yellow grand-total row, honor label, signatories).
+//
+
+const FONT = "Arial";
+const YELLOW = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+
+const COURSE_NAME = "Bachelor of Science in Information Technology";
+const PREPARED_BY = { name: "MELANIE R. ALBARRACIN", title: "BSIT Faculty" };
+const NOTED_BY = { name: "CHRISTINE JOY TOMOL", title: "BSIT, Chairperson " };
+
+const ordinal = (n) => (n === 1 ? "1ST" : "2ND");
+
+// Excel sheet names: max 31 chars, none of  [ ] : * ? / \  and must be unique.
+function makeSheetName(studentName, used) {
+  const surname = String(studentName || "").split(",")[0].trim() || String(studentName || "STUDENT");
+  const base = surname.replace(/[\[\]:*?/\\]/g, "").slice(0, 28).trim() || "STUDENT";
+  let name = base;
+  let n = 2;
+  while (used.has(name.toLowerCase())) {
+    name = `${base.slice(0, 28 - String(n).length - 1)} ${n}`;
+    n += 1;
+  }
+  used.add(name.toLowerCase());
+  return name;
+}
+
+const style = (cell, { bold = false, size = 10, align, fill } = {}) => {
+  cell.font = { name: FONT, size, bold };
+  if (align) cell.alignment = { horizontal: align, vertical: "middle" };
+  if (fill) cell.fill = fill;
+};
+
+/**
+ * student = {
+ *   name, honorLabel,
+ *   semesters: [{ schoolYear: "2022-2023", semester: "1st Semester", subjects: [
+ *       { code, title, grade, units, isNstp }
+ *   ]}]   // oldest first, 8 entries
+ * }
+ */
+function addStudentSheet(workbook, student, used) {
+  const ws = workbook.addWorksheet(makeSheetName(student.name, used), {
+    pageSetup: { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+
+  // Column widths copied from the template.
+  [11.56, 38.78, 12.33, 9.78, 8.89, 7.11].forEach((w, i) => (ws.getColumn(i + 1).width = w));
+
+  // Title + student info (rows 2-4)
+  ws.mergeCells("A2:F2");
+  ws.getCell("A2").value = "EVALUATION FOR LATIN HONORS";
+  style(ws.getCell("A2"), { bold: true, size: 16, align: "center" });
+
+  ws.getCell("A3").value = "Name :";
+  style(ws.getCell("A3"));
+  ws.getCell("B3").value = String(student.name || "").toUpperCase();
+  style(ws.getCell("B3"), { bold: true });
+
+  ws.getCell("A4").value = "Course ";
+  style(ws.getCell("A4"));
+  ws.getCell("B4").value = COURSE_NAME;
+  style(ws.getCell("B4"), { bold: true });
+
+  let row = 6;
+  const totalRows = []; // row numbers of each semester's total line
+
+  for (const sem of student.semesters) {
+    // Semester banner, e.g. "1ST SEMESTER 2022-2023"
+    const semNo = /2nd|second/i.test(sem.semester) ? 2 : 1;
+    ws.mergeCells(`A${row}:F${row}`);
+    ws.getCell(`A${row}`).value = `${ordinal(semNo)} SEMESTER ${sem.schoolYear}`;
+    style(ws.getCell(`A${row}`), { bold: true, align: "center" });
+    row += 1;
+
+    // Column headers (kept as in the template, including its "Desciption" spelling)
+    ["Code", "Desciption", "Grade", "Units"].forEach((label, i) => {
+      const cell = ws.getCell(row, i + 1);
+      cell.value = label;
+      style(cell, { align: "center" });
+    });
+    row += 1;
+
+    const first = row;
+    for (const subject of sem.subjects) {
+      ws.getCell(row, 1).value = subject.code || "";
+      style(ws.getCell(row, 1));
+      ws.getCell(row, 2).value = subject.title || "";
+      style(ws.getCell(row, 2));
+
+      const grade = Number(subject.grade);
+      ws.getCell(row, 3).value = Number.isFinite(grade) ? grade : null;
+      style(ws.getCell(row, 3), { align: "center" });
+
+      // NSTP: grade is shown but units are left blank, so it adds nothing to the totals
+      // (same as the NSTP rows in the template).
+      ws.getCell(row, 4).value = subject.isNstp ? null : Number(subject.units) || 0;
+      style(ws.getCell(row, 4), { align: "center" });
+
+      ws.getCell(row, 5).value = { formula: `C${row}*D${row}` };
+      style(ws.getCell(row, 5), { align: "center" });
+      row += 1;
+    }
+    const last = row - 1;
+
+    // Semester totals: units, grade x units, semester GWA
+    ws.getCell(row, 4).value = { formula: `SUM(D${first}:D${last})` };
+    ws.getCell(row, 5).value = { formula: `SUM(E${first}:E${last})` };
+    ws.getCell(row, 6).value = { formula: `IF(D${row}=0,0,E${row}/D${row})` };
+    [4, 5, 6].forEach((c) => style(ws.getCell(row, c), { align: "center" }));
+    ws.getCell(row, 6).numFmt = "0.000";
+    totalRows.push(row);
+
+    row += 2; // blank line before the next semester
+  }
+
+  // Grand total row (yellow): total units, total grade x units, final GWA.
+  // Final GWA = average of the semester GWAs, which is the rule the app/server uses to
+  // decide the honor (so the sheet always agrees with the on-screen GWA).
+  const grand = row; // one blank row after the last semester total
+  const sumOf = (col) => totalRows.map((r) => `${col}${r}`).join("+");
+  ws.getCell(grand, 4).value = { formula: sumOf("D") };
+  ws.getCell(grand, 5).value = { formula: sumOf("E") };
+  ws.getCell(grand, 6).value = { formula: `AVERAGE(${totalRows.map((r) => `F${r}`).join(",")})` };
+  [4, 5, 6].forEach((c) => style(ws.getCell(grand, c), { bold: true, align: "center", fill: YELLOW }));
+  ws.getCell(grand, 6).numFmt = "0.000";
+
+  ws.mergeCells(`D${grand + 1}:F${grand + 1}`);
+  ws.getCell(`D${grand + 1}`).value = String(student.honorLabel || "").toUpperCase();
+  style(ws.getCell(`D${grand + 1}`), { bold: true, align: "center", fill: YELLOW });
+
+  // Signatories
+  let s = grand + 4;
+  ws.getCell(`A${s}`).value = "Prepared by:";
+  style(ws.getCell(`A${s}`));
+  ws.getCell(`B${s + 2}`).value = PREPARED_BY.name;
+  style(ws.getCell(`B${s + 2}`), { bold: true });
+  ws.getCell(`B${s + 3}`).value = PREPARED_BY.title;
+  style(ws.getCell(`B${s + 3}`));
+
+  s += 5;
+  ws.getCell(`A${s}`).value = "Noted by:";
+  style(ws.getCell(`A${s}`));
+  ws.getCell(`B${s + 1}`).value = NOTED_BY.name;
+  style(ws.getCell(`B${s + 1}`), { bold: true });
+  ws.getCell(`B${s + 2}`).value = NOTED_BY.title;
+  style(ws.getCell(`B${s + 2}`));
+}
+
+async function buildLatinHonorsWorkbook(students) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "ParseIT";
+  workbook.created = new Date();
+  const used = new Set();
+  students.forEach((student) => addStudentSheet(workbook, student, used));
+  return workbook.xlsx.writeBuffer();
+}
 
 
 
@@ -16828,6 +16991,169 @@ app.get(
           : null;
         return res.status(500).json({
           error: detail || error.message || "Failed to generate the Latin Honors Word form.",
+        });
+      }
+    }
+  );
+
+  /**
+   * LATIN HONORS EXCEL (.xlsx) EXPORT (admin only)
+   * One sheet per qualified student, in the "Evaluation for Latin Honors" layout.
+   * Body: { schoolYear: "2025", studentIds: ["...", ...] }
+   * The grades are re-read from studentParsedGrades (not trusted from the client) and the
+   * same Latin Honors rules as GET /latin-honors are re-applied, so a student who does
+   * not qualify can never end up in the file.
+   */
+  app.post(
+    "/latin-honors/export-xlsx",
+    requireAuth,
+    requireRoleOrSelf({ allowedRoles: [] }),
+    async (req, res) => {
+      try {
+        const rawYear = String(req.body?.schoolYear || "").replace(/[^0-9]/g, "");
+        const graduatingStart = Number(rawYear.slice(0, 4));
+        if (rawYear.slice(0, 4).length !== 4 || !Number.isInteger(graduatingStart)) {
+          return res.status(400).json({ error: "schoolYear must contain a valid 4-digit year." });
+        }
+
+        const studentIds = [
+          ...new Set(
+            (Array.isArray(req.body?.studentIds) ? req.body.studentIds : [])
+              .map((id) => String(id || "").trim())
+              .filter(Boolean)
+          ),
+        ].slice(0, 500);
+        if (studentIds.length === 0) {
+          return res.status(400).json({ error: "There are no Latin Honors students to export." });
+        }
+
+        const semesterKeyOf = (value) => {
+          const text = String(value || "").toLowerCase();
+          if (text.includes("first") || text.includes("1st")) return "first";
+          if (text.includes("second") || text.includes("2nd")) return "second";
+          return text;
+        };
+        const schoolYearKeyOf = (value) => String(value || "").replace(/[^0-9]/g, "");
+
+        // The 8 semesters of the 4-year span, oldest first (same as GET /latin-honors).
+        const expectedTerms = [];
+        for (let year = graduatingStart - 3; year <= graduatingStart; year++) {
+          for (const sem of ["first", "second"]) {
+            expectedTerms.push({
+              key: `${year}${year + 1}|${sem}`,
+              schoolYear: `${year}-${year + 1}`,
+              semester: sem === "first" ? "1st Semester" : "2nd Semester",
+            });
+          }
+        }
+        const expectedKeys = new Set(expectedTerms.map((term) => term.key));
+        const lastTermKey = expectedTerms[expectedTerms.length - 1].key;
+
+        const built = [];
+
+        await Promise.all(
+          studentIds.map(async (studentId) => {
+            const snapshot = await db
+              .collection("studentParsedGrades")
+              .where("studentId", "==", studentId)
+              .get();
+
+            const terms = new Map();
+            snapshot.docs.forEach((doc) => {
+              const data = doc.data() || {};
+              const termKey = `${schoolYearKeyOf(data.schoolYear)}|${semesterKeyOf(data.semester)}`;
+              if (expectedKeys.has(termKey)) terms.set(termKey, data);
+            });
+
+            if (!terms.has(lastTermKey)) return;
+
+            const semesters = [];
+            const semesterGwas = [];
+            let disqualified = false;
+
+            for (const term of expectedTerms) {
+              const data = terms.get(term.key);
+              if (!data) {
+                disqualified = true; // missing semester
+                break;
+              }
+
+              const allSubjects = Array.isArray(data.subjects) ? data.subjects : [];
+              const counted = allSubjects.filter(
+                (subject) => !isNstpSubject(subject) && Number.isFinite(Number(subject.grade))
+              );
+
+              let units = 0;
+              let weighted = 0;
+              for (const subject of counted) {
+                const subjectUnits = Number(subject.units || 0);
+                units += subjectUnits;
+                weighted += Number(subject.grade) * subjectUnits;
+                if (Number(subject.grade) > 2.5) disqualified = true;
+              }
+              const incs = (Array.isArray(data.incSubjects) ? data.incSubjects : []).filter(
+                (subject) => !isNstpSubject(subject)
+              );
+              if (incs.length > 0 || units === 0) disqualified = true;
+              semesterGwas.push(units > 0 ? weighted / units : null);
+
+              semesters.push({
+                schoolYear: term.schoolYear,
+                semester: term.semester,
+                subjects: allSubjects.map((subject) => ({
+                  code: subject.subjectCode || "",
+                  title: subject.subjectTitle || "",
+                  grade: subject.grade,
+                  units: subject.units,
+                  isNstp: isNstpSubject(subject),
+                })),
+              });
+            }
+
+            if (disqualified || semesterGwas.some((gwa) => gwa === null)) return;
+
+            const gwa = Number(
+              (semesterGwas.reduce((sum, value) => sum + value, 0) / semesterGwas.length).toFixed(3)
+            );
+            const band = gwa <= 1.75 ? LATIN_HONOR_BANDS.find((item) => gwa <= item.max) : null;
+            if (!band) return;
+
+            built.push({
+              name: terms.get(lastTermKey).studentName || studentId,
+              gwa,
+              band,
+              semesters,
+              honorLabel: band.label,
+            });
+          })
+        );
+
+        if (built.length === 0) {
+          return res.status(400).json({ error: "There are no Latin Honors students to export." });
+        }
+
+        // Summa -> Magna -> Cum Laude, then best (lowest) GWA first (same as the Word form).
+        const bandOrder = LATIN_HONOR_BANDS.map((band) => band.key);
+        built.sort(
+          (a, b) =>
+            bandOrder.indexOf(a.band.key) - bandOrder.indexOf(b.band.key) ||
+            a.gwa - b.gwa ||
+            String(a.name).localeCompare(String(b.name))
+        );
+
+        const buffer = await buildLatinHonorsWorkbook(built);
+        const fileName = `latin-honors-evaluation-${graduatingStart}-${graduatingStart + 1}.xlsx`;
+
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+        return res.send(Buffer.from(buffer));
+      } catch (error) {
+        console.error("Latin honors xlsx export error:", error);
+        return res.status(500).json({
+          error: error.message || "Failed to generate the Latin Honors Excel file.",
         });
       }
     }
