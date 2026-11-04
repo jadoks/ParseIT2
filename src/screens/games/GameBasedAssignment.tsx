@@ -167,6 +167,7 @@ interface ResponsiveInfo {
   flashcardHeight: number;
   memoryColumns: 1 | 2;
   touchTarget: number;
+  optionsInRow: boolean;
 }
 
 const useResponsive = (): ResponsiveInfo => {
@@ -183,9 +184,8 @@ const useResponsive = (): ResponsiveInfo => {
     // Centered content container max width, scales by device class.
     let contentWidth: number;
     if (isDesktop) {
-      contentWidth = Math.min(width * 0.9, 1100);
-      contentWidth = Math.max(contentWidth, 900 > width ? width * 0.94 : 900);
-      contentWidth = Math.min(contentWidth, width - 32);
+      // Use nearly the full screen on desktop (was capped at 1100px).
+      contentWidth = Math.min(width * 0.96, 1800);
     } else if (isTablet) {
       contentWidth = Math.min(width * 0.92, 800);
       contentWidth = Math.max(Math.min(contentWidth, width - 24), 700 > width ? width - 24 : 700);
@@ -193,7 +193,7 @@ const useResponsive = (): ResponsiveInfo => {
       contentWidth = width; // small phone / mobile: full width with internal padding
     }
 
-    const horizontalPadding = isSmallPhone ? 12 : isMobile ? 16 : isTablet ? 24 : 32;
+    const horizontalPadding = isSmallPhone ? 12 : isMobile ? 16 : isTablet ? 24 : 20;
     const cardPadding = isSmallPhone ? 16 : isMobile ? 20 : isTablet ? 24 : 28;
 
     const spacing = {
@@ -236,6 +236,9 @@ const useResponsive = (): ResponsiveInfo => {
 
     const touchTarget = 48;
 
+    // Multiple choice: lay all answers out in a single row on wide screens.
+    const optionsInRow = width >= BREAKPOINTS.tablet;
+
     return {
       width,
       height,
@@ -254,6 +257,7 @@ const useResponsive = (): ResponsiveInfo => {
       flashcardHeight,
       memoryColumns,
       touchTarget,
+      optionsInRow,
     };
   }, [width, height]);
 };
@@ -1546,7 +1550,12 @@ const createStyles = (r: ResponsiveInfo) => {
       lineHeight: r.font.question * 1.4,
       flexWrap: 'wrap',
     },
-    optionsContainer: { gap: r.spacing.sm, width: '100%' },
+    optionsContainer: {
+      gap: r.optionsInRow ? r.spacing.md : r.spacing.sm,
+      width: '100%',
+      flexDirection: r.optionsInRow ? 'row' : 'column',
+      alignItems: 'stretch',
+    },
     optionButton: {
       backgroundColor: '#FFF',
       borderWidth: 2,
@@ -1558,7 +1567,7 @@ const createStyles = (r: ResponsiveInfo) => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      width: '100%',
+      ...(r.optionsInRow ? { flex: 1, flexBasis: 0, minWidth: 0 } : { width: '100%' }),
     },
     optionText: { fontFamily: FONT_BODY, 
       fontSize: r.font.body,

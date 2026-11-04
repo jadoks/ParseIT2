@@ -280,11 +280,13 @@ const MATCH_COLORS = [
 ];
 const matchColor = (index: number) => MATCH_COLORS[index % MATCH_COLORS.length];
 
-const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '65%'; 
+const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '94%'; 
 
 export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId, onPlayAgain, canStartNewQuiz }: Props) {
   const { width, height: windowHeight } = useWindowDimensions();
   const isLargeScreen = width >= 768;
+  // Show answer choices side by side in one row on wide screens.
+  const optionsInRow = width >= 900;
 
   // Responsive text: phones keep the base sizes; tablets and larger screens scale up.
   const fontScale = width >= 1440 ? 1.3 : width >= 1024 ? 1.2 : width >= 768 ? 1.1 : 1;
@@ -1327,7 +1329,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </ScrollView>
         </View>
 
-        <View style={styles.optionsContainer}>
+        <View style={[styles.optionsContainer, optionsInRow && { flexDirection: 'row', gap: 14 }]}>
           {currentTrivia.options.map((opt) => {
             let bgColor = '#FFF';
             let borderColor = '#DDD';
@@ -1355,7 +1357,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             return (
               <Pressable
                 key={opt}
-                style={[styles.optionButton, { backgroundColor: bgColor, borderColor }]}
+                style={[styles.optionButton, optionsInRow && { flex: 1, flexBasis: 0, minWidth: 0 }, { backgroundColor: bgColor, borderColor }]}
                 onPress={() => handleTriviaSelect(opt)}
                 disabled={!!triviaSelected}
               >
@@ -1538,7 +1540,7 @@ const createStyles = (fs: (n: number) => number) => StyleSheet.create({
   topBarTitle: { fontFamily: FONT_TITLE, color: '#FFF', fontSize: fs(18), fontWeight: WEIGHT_TITLE, flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16, paddingBottom: 40 },
   contentWrapSmall: { width: '100%' },
-  contentWrapLarge: { maxWidth: 900, minWidth: 480, alignSelf: 'center' },
+  contentWrapLarge: { maxWidth: 1800, minWidth: 480, alignSelf: 'center' },
   gameContainer: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   progressText: { fontFamily: FONT_BODY, fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS, color: '#555' },
