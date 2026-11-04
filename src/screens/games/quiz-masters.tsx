@@ -283,7 +283,7 @@ const matchColor = (index: number) => MATCH_COLORS[index % MATCH_COLORS.length];
 const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '65%'; 
 
 export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId, onPlayAgain, canStartNewQuiz }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
   // Responsive text: phones keep the base sizes; tablets and larger screens scale up.
@@ -292,6 +292,22 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     () => createStyles((n: number) => Math.round(n * fontScale)),
     [fontScale]
   );
+
+  // The question card normally flexes to fill leftover space, so with big text and
+  // several answers it shrank to its 80px minimum and clipped the question. Measure
+  // the question text and give the card at least that much room (capped at 45% of
+  // the window so the answers and footer stay on screen; longer questions scroll).
+  const [questionTextHeight, setQuestionTextHeight] = useState(0);
+  const onQuestionTextLayout = (e: any) => {
+    const h = Math.ceil(e.nativeEvent.layout.height);
+    setQuestionTextHeight((prev) => (prev === h ? prev : h));
+  };
+  const fixedQuestionCardStyle = [
+    styles.fixedQuestionCard,
+    questionTextHeight > 0 && {
+      minHeight: Math.min(questionTextHeight + 40, windowHeight * 0.45),
+    },
+  ];
 
   // 0 = questions in their generated order. "Play Again" sets a new non-zero
   // seed, which reshuffles the question order (and the answer options) of the
@@ -1248,9 +1264,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Text style={styles.scoreText}>Score: {fillScore}</Text>
         </View>
 
-        <View style={styles.fixedQuestionCard}>
+        <View style={fixedQuestionCardStyle}>
           <ScrollView contentContainerStyle={styles.fixedQuestionScroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.questionText}>{currentFillItem.prompt}</Text>
+            <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentFillItem.prompt}</Text>
           </ScrollView>
         </View>
 
@@ -1305,9 +1321,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Text style={styles.scoreText}>Score: {triviaScore}</Text>
         </View>
 
-        <View style={styles.fixedQuestionCard}>
+        <View style={fixedQuestionCardStyle}>
           <ScrollView contentContainerStyle={styles.fixedQuestionScroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.questionText}>{currentTrivia.question}</Text>
+            <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentTrivia.question}</Text>
           </ScrollView>
         </View>
 

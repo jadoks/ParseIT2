@@ -298,6 +298,22 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // free text — track an in-flight state (disable the button / show a
   // spinner) and any feedback line the grader returned with its verdict.
   const [isGradingAnswer, setIsGradingAnswer] = useState(false);
+
+  // The question card normally flexes to fill leftover space, so with big text and
+  // several answers it shrank to its 80px minimum and clipped the question. Measure
+  // the question text and give the card at least that much room (capped at 45% of
+  // the window so the answers and footer stay on screen; longer questions scroll).
+  const [questionTextHeight, setQuestionTextHeight] = useState(0);
+  const onQuestionTextLayout = (e: any) => {
+    const h = Math.ceil(e.nativeEvent.layout.height);
+    setQuestionTextHeight((prev) => (prev === h ? prev : h));
+  };
+  const fixedQuestionCardStyle = [
+    styles.fixedQuestionCard,
+    questionTextHeight > 0 && {
+      minHeight: Math.min(questionTextHeight + r.cardPadding * 2, r.height * 0.45),
+    },
+  ];
   const [answerFeedback, setAnswerFeedback] = useState<string | null>(null);
 
   // Memory match specific (Two-column matching)
@@ -957,12 +973,12 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     <View style={styles.gameContainer}>
       {renderHeader(`Question ${currentIndex + 1} / ${questions.length}`)}
 
-      <View style={styles.fixedQuestionCard}>
+      <View style={fixedQuestionCardStyle}>
         <ScrollView
           contentContainerStyle={styles.fixedQuestionScroll}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.questionText}>{currentQuestion.question}</Text>
+          <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentQuestion.question}</Text>
         </ScrollView>
       </View>
 
@@ -1110,12 +1126,12 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     <View style={styles.gameContainer}>
       {renderHeader(`Question ${currentIndex + 1} / ${questions.length}`)}
 
-      <View style={styles.fixedQuestionCard}>
+      <View style={fixedQuestionCardStyle}>
         <ScrollView
           contentContainerStyle={styles.fixedQuestionScroll}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.questionText}>{currentQuestion.question}</Text>
+          <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentQuestion.question}</Text>
         </ScrollView>
       </View>
 
