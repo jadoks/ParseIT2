@@ -14,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 // ✅ Reuses the same Toast component used across the app (Register/Admin/
@@ -166,8 +167,16 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
 export default function ModifyChatbotModal({
   visible,
   onClose,
-  isMobile,
+  isMobile: isMobileProp,
 }: ModifyChatbotModalProps) {
+  // Responsive breakpoints are derived from the live window width so the modal
+  // adapts on every device (phone, tablet, desktop, resized browser) and not
+  // only when the parent happens to pass isMobile.
+  //   isCompact (< 520): phones — icon-only action buttons, tighter spacing.
+  //   isMobile  (< 768): phones + small tablets — stacked rows/buttons.
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = isMobileProp || windowWidth < 768;
+  const isCompact = windowWidth < 520;
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -547,30 +556,31 @@ export default function ModifyChatbotModal({
   return (
     <>
       <Modal visible={visible} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, isCompact && styles.modalOverlayCompact]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View style={styles.modalIconBox}>
+          <View style={[styles.modalCard, isCompact && styles.modalCardCompact]}>
+            <View style={[styles.modalHeader, isCompact && styles.modalHeaderCompact]}>
+              <View style={[styles.modalHeaderLeft, isCompact && styles.modalHeaderLeftCompact]}>
+                <View style={[styles.modalIconBox, isCompact && styles.modalIconBoxCompact]}>
                   <MaterialCommunityIcons name="robot-happy-outline" size={22} color="#8B0000" />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.modalTitle}>Modify Chatbot</Text>
-                  <Text style={styles.modalSubtitle}>
+                  <Text style={[styles.modalTitle, isCompact && styles.modalTitleCompact]}>Modify Chatbot</Text>
+                  <Text style={[styles.modalSubtitle, isCompact && styles.modalSubtitleCompact]}>
                     Search, edit, replace files, and delete chatbot training data.
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.modalCloseButton} onPress={onClose} activeOpacity={0.85}>
+              <TouchableOpacity style={[styles.modalCloseButton, isCompact && styles.modalCloseButtonCompact]} onPress={onClose} activeOpacity={0.85}>
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.searchWrap}>
+            <View style={[styles.searchWrap, isCompact && styles.searchWrapCompact]}>
               <View
                 style={[
                   styles.searchField,
+                  isCompact && styles.searchFieldCompact,
                   isSearchFocused && styles.inputFieldFocused,
                 ]}
               >
@@ -578,7 +588,7 @@ export default function ModifyChatbotModal({
                 <TextInput
                   value={searchText}
                   onChangeText={setSearchText}
-                  placeholder="Search by response, trigger, or file name"
+                  placeholder={isCompact ? "Search entries..." : "Search by response, trigger, or file name"}
                   placeholderTextColor="#B79A9A"
                   style={styles.searchInput}
                   onFocus={() => setIsSearchFocused(true)}
@@ -591,7 +601,7 @@ export default function ModifyChatbotModal({
               showsVerticalScrollIndicator
               indicatorStyle="black"
               persistentScrollbar={Platform.OS === "android"}
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, isCompact && styles.modalContentCompact]}
             >
               {loading ? (
                 <View style={styles.centerState}>
@@ -615,8 +625,8 @@ export default function ModifyChatbotModal({
                   const isRemovingFile = removingFileId === item.id;
 
                   return (
-                    <View key={item.id} style={styles.trainingCard}>
-                      <View style={styles.trainingCardHeader}>
+                    <View key={item.id} style={[styles.trainingCard, isCompact && styles.trainingCardCompact]}>
+                      <View style={[styles.trainingCardHeader, isCompact && styles.trainingCardHeaderCompact]}>
                         <View style={styles.trainingCardHeaderLeft}>
                           <Text style={styles.trainingCardTitle}>Training Entry</Text>
                           {item.source === "admin-panel-auto-split" && (
@@ -630,23 +640,37 @@ export default function ModifyChatbotModal({
                         {!isEditing && (
                           <View style={styles.trainingActions}>
                             <TouchableOpacity
-                              style={styles.editButton}
+                              style={[styles.editButton, isCompact && styles.iconOnlyButton]}
                               activeOpacity={0.85}
                               onPress={() => handleStartEdit(item)}
+                              accessibilityRole="button"
+                              accessibilityLabel="Edit training entry"
                             >
-                              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
-                              <Text style={styles.actionButtonText}>Edit</Text>
+                              <Ionicons name="create-outline" size={isCompact ? 18 : 16} color="#FFFFFF" />
+                              {!isCompact && <Text style={styles.actionButtonText}>Edit</Text>}
                             </TouchableOpacity>
                             <TouchableOpacity
-                              style={[styles.deleteButton, isDeleting && styles.disabledButton]}
+                              style={[
+                                styles.deleteButton,
+                                isCompact && styles.iconOnlyButton,
+                                isDeleting && styles.disabledButton,
+                              ]}
                               activeOpacity={0.85}
                               onPress={() => handleDelete(item)}
                               disabled={isDeleting}
+                              accessibilityRole="button"
+                              accessibilityLabel="Delete training entry"
                             >
-                              <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
-                              <Text style={styles.actionButtonText}>
-                                {isDeleting ? "Deleting..." : "Delete"}
-                              </Text>
+                              {isCompact && isDeleting ? (
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                              ) : (
+                                <Ionicons name="trash-outline" size={isCompact ? 18 : 16} color="#FFFFFF" />
+                              )}
+                              {!isCompact && (
+                                <Text style={styles.actionButtonText}>
+                                  {isDeleting ? "Deleting..." : "Delete"}
+                                </Text>
+                              )}
                             </TouchableOpacity>
                           </View>
                         )}
@@ -687,7 +711,7 @@ export default function ModifyChatbotModal({
                           <>
                             <View style={styles.tagsWrap}>
                               {editedTriggers.map((trigger, index) => (
-                                <View key={`${item.id}-edit-${trigger}-${index}`} style={styles.editableTagChip}>
+                                <View key={`${item.id}-edit-${trigger}-${index}`} style={[styles.editableTagChip, isCompact && styles.tagChipCompact]}>
                                   <Text style={styles.tagText}>{trigger}</Text>
                                   <TouchableOpacity
                                     onPress={() => handleRemoveTrigger(trigger)}
@@ -729,7 +753,7 @@ export default function ModifyChatbotModal({
                         ) : (
                           <View style={styles.tagsWrap}>
                             {item.triggers.map((trigger, index) => (
-                              <View key={`${item.id}-${trigger}-${index}`} style={styles.tagChip}>
+                              <View key={`${item.id}-${trigger}-${index}`} style={[styles.tagChip, isCompact && styles.tagChipCompact]}>
                                 <Text style={styles.tagText}>{trigger}</Text>
                               </View>
                             ))}
@@ -749,7 +773,7 @@ export default function ModifyChatbotModal({
                             <Text style={styles.previewSubText}>{item.file.mimeType || "Unknown type"}</Text>
                             <View style={[styles.fileActionRow, isMobile && styles.fileActionRowStack]}>
                               <TouchableOpacity
-                                style={styles.replaceFileButton}
+                                style={[styles.replaceFileButton, isMobile && styles.fileButtonStack]}
                                 activeOpacity={0.85}
                                 onPress={() => handleReplaceFile(item)}
                                 disabled={isReplacing || isSaving}
@@ -760,7 +784,7 @@ export default function ModifyChatbotModal({
                                 </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={styles.removeFileButton}
+                                style={[styles.removeFileButton, isMobile && styles.fileButtonStack]}
                                 activeOpacity={0.85}
                                 onPress={() => handleRemoveFile(item)}
                                 disabled={isRemovingFile || isSaving}
@@ -775,9 +799,9 @@ export default function ModifyChatbotModal({
                         ) : (
                           <View style={styles.previewBox}>
                             <Text style={styles.previewSubText}>No file attached.</Text>
-                            <View style={styles.fileActionRow}>
+                            <View style={[styles.fileActionRow, isMobile && styles.fileActionRowStack]}>
                               <TouchableOpacity
-                                style={styles.replaceFileButton}
+                                style={[styles.replaceFileButton, isMobile && styles.fileButtonStack]}
                                 activeOpacity={0.85}
                                 onPress={() => handleReplaceFile(item)}
                                 disabled={isReplacing || isSaving}
@@ -825,9 +849,9 @@ export default function ModifyChatbotModal({
       </Modal>
 
       <Modal visible={!!confirmDeleteItem} animationType="fade" transparent onRequestClose={handleCancelDelete}>
-        <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmOverlay, isCompact && styles.confirmOverlayCompact]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleCancelDelete} />
-          <View style={styles.confirmCard}>
+          <View style={[styles.confirmCard, isCompact && styles.confirmCardCompact]}>
             <View style={styles.confirmIconBox}>
               <Ionicons name="trash-outline" size={24} color="#DC2626" />
             </View>
@@ -874,9 +898,9 @@ export default function ModifyChatbotModal({
         transparent
         onRequestClose={handleCancelFileReplace}
       >
-        <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmOverlay, isCompact && styles.confirmOverlayCompact]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleCancelFileReplace} />
-          <View style={styles.confirmCard}>
+          <View style={[styles.confirmCard, isCompact && styles.confirmCardCompact]}>
             <View style={styles.confirmIconBox}>
               <Ionicons name="sparkles-outline" size={24} color="#DC2626" />
             </View>
@@ -947,6 +971,12 @@ export default function ModifyChatbotModal({
     </>
   );
 }
+
+// Long unbroken strings (file names, URLs, triggers) must wrap instead of
+// pushing content outside its container on narrow screens (web only prop).
+const webWrap = Platform.OS === "web"
+  ? ({ wordBreak: "break-word", overflowWrap: "anywhere" } as any)
+  : {};
 
 const styles = StyleSheet.create({
   toastPortal: {
@@ -1088,6 +1118,7 @@ const styles = StyleSheet.create({
   },
   trainingCardHeaderLeft: {
     flex: 1,
+    minWidth: 0,
     paddingRight: 12,
   },
   trainingCardTitle: {
@@ -1103,6 +1134,7 @@ const styles = StyleSheet.create({
   },
   trainingActions: {
     flexDirection: "row",
+    flexShrink: 0,
   },
   editButton: {
     height: 40,
@@ -1222,6 +1254,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: "#2B1111",
     fontWeight: "600",
+    flexShrink: 1,
+    ...webWrap,
   },
   previewSubText: {
     marginTop: 6,
@@ -1233,6 +1267,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   tagChip: {
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F7EDED",
@@ -1245,6 +1280,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   editableTagChip: {
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F7EDED",
@@ -1261,6 +1297,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#7A4A4A",
+    flexShrink: 1,
+    ...webWrap,
   },
   removeTriggerButton: {
     marginLeft: 8,
@@ -1400,6 +1438,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: "#2B1111",
     fontWeight: "600",
+    ...webWrap,
   },
   confirmActions: {
     flexDirection: "row",
@@ -1445,6 +1484,82 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7,
+  },
+  // ─── Compact (phone, < 520px) overrides ───
+  modalOverlayCompact: {
+    padding: 10,
+  },
+  modalCardCompact: {
+    borderRadius: 22,
+    maxHeight: "96%",
+  },
+  modalHeaderCompact: {
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  modalHeaderLeftCompact: {
+    paddingRight: 8,
+    minWidth: 0,
+  },
+  modalIconBoxCompact: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    marginRight: 10,
+  },
+  modalTitleCompact: {
+    fontSize: 18,
+    marginBottom: 2,
+  },
+  modalSubtitleCompact: {
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  modalCloseButtonCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+  },
+  searchWrapCompact: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+  },
+  searchFieldCompact: {
+    minHeight: 46,
+    borderRadius: 14,
+  },
+  modalContentCompact: {
+    padding: 12,
+    paddingBottom: 12,
+  },
+  trainingCardCompact: {
+    padding: 14,
+    borderRadius: 18,
+    marginBottom: 12,
+  },
+  trainingCardHeaderCompact: {
+    marginBottom: 12,
+  },
+  // Square icon-only action button (Edit / Delete on small screens).
+  iconOnlyButton: {
+    width: 40,
+    paddingHorizontal: 0,
+  },
+  tagChipCompact: {
+    paddingVertical: 8,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  fileButtonStack: {
+    marginRight: 0,
+  },
+  confirmOverlayCompact: {
+    padding: 12,
+  },
+  confirmCardCompact: {
+    padding: 18,
+    borderRadius: 20,
   },
   autoSplitBadge: {
     fontSize: 11,

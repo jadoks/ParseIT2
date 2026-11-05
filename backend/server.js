@@ -22476,6 +22476,100 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     return parsed;
   }
 
+  // ─── Pending (unsaved) AI lesson drafts ─────────────────────────────────────
+  // Every lesson the AI generates is persisted here immediately, BEFORE the
+  // teacher reviews it. If the teacher closes the app / tab while the
+  // "Edit Generated Lessons" modal is open, the draft is still in Firestore:
+  // they reopen it from the module's lesson list instead of paying for a new
+  // AI generation. A draft is deleted when its lesson is saved
+  // (POST /course-lessons/create-manual with draftId) or discarded.
+  const LESSON_DRAFTS_COLLECTION = "lessonDrafts";
+  const MAX_LESSON_DRAFT_BYTES = 900 * 1024; // Firestore doc limit is 1 MiB
+
+  const serializeLessonDraft = (doc) => {
+    const d = doc.data() || {};
+    return {
+      id: doc.id,
+      classId: d.classId || null,
+      moduleId: d.moduleId || null,
+      moduleNumber: d.moduleNumber ?? null,
+      lessonNumber: d.lessonNumber ?? null,
+      title: d.title || "",
+      subtopics: Array.isArray(d.subtopics) ? d.subtopics : [],
+      lesson: d.lesson || {},
+      status: d.status || "pending",
+      createdAtMs: d.createdAt?.toMillis?.() ?? null,
+      updatedAtMs: d.updatedAt?.toMillis?.() ?? null,
+    };
+  };
+
+  // Loads a draft and confirms it belongs to the signed-in teacher.
+  const loadOwnedLessonDraft = async (draftId, uid) => {
+    const ref = db.collection(LESSON_DRAFTS_COLLECTION).doc(String(draftId));
+    const snap = await ref.get();
+    if (!snap.exists) return { error: { status: 404, message: "Draft not found." } };
+    if (snap.data()?.createdBy !== uid) return { error: { status: 403, message: "Not your draft." } };
+    return { ref, snap };
+  };
+
+  app.get("/course-lesson-drafts/:classId", requireAuth, async (req, res) => {
+    try {
+      const snap = await db.collection(LESSON_DRAFTS_COLLECTION)
+        .where("classId", "==", req.params.classId)
+        .where("createdBy", "==", req.user.uid)
+        .get();
+      const drafts = snap.docs
+        .map(serializeLessonDraft)
+        .filter((d) => d.status === "pending")
+        .sort((a, b) => (a.moduleNumber ?? 0) - (b.moduleNumber ?? 0) || (a.lessonNumber ?? 0) - (b.lessonNumber ?? 0));
+      res.json({ success: true, drafts });
+    } catch (error) {
+      console.error("List lesson drafts error:", error);
+      res.status(500).json({ error: error.message || "Failed to load pending lessons." });
+    }
+  });
+
+  // Autosave of the teacher's edits made inside the "Edit Generated Lessons" modal.
+  app.put("/course-lesson-drafts/:draftId", requireAuth, async (req, res) => {
+    try {
+      const { lesson } = req.body || {};
+      if (!lesson || typeof lesson !== "object") {
+        return res.status(400).json({ error: "Missing lesson." });
+      }
+      if (containsImageGenerationRequest(lesson)) {
+        return res.status(400).json({ error: IMAGE_GEN_BLOCK_MESSAGE });
+      }
+      const { draftId: _ignoredDraftId, reused: _ignoredReused, ...lessonToStore } = lesson;
+      if (Buffer.byteLength(JSON.stringify(lessonToStore), "utf8") > MAX_LESSON_DRAFT_BYTES) {
+        return res.status(413).json({ error: "Lesson draft is too large." });
+      }
+      const owned = await loadOwnedLessonDraft(req.params.draftId, req.user.uid);
+      if (owned.error) return res.status(owned.error.status).json({ error: owned.error.message });
+
+      await owned.ref.update({
+        lesson: lessonToStore,
+        title: String(lessonToStore.title || "").trim() || owned.snap.data().title || "",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Update lesson draft error:", error);
+      res.status(500).json({ error: error.message || "Failed to save draft." });
+    }
+  });
+
+  app.delete("/course-lesson-drafts/:draftId", requireAuth, async (req, res) => {
+    try {
+      const owned = await loadOwnedLessonDraft(req.params.draftId, req.user.uid);
+      if (owned.error) return res.status(owned.error.status).json({ error: owned.error.message });
+      await owned.ref.delete();
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete lesson draft error:", error);
+      res.status(500).json({ error: error.message || "Failed to discard draft." });
+    }
+  });
+
   app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res) => {
     try {
       const { classId, moduleNumber, topicTitles, fields, customSections } = req.body;
@@ -22516,6 +22610,26 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       if (!lessonsSnap.empty) {
         nextLessonNumber = (lessonsSnap.docs[0].data().lessonNumber || 0) + 1;
       }
+
+      // ✅ Pending (unsaved) drafts from an earlier generation. They already
+      // cost AI tokens, so their subtopics are NEVER regenerated — the saved
+      // draft is handed back instead (see reusedDraftIds below). Their lesson
+      // numbers also count toward the next number so nothing collides.
+      const pendingDraftsSnap = await db.collection(LESSON_DRAFTS_COLLECTION)
+        .where("classId", "==", classId)
+        .where("moduleId", "==", moduleId)
+        .where("createdBy", "==", req.user.uid)
+        .get();
+      const pendingDrafts = pendingDraftsSnap.docs
+        .map(serializeLessonDraft)
+        .filter((d) => d.status === "pending");
+      const pendingBySubtopic = new Map();
+      pendingDrafts.forEach((d) => {
+        const subs = d.subtopics.length > 0 ? d.subtopics : [d.title];
+        subs.forEach((sub) => pendingBySubtopic.set(String(sub || "").toLowerCase().trim(), d));
+        nextLessonNumber = Math.max(nextLessonNumber, (Number(d.lessonNumber) || 0) + 1);
+      });
+      const reusedDraftIds = new Set();
 
       console.log(`Generating next lessons for Module ${moduleNumber}. Starting at Lesson #${nextLessonNumber}`);
 
@@ -22623,13 +22737,22 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const skippedTopics = [];
       const groupsToGenerate = [];
       topicGroups.forEach((group) => {
-        const newSubtopics = group.subtopics.filter(
+        const notYetSaved = group.subtopics.filter(
           (s) => !existingCoveredSubtopics.has(String(s).toLowerCase().trim())
         );
-        if (newSubtopics.length === 0) {
+        if (notYetSaved.length === 0) {
           skippedTopics.push(group.subtopics.length > 1 ? group.topicTitle : group.subtopics[0]);
           return;
         }
+        // Subtopics that already have a generated-but-unsaved draft: reuse the
+        // draft (0 AI tokens) rather than generating them again.
+        const newSubtopics = [];
+        notYetSaved.forEach((s) => {
+          const draft = pendingBySubtopic.get(String(s).toLowerCase().trim());
+          if (draft) reusedDraftIds.add(draft.id);
+          else newSubtopics.push(s);
+        });
+        if (newSubtopics.length === 0) return;
         groupsToGenerate.push({
           // Merged lessons (2+ subtopics) are titled with the parent topic's
           // own bundle title; a single remaining subtopic keeps its own name
@@ -22677,6 +22800,28 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           // dedup on future generations and to persist on save (see
           // /course-lessons/create-manual).
           generatedLesson.subtopics = group.subtopics;
+          // Persist immediately so the lesson survives the teacher closing the
+          // app before saving. A failure here must not lose the generated
+          // lesson (the teacher still gets it in this response).
+          try {
+            const draftRef = db.collection(LESSON_DRAFTS_COLLECTION).doc();
+            await draftRef.set({
+              classId,
+              moduleId,
+              moduleNumber,
+              createdBy: req.user.uid,
+              status: "pending",
+              lessonNumber: lessonNum,
+              title: String(generatedLesson.title || group.lessonTitle || "").trim(),
+              subtopics: group.subtopics,
+              lesson: generatedLesson,
+              createdAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            generatedLesson.draftId = draftRef.id;
+          } catch (draftError) {
+            console.error("Failed to persist lesson draft:", draftError);
+          }
           generationResults.push(generatedLesson);
         } catch (genError) {
           console.error(`Failed to generate content for ${group.lessonTitle}:`, genError);
@@ -22685,14 +22830,25 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         }
       }
 
-      const newLessonObjectsForPreview = generationResults.filter(Boolean);
+      const newGeneratedLessons = generationResults.filter(Boolean);
+      // Drafts the teacher already generated earlier — returned as-is, no AI call.
+      const reusedLessons = pendingDrafts
+        .filter((d) => reusedDraftIds.has(d.id))
+        .map((d) => ({
+          ...d.lesson,
+          draftId: d.id,
+          reused: true,
+          lessonNumber: d.lessonNumber ?? d.lesson?.lessonNumber,
+          subtopics: d.subtopics.length > 0 ? d.subtopics : d.lesson?.subtopics,
+        }));
+      const newLessonObjectsForPreview = [...reusedLessons, ...newGeneratedLessons];
 
       if (newLessonObjectsForPreview.length === 0) {
         return res.json({
           success: true,
           message: "No new lessons generated or all selected topics already exist.",
           data: { lessons: [] },
-          meta: { requested: requestedTitles.length, generated: 0, skipped: skippedTopics, failed: failedTopics }
+          meta: { requested: requestedTitles.length, generated: 0, reused: 0, skipped: skippedTopics, failed: failedTopics }
         });
       }
 
@@ -22708,7 +22864,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         // 1 failed, 0 already existed" instead of silently dropping topics.
         meta: {
           requested: requestedTitles.length,
-          generated: newLessonObjectsForPreview.length,
+          generated: newGeneratedLessons.length,
+          reused: reusedLessons.length,
           skipped: skippedTopics,
           failed: failedTopics
         }
@@ -23332,7 +23489,10 @@ ${spec.rules}
         // lessonMode). Not sent by the AI "Generate Next Lesson" save flow,
         // so its absence is what tells a real manually-typed lesson apart
         // from an AI-generated one being saved after preview/edit.
-        type: requestedType
+        type: requestedType,
+        // Id of the pending AI draft this lesson was saved from (if any). The
+        // draft is removed once the real lesson exists.
+        draftId
       } = req.body;
 
       if (!moduleId || !classId || !title) {
@@ -23494,6 +23654,15 @@ ${spec.rules}
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()
       });
+
+      if (draftId) {
+        try {
+          const owned = await loadOwnedLessonDraft(draftId, req.user.uid);
+          if (!owned.error) await owned.ref.delete();
+        } catch (draftCleanupError) {
+          console.warn("Failed to delete saved lesson draft:", draftCleanupError.message);
+        }
+      }
 
       // 👇 ADDED: notify every enrolled student that a new module lesson was published
       try {

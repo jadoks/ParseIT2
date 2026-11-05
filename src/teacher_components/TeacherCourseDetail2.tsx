@@ -2655,6 +2655,7 @@ const TeacherCourseDetail2 = ({
           ? submissionsData.map(mapSubmission)
           : []
       );
+      void loadLessonDrafts();
     } catch (error) {
       console.error('Error loading course content:', error);
       setAssignments([]);
@@ -2671,6 +2672,126 @@ const TeacherCourseDetail2 = ({
   useEffect(() => {
     loadCourseContent();
   }, [course?.id]);
+
+  // ─── Pending (unsaved) AI lesson drafts ────────────────────────────────────
+  // Every AI-generated lesson is stored on the server the moment it is
+  // generated (see /course-syllabus/generate-next-lessons). If the teacher
+  // closes the app or the tab while "Edit Generated Lessons" is open, the
+  // lessons stay "Pending" and are re-opened from the module's lesson list —
+  // nothing is regenerated, so no AI tokens are wasted.
+  const [lessonDrafts, setLessonDrafts] = useState<any[]>([]);
+  // draftId -> JSON snapshot last known to be on the server (used to autosave only what changed).
+  const draftBaselineRef = useRef<Map<string, string>>(new Map());
+  const pendingLessonsRef = useRef<any[]>([]);
+  const draftSyncPausedRef = useRef(false);
+
+  const loadLessonDrafts = async () => {
+    if (!course?.id) { setLessonDrafts([]); return; }
+    try {
+      const res = await fetch(`${API_BASE_URL}/course-lesson-drafts/${course.id}`, { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.drafts)) setLessonDrafts(data.drafts);
+    } catch (e) {
+      console.warn('Failed to load pending lesson drafts', e);
+    }
+  };
+
+  useEffect(() => {
+    loadLessonDrafts();
+  }, [course?.id]);
+
+  // Same plain-text clean-up for freshly generated AND reopened drafts.
+  const normalizePendingLesson = (l: any, sectionOrder: string[]) => ({
+    ...l,
+    title: stripAsterisks(l.title),
+    description: stripAsterisks(l.description),
+    discussion: stripAsterisks(l.discussion),
+    activity: stripAsterisks(l.activity),
+    sasFields: Array.isArray(l.sasFields) ? l.sasFields : DEFAULT_SAS_FIELDS,
+    customSections: Array.isArray(l.customSections)
+      ? l.customSections.map((cs: any) => ({ title: cs?.title || '', content: stripAsterisks(cs?.content) }))
+      : [],
+    sectionOrder,
+  });
+
+  // Pushes edits (PUT) and removals (DELETE) of the open drafts to the server.
+  const syncDraftsToServer = async () => {
+    if (draftSyncPausedRef.current) return;
+    const current = pendingLessonsRef.current;
+    const baseline = draftBaselineRef.current;
+    const currentIds = new Set(current.map((l: any) => l.draftId).filter(Boolean));
+    const jobs: Promise<any>[] = [];
+    current.forEach((l: any) => {
+      if (!l?.draftId) return;
+      const snapshot = JSON.stringify(l);
+      if (baseline.get(l.draftId) === snapshot) return;
+      baseline.set(l.draftId, snapshot);
+      jobs.push(
+        fetch(`${API_BASE_URL}/course-lesson-drafts/${l.draftId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          keepalive: true,
+          body: JSON.stringify({ lesson: l }),
+        })
+          .then((res) => { if (!res.ok) baseline.delete(l.draftId); })
+          .catch(() => { baseline.delete(l.draftId); }) // retried on the next sync
+      );
+    });
+    Array.from(baseline.keys()).forEach((id) => {
+      if (currentIds.has(id)) return;
+      baseline.delete(id);
+      jobs.push(
+        fetch(`${API_BASE_URL}/course-lesson-drafts/${id}`, { method: 'DELETE', credentials: 'include', keepalive: true })
+          .catch(() => {})
+      );
+    });
+    await Promise.all(jobs);
+  };
+
+  useEffect(() => {
+    pendingLessonsRef.current = pendingGeneratedLessons;
+    if (!pendingGeneratedLessons.some((l: any) => l?.draftId) && draftBaselineRef.current.size === 0) return;
+    // Short debounce: edits reach the server within ~1s, so closing the app mid-edit loses almost nothing.
+    const timer = setTimeout(() => { void syncDraftsToServer(); }, 800);
+    return () => clearTimeout(timer);
+  }, [pendingGeneratedLessons]);
+
+  // Web: flush when the tab is hidden/closed.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const flush = () => { if (document.visibilityState === 'hidden') void syncDraftsToServer(); };
+    document.addEventListener('visibilitychange', flush);
+    window.addEventListener('pagehide', flush as any);
+    return () => {
+      document.removeEventListener('visibilitychange', flush);
+      window.removeEventListener('pagehide', flush as any);
+    };
+  }, []);
+
+  const closeLessonPreviewModal = () => {
+    setShowLessonPreviewModal(false);
+    void syncDraftsToServer().finally(() => { void loadLessonDrafts(); });
+  };
+
+  // Re-opens a module's pending drafts in the "Edit Generated Lessons" modal — no AI call.
+  const openPendingDrafts = (mod: any, draftId?: string) => {
+    const drafts = lessonDrafts.filter((d: any) => d.moduleId === mod.id);
+    if (drafts.length === 0) return;
+    const lessons = drafts.map((d: any) =>
+      normalizePendingLesson(
+        { ...(d.lesson || {}), draftId: d.id, subtopics: d.subtopics, lessonNumber: d.lessonNumber },
+        buildSectionOrder(d.lesson?.sectionOrder, (d.lesson?.customSections || []).map((c: any) => c?.title).filter(Boolean))
+      )
+    );
+    draftBaselineRef.current = new Map(lessons.map((l: any) => [l.draftId, JSON.stringify(l)] as [string, string]));
+    pendingLessonsRef.current = lessons;
+    setTargetModuleForGen(mod);
+    setPendingGeneratedLessons(lessons);
+    const idx = draftId ? lessons.findIndex((l: any) => l.draftId === draftId) : 0;
+    setEditingPreviewIndex(idx >= 0 ? idx : 0);
+    setShowLessonPreviewModal(true);
+  };
 
   // Course template is global/school-wide, so it only needs to be fetched
   // once — it isn't tied to this particular course.
@@ -2976,6 +3097,15 @@ useEffect(() => {
       toast.show('error', IMAGE_GEN_BLOCK_TITLE, IMAGE_GEN_BLOCK_MESSAGE);
       return;
     }
+    const topicsTouched = new Set(
+      (targetModuleForGen.topics || [])
+        .map((t: any, i: number) => (selectedTopicsForGen.some((st) => t.subtopics.includes(st)) ? i : -1))
+        .filter((i: number) => i !== -1)
+    );
+    if (topicsTouched.size > 1) {
+      toast.show('error', 'One topic at a time', 'Select subtopics from a single topic.');
+      return;
+    }
     setIsGeneratingNextLessons(true);
     try {
       const response = await fetch(`${API_BASE_URL}/course-syllabus/generate-next-lessons`, {
@@ -2994,26 +3124,34 @@ useEffect(() => {
       if (!response.ok) throw new Error(data.error);
       const meta = data.meta || null;
       if (data.data && data.data.lessons && data.data.lessons.length > 0) {
-        const plainTextLessons = data.data.lessons.map((l: any) => ({
-          ...l,
-          title: stripAsterisks(l.title),
-          description: stripAsterisks(l.description),
-          discussion: stripAsterisks(l.discussion),
-          activity: stripAsterisks(l.activity),
-          sasFields: Array.isArray(l.sasFields) ? l.sasFields : genSasFields,
-          customSections: Array.isArray(l.customSections)
-            ? l.customSections.map((cs: any) => ({ title: cs?.title || '', content: stripAsterisks(cs?.content) }))
-            : [],
-          sectionOrder: buildSectionOrder(genSectionOrder, genCustomSections),
-        }));
+        const plainTextLessons = data.data.lessons.map((l: any) => {
+          const { reused, ...lesson } = l; // `reused` = an earlier unsaved draft handed back (0 tokens)
+          return normalizePendingLesson(
+            { ...lesson, sasFields: Array.isArray(lesson.sasFields) ? lesson.sasFields : genSasFields },
+            reused && Array.isArray(lesson.sectionOrder) && lesson.sectionOrder.length > 0
+              ? lesson.sectionOrder
+              : buildSectionOrder(genSectionOrder, genCustomSections)
+          );
+        });
+        // Baseline = only the reused drafts as they already are on the server.
+        // Freshly generated lessons are deliberately NOT in it, so the first
+        // autosave also stores the teacher's chosen section order/fields.
+        draftBaselineRef.current = new Map(
+          data.data.lessons
+            .map((l: any, i: number) => (l.reused && l.draftId ? [l.draftId, JSON.stringify(plainTextLessons[i])] : null))
+            .filter(Boolean) as [string, string][]
+        );
+        pendingLessonsRef.current = plainTextLessons;
         setPendingGeneratedLessons(plainTextLessons);
         setEditingPreviewIndex(0);
         setShowLessonPreviewModal(true);
-        const generatedCount = data.data.lessons.length;
+        const generatedCount = meta?.generated ?? data.data.lessons.length;
+        const reusedCount = meta?.reused || 0;
         const failedCount = meta?.failed?.length || 0;
         const skippedCount = meta?.skipped?.length || 0;
-        if (failedCount > 0 || skippedCount > 0) {
+        if (failedCount > 0 || skippedCount > 0 || reusedCount > 0) {
           const parts = [`${generatedCount} lesson(s) generated`];
+          if (reusedCount > 0) parts.push(`${reusedCount} pending draft(s) reopened (no AI used)`);
           if (skippedCount > 0) parts.push(`${skippedCount} already existed`);
           if (failedCount > 0) parts.push(`${failedCount} failed`);
           toast.show('info', 'Generated with some issues', `${parts.join(', ')}.`);
@@ -3042,6 +3180,7 @@ useEffect(() => {
       return;
     }
     setIsSavingGeneratedLessons(true);
+    draftSyncPausedRef.current = true; // don't autosave drafts that are about to be turned into real lessons
     try {
       let currentMax = 0;
       try {
@@ -3112,6 +3251,8 @@ useEffect(() => {
             ? lesson.customSections.filter((cs: any) => cs && cs.title).map((cs: any) => ({ title: cs.title, content: cs.content || '' }))
             : [],
           sectionOrder: getLessonSectionOrder(lesson),
+          // The server deletes this pending draft once the real lesson is saved.
+          draftId: lesson.draftId || undefined,
         };
         const res = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
           method: 'POST',
@@ -3125,14 +3266,26 @@ useEffect(() => {
         }
         return res.json();
       });
-      await Promise.all(promises);
+      // allSettled: a lesson that saved is gone from the pending list even if a sibling failed,
+      // so a retry doesn't try to save it twice (its draft was already deleted by the server).
+      const results = await Promise.allSettled(promises);
+      const savedIdx = new Set<number>();
+      results.forEach((r, i) => { if (r.status === 'fulfilled') savedIdx.add(i); });
+      pendingGeneratedLessons.forEach((l: any, i: number) => {
+        if (savedIdx.has(i) && l.draftId) draftBaselineRef.current.delete(l.draftId);
+      });
+      const remaining = pendingGeneratedLessons.filter((_: any, i: number) => !savedIdx.has(i));
+      pendingLessonsRef.current = remaining;
+      setPendingGeneratedLessons(remaining);
       await loadCourseContent();
+      const firstFailure = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (firstFailure) throw firstFailure.reason;
       setShowLessonPreviewModal(false);
-      setPendingGeneratedLessons([]);
-      toast.show('success', 'Saved!', `${pendingGeneratedLessons.length} lesson(s) saved.`);
+      toast.show('success', 'Saved!', `${savedIdx.size} lesson(s) saved.`);
     } catch (error: any) {
       toast.show('error', 'Save Failed', error?.message || 'Save failed.');
     } finally {
+      draftSyncPausedRef.current = false;
       setIsSavingGeneratedLessons(false);
     }
   };
@@ -8064,8 +8217,31 @@ the button looked completely dead.
                               );
                             })()
                           ) : (
-                            <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
+                            !lessonDrafts.some((d: any) => d.moduleId === mod.id) && (
+                              <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
+                            )
                           )}
+                          {lessonDrafts
+                            .filter((d: any) => d.moduleId === mod.id)
+                            .map((d: any) => (
+                              <TouchableOpacity
+                                key={`draft-${d.id}`}
+                                onPress={() => openPendingDrafts(mod, d.id)}
+                                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8E1', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#FFE082', borderLeftWidth: 3, borderLeftColor: '#F9A825' }}
+                              >
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#8D6E00', marginBottom: 4 }} numberOfLines={2}>
+                                    {d.lesson?.title || d.title || 'Generated lesson'}
+                                  </Text>
+                                  <Text style={{ fontSize: 12, color: '#8D6E00' }}>
+                                    Pending – generated, not saved yet. Tap to review &amp; save (no AI used).
+                                  </Text>
+                                </View>
+                                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: '#F9A825', marginLeft: 8 }}>
+                                  <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 11 }}>Pending</Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
                           <TouchableOpacity
                             onPress={() => {
                               resetLessonForm();
@@ -9721,7 +9897,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>Generate Next Lessons</Text>
                 <Text style={styles.modalSubtitle}>
-                  Select one or more subtopics from "{targetModuleForGen?.title}" to generate content. Subtopics under the same topic are combined into one lesson; subtopics from different topics become separate lessons.
+                  Select one or more subtopics from "{targetModuleForGen?.title}" to generate content. Pick subtopics from ONE topic at a time — they are combined into a single lesson. Generate other topics separately.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowNextLessonModal(false)}>
@@ -9761,20 +9937,53 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                       )}
                       {topic.subtopics.map((subtopicTitle: string, sIdx: number) => {
                         const isSelected = selectedTopicsForGen.includes(subtopicTitle);
+                        // One topic per generation: once a subtopic is ticked, every
+                        // subtopic under a DIFFERENT topic is locked (not clickable).
+                        const lockedTopicIdx = selectedTopicsForGen.length > 0
+                          ? targetModuleForGen.topics.findIndex((t: any) => t.subtopics.includes(selectedTopicsForGen[0]))
+                          : -1;
+                        const isLockedOut = lockedTopicIdx !== -1 && lockedTopicIdx !== tIdx;
+                        const pendingDraft = lessonDrafts.find(
+                          (d: any) =>
+                            d.moduleId === targetModuleForGen?.id &&
+                            (d.subtopics?.length ? d.subtopics : [d.title]).some(
+                              (st: string) => String(st).trim().toLowerCase() === String(subtopicTitle).trim().toLowerCase()
+                            )
+                        );
+                        if (pendingDraft) {
+                          return (
+                            <TouchableOpacity
+                              key={sIdx}
+                              onPress={() => {
+                                setShowNextLessonModal(false);
+                                openPendingDrafts(targetModuleForGen, pendingDraft.id);
+                              }}
+                              style={[styles.materialChip, { marginBottom: 8, minHeight: 44, backgroundColor: '#FFF8E1', borderColor: '#F9A825' }]}
+                            >
+                              <Ionicons name="time-outline" size={22} color="#F9A825" />
+                              <View style={{ flex: 1, marginLeft: 8 }}>
+                                <Text style={[styles.materialChipText, { color: '#8D6E00' }]}>{subtopicTitle}</Text>
+                                <Text style={{ fontSize: 11, color: '#8D6E00' }}>Already generated – tap to open (no AI used)</Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        }
                         return (
                           <TouchableOpacity
                             key={sIdx}
+                            disabled={isLockedOut}
                             onPress={() => toggleTopicSelection(subtopicTitle)}
                             style={[
                               styles.materialChip,
                               { marginBottom: 8, minHeight: 44 },
-                              isSelected && styles.materialChipActive
+                              isSelected && styles.materialChipActive,
+                              isLockedOut && { opacity: 0.4 }
                             ]}
                           >
                             <Ionicons
-                              name={isSelected ? "checkbox" : "square-outline"}
+                              name={isLockedOut ? "lock-closed-outline" : isSelected ? "checkbox" : "square-outline"}
                               size={22}
-                              color={isSelected ? "#FFF" : "#8B0000"}
+                              color={isSelected ? "#FFF" : isLockedOut ? "#999" : "#8B0000"}
                             />
                             <View style={{ flex: 1, marginLeft: 8 }}>
                               <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
@@ -9964,7 +10173,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
         visible={showLessonPreviewModal && draftPreviewIndex === null}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowLessonPreviewModal(false)}
+        onRequestClose={() => closeLessonPreviewModal()}
       >
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
@@ -9979,7 +10188,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                     : 'Review and modify content before saving.'}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setShowLessonPreviewModal(false)}>
+              <TouchableOpacity onPress={() => closeLessonPreviewModal()}>
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
@@ -10221,7 +10430,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={styles.secondaryButton}
-                onPress={() => setShowLessonPreviewModal(false)}
+                onPress={() => closeLessonPreviewModal()}
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
