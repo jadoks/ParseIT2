@@ -662,3 +662,4 @@ const styles = StyleSheet.create({
   breakdownLabel: { fontFamily: FONT_BODY, flex: 1, fontSize: 12, color: '#475467', paddingRight: 10 },
   breakdownValue: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: '#111827' },
 });
+
