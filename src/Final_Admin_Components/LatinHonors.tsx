@@ -381,19 +381,6 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
             {result.qualified.length > 0 && (
               <View style={[styles.downloadBtnRow, isMobile && styles.downloadBtnRowMobile]}>
                 <TouchableOpacity
-                  style={[styles.downloadBtn, isMobile && styles.downloadBtnMobile, isDownloading && styles.generateBtnDisabled]}
-                  onPress={handleDownloadForm}
-                  disabled={isDownloading}
-                  activeOpacity={0.85}
-                >
-                  {isDownloading ? (
-                    <ActivityIndicator size="small" color="#8B0000" />
-                  ) : (
-                    <Ionicons name="download-outline" size={18} color="#8B0000" />
-                  )}
-                  <Text style={styles.downloadBtnText}>{isDownloading ? 'Preparing...' : 'Download Form'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
                   style={[styles.downloadBtn, isMobile && styles.downloadBtnMobile, isDownloadingExcel && styles.generateBtnDisabled]}
                   onPress={handleDownloadExcel}
                   disabled={isDownloadingExcel}
@@ -405,6 +392,26 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
                     <Ionicons name="download-outline" size={18} color="#8B0000" />
                   )}
                   <Text style={styles.downloadBtnText}>{isDownloadingExcel ? 'Preparing...' : 'Download Excel'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.downloadBtn,
+                    styles.downloadFormBtn,
+                    isMobile && styles.downloadBtnMobile,
+                    isDownloading && styles.generateBtnDisabled,
+                  ]}
+                  onPress={handleDownloadForm}
+                  disabled={isDownloading}
+                  activeOpacity={0.85}
+                >
+                  {isDownloading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                  )}
+                  <Text style={[styles.downloadBtnText, styles.downloadFormBtnText]}>
+                    {isDownloading ? 'Preparing...' : 'Download Form'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -597,6 +604,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF6F5',
   },
   downloadBtnMobile: { width: '100%' },
+  // Download Form: solid dark red container, white icon + text.
+  downloadFormBtn: {
+    backgroundColor: '#8B0000',
+    borderColor: '#8B0000',
+    borderBottomWidth: 3,
+    borderBottomColor: '#5C0000',
+  },
+  downloadFormBtnText: { color: '#FFFFFF' },
   downloadBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   downloadBtnRowMobile: { flexDirection: 'column', alignItems: 'stretch' },
   downloadBtnText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: WEIGHT_EMPHASIS },
