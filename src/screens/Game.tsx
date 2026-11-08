@@ -224,34 +224,84 @@ const Game = ({
     };
   }, [studentId]);
 
-  // 🆕 RESUME SUPPORT: check for a saved in-progress quiz whenever the
-  // logged-in student changes (mirrors the generation-limit loader above).
+  // 🆕 RESUME SUPPORT (synced across devices): the unfinished quiz is stored on
+  // the server per account, so "Resume" shows up on every device. Local storage
+  // is kept as a mirror/offline fallback only.
+  //
+  // lastLocalSessionChangeRef: when THIS screen itself just created or discarded
+  // a session, a slower background refresh that was already in flight must not
+  // overwrite that newer change.
+  const lastLocalSessionChangeRef = React.useRef(0);
+  const isGeneratingRef = React.useRef(false);
+  isGeneratingRef.current = isGenerating;
+
   useEffect(() => {
     let isCancelled = false;
-    const loadResumableSession = async () => {
-      setIsResumeChecked(false);
+    const sessionKey = getActiveSessionStorageKey(studentId);
+
+    const isValidSession = (s: any) =>
+      !!s && Array.isArray(s.questions) && s.questions.length > 0 && !!s.gameType;
+
+    const readLocalSession = async (): Promise<ResumableSession | null> => {
       try {
-        const raw = await AsyncStorage.getItem(getActiveSessionStorageKey(studentId));
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0 && parsed.gameType) {
-            if (!isCancelled) setResumableSession(parsed);
-          } else if (!isCancelled) {
-            setResumableSession(null);
-          }
-        } else if (!isCancelled) {
-          setResumableSession(null);
-        }
+        const raw = await AsyncStorage.getItem(sessionKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return isValidSession(parsed) ? parsed : null;
       } catch (err) {
         console.warn('Failed to load resumable quiz session:', err);
-        if (!isCancelled) setResumableSession(null);
-      } finally {
-        if (!isCancelled) setIsResumeChecked(true);
+        return null;
       }
     };
-    loadResumableSession();
+
+    const loadResumableSession = async (isInitial: boolean) => {
+      if (isInitial) setIsResumeChecked(false);
+      const startedAt = Date.now();
+      let next: ResumableSession | null = null;
+      let serverReachable = false;
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/game-ai/active-session`);
+        if (response.ok) {
+          serverReachable = true;
+          const data = await response.json();
+          next = isValidSession(data?.session) ? data.session : null;
+        }
+      } catch (err) {
+        console.warn('Failed to load resumable quiz session from server:', err);
+      }
+      // Offline / server error: fall back to whatever this device has saved.
+      if (!serverReachable) next = await readLocalSession();
+
+      if (isCancelled) return;
+      const changedMeanwhile =
+        isGeneratingRef.current || lastLocalSessionChangeRef.current > startedAt;
+      if (!changedMeanwhile) {
+        setResumableSession(next);
+        if (serverReachable) {
+          // Keep this device's copy in step with the server (also drops a
+          // session that was finished/discarded on another device).
+          try {
+            if (next) await AsyncStorage.setItem(sessionKey, JSON.stringify(next));
+            else await AsyncStorage.removeItem(sessionKey);
+          } catch (err) {
+            console.warn('Failed to mirror resumable quiz session locally:', err);
+          }
+        }
+      }
+      if (isInitial) setIsResumeChecked(true);
+    };
+
+    loadResumableSession(true);
+    // Pick up a quiz started/finished on another device without a reload:
+    // when the app returns to the foreground, and every 30s.
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadResumableSession(false);
+    });
+    const interval = setInterval(() => loadResumableSession(false), 30000);
     return () => {
       isCancelled = true;
+      appStateSub.remove();
+      clearInterval(interval);
     };
   }, [studentId]);
 
@@ -285,10 +335,17 @@ const Game = ({
   // won't come back next visit) AND resets the Quiz Settings / class &
   // lesson selectors below, so they land on a clean form to pick again.
   const startNewSession = async () => {
+    lastLocalSessionChangeRef.current = Date.now();
     try {
       await AsyncStorage.removeItem(getActiveSessionStorageKey(studentId));
     } catch (err) {
       console.warn('Failed to discard resumable quiz session:', err);
+    }
+    // Also discard it on the server so the banner disappears on other devices.
+    try {
+      await apiFetch(`${API_BASE_URL}/game-ai/active-session`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Failed to discard resumable quiz session on server:', err);
     }
     setResumableSession(null);
     // Reset the whole selection screen so the student is choosing fresh,
@@ -391,6 +448,8 @@ const Game = ({
             materialIds: selectedMaterialIds,
           })
         );
+        // The server already saved this session when it generated the quiz.
+        lastLocalSessionChangeRef.current = Date.now();
         setResumableSession({
           questions: data.questions,
           gameType,

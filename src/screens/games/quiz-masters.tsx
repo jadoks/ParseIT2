@@ -99,6 +99,69 @@ function getProgressStorageKey(studentId: string | undefined, gameType: string, 
   return `gameAi_progress_${studentId || 'anonymous'}_${hash}`;
 }
 
+// 🆕 CROSS-DEVICE SYNC: the unfinished quiz (and the student's progress in it)
+// is also stored on the server per account, so it can be resumed from any
+// device. Local storage stays the instant, offline-safe copy; the server copy
+// is what other devices read. All calls are best-effort and time-limited so
+// a slow/offline network never blocks the quiz itself.
+const SYNC_TIMEOUT_MS = 4000;
+const SYNC_DEBOUNCE_MS = 1000;
+
+async function syncFetch(path: string, options: any = {}) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS) : null;
+  try {
+    return await apiFetch(`${API_BASE_URL}${path}`, { ...options, signal: controller?.signal });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function fetchServerActiveSession(): Promise<{ session: any; progress: any } | null> {
+  try {
+    const response = await syncFetch('/game-ai/active-session');
+    if (!response.ok) return null;
+    const data = await response.json();
+    return { session: data?.session || null, progress: data?.progress || null };
+  } catch {
+    return null;
+  }
+}
+
+async function pushServerProgress(key: string, snapshot: any): Promise<'ok' | 'no-session' | 'error'> {
+  try {
+    const response = await syncFetch('/game-ai/active-session/progress', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, snapshot }),
+    });
+    if (response.status === 404) return 'no-session';
+    return response.ok ? 'ok' : 'error';
+  } catch {
+    return 'error';
+  }
+}
+
+// Deletes the server-side unfinished quiz — but only if it is THIS quiz, so
+// finishing some other quiz can never wipe a different unfinished one.
+async function clearServerActiveSessionIfSameQuiz(
+  studentId: string | undefined,
+  progressKey: string,
+  knownSynced: boolean
+) {
+  try {
+    if (!knownSynced) {
+      const data = await fetchServerActiveSession();
+      if (!data?.session) return;
+      const serverKey = getProgressStorageKey(studentId, data.session.gameType, data.session.questions);
+      if (serverKey !== progressKey) return;
+    }
+    await syncFetch('/game-ai/active-session', { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Failed to clear server quiz session:', err);
+  }
+}
+
 type GameMode = 'menu' | 'matchingCards' | 'flashcards' | 'fillBlank' | 'trivia' | 'summary';
 
 type MatchingCard = {
@@ -473,12 +536,52 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   // restored from the saved snapshot's `scoreSaved` flag when resuming.
   const hasSavedScoreRef = useRef(false);
 
+  // 🆕 CROSS-DEVICE SYNC state. isServerSyncedRef is true only when the
+  // server's unfinished quiz is THIS exact quiz (so an unrelated quiz never
+  // writes into someone's unfinished Games quiz). Progress pushes are
+  // debounced so typing in fill-in-the-blank doesn't hit the server per key.
+  const isServerSyncedRef = useRef(false);
+  const syncTimerRef = useRef<any>(null);
+  const pendingFlushRef = useRef<null | (() => Promise<void>)>(null);
+
+  const cancelPendingServerSync = () => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = null;
+    pendingFlushRef.current = null;
+  };
+
+  // Sends any not-yet-sent progress right away (used on pause / leaving).
+  const flushServerProgressNow = async () => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = null;
+    const flush = pendingFlushRef.current;
+    pendingFlushRef.current = null;
+    if (flush) await flush();
+  };
+
+  // If the screen closes with progress still waiting to be sent, send it now.
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+      const flush = pendingFlushRef.current;
+      pendingFlushRef.current = null;
+      if (flush) void flush();
+    };
+  }, []);
+
   const clearSavedProgress = async () => {
+    // Nothing should be pushed to the server after the quiz is finished.
+    cancelPendingServerSync();
     try {
       await AsyncStorage.multiRemove([progressStorageKey, activeSessionStorageKey]);
     } catch (err) {
       console.warn('Failed to clear saved quiz progress:', err);
     }
+    // Also end the unfinished quiz on the server so other devices stop
+    // offering "Resume" for it.
+    await clearServerActiveSessionIfSameQuiz(studentId, progressStorageKey, isServerSyncedRef.current);
+    isServerSyncedRef.current = false;
   };
 
   // Normalize current flashcard to always have 'question' and 'answer' properties
@@ -513,6 +616,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     let isCancelled = false;
     isProgressRestoredRef.current = false;
     setIsProgressRestored(false);
+    isServerSyncedRef.current = false;
     // 🆕 LEADERBOARD: default to "not yet saved" for this quiz; flipped back
     // to true below if the restored snapshot says this attempt's score was
     // already saved (e.g. reopening the app on the results screen).
@@ -522,8 +626,30 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       let restored = false;
       try {
         const raw = await AsyncStorage.getItem(progressStorageKey);
-        if (raw) {
-          const saved = JSON.parse(raw);
+        let saved: any = raw ? JSON.parse(raw) : null;
+
+        // 🆕 CROSS-DEVICE SYNC: also ask the server. If its unfinished quiz is
+        // this exact quiz, start syncing it, and if another device got
+        // further than this one (newer snapshot), continue from there.
+        const serverData = await fetchServerActiveSession();
+        if (serverData?.session) {
+          const serverKey = getProgressStorageKey(
+            studentId,
+            serverData.session.gameType,
+            serverData.session.questions
+          );
+          if (serverKey === progressStorageKey) {
+            isServerSyncedRef.current = true;
+            const serverSnapshot =
+              serverData.progress?.key === progressStorageKey ? serverData.progress.snapshot : null;
+            if (serverSnapshot && (!saved || (serverSnapshot.savedAt || 0) > (saved.savedAt || 0))) {
+              saved = serverSnapshot;
+              AsyncStorage.setItem(progressStorageKey, JSON.stringify(serverSnapshot)).catch(() => {});
+            }
+          }
+        }
+
+        if (saved) {
           // 🐛 FIX: 'summary' (the results screen) used to be excluded here,
           // which meant closing the app while sitting on results — before
           // tapping "Play Again" / "Back to Games" — had no saved snapshot
@@ -636,6 +762,24 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     AsyncStorage.setItem(progressStorageKey, JSON.stringify(snapshot)).catch((err) => {
       console.warn('Failed to save quiz progress:', err);
     });
+
+    // 🆕 CROSS-DEVICE SYNC: push to the server shortly after the last change.
+    if (isServerSyncedRef.current) {
+      const keyAtSave = progressStorageKey;
+      const flush = async () => {
+        if (!isServerSyncedRef.current) return;
+        const result = await pushServerProgress(keyAtSave, snapshot);
+        // 404 = finished/discarded on another device: stop syncing this one.
+        if (result === 'no-session') isServerSyncedRef.current = false;
+      };
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      pendingFlushRef.current = flush;
+      syncTimerRef.current = setTimeout(() => {
+        syncTimerRef.current = null;
+        pendingFlushRef.current = null;
+        void flush();
+      }, SYNC_DEBOUNCE_MS);
+    }
   }, [
     isProgressRestored, hasGeneratedGame, mode,
     triviaIndex, triviaScore, triviaSelected,
@@ -762,6 +906,10 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     // doesn't re-read a stale session from storage when it remounts.
     if (isOnResultsScreen) {
       await clearSavedProgress();
+    } else {
+      // Paused mid-quiz: make sure the latest progress reaches the server
+      // before leaving, so the other device resumes at the right question.
+      await flushServerProgressNow();
     }
 
     onBack();

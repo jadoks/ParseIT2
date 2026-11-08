@@ -6157,6 +6157,137 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════
+  // ACTIVE (UNFINISHED) GAME SESSION — synced across devices.
+  // One document per student account holds the quiz they were last playing
+  // (questions + game type + class/lessons) and their latest progress, so
+  // "You have an unfinished quiz → Resume" appears on every device and
+  // resumes at the same question. Created by /game-ai/generate-quiz-materials,
+  // updated by the progress route, deleted when the quiz is finished/discarded.
+  // ════════════════════════════════════════════════════════════════════
+  const ACTIVE_GAME_SESSIONS_COLLECTION = "game_active_sessions";
+  const MAX_ACTIVE_PROGRESS_JSON_CHARS = 200000;
+
+  function activeGameSessionRef(uid) {
+    return db.collection(ACTIVE_GAME_SESSIONS_COLLECTION).doc(uid);
+  }
+
+  async function saveActiveGameSession(uid, { questions, gameType, classId, materialIds }) {
+    // Full overwrite (no merge): a newly generated quiz starts with no progress.
+    // Questions are stored as a JSON STRING, not a Firestore map, because
+    // Firestore does not preserve object key order and the app derives its
+    // progress key from JSON.stringify(questions) — a re-ordered copy would
+    // look like a different quiz on the other device.
+    await activeGameSessionRef(uid).set({
+      uid,
+      questionsJson: JSON.stringify(questions),
+      gameType: String(gameType || ""),
+      classId: classId ? String(classId) : "",
+      materialIds: Array.isArray(materialIds) ? materialIds.map(String) : [],
+      savedAt: Date.now(),
+      progressKey: null,
+      progressJson: null,
+      progressSavedAt: 0,
+    });
+  }
+
+  app.get("/game-ai/active-session", requireAuth, async (req, res) => {
+    try {
+      const snap = await activeGameSessionRef(req.user.uid).get();
+      if (!snap.exists) return res.json({ session: null, progress: null });
+      const d = snap.data() || {};
+
+      let questions = [];
+      try {
+        questions = JSON.parse(d.questionsJson || "[]");
+      } catch (_) {
+        questions = [];
+      }
+      if (!Array.isArray(questions) || questions.length === 0 || !d.gameType) {
+        return res.json({ session: null, progress: null });
+      }
+
+      let progress = null;
+      if (d.progressKey && d.progressJson) {
+        try {
+          progress = {
+            key: d.progressKey,
+            snapshot: JSON.parse(d.progressJson),
+            savedAt: d.progressSavedAt || 0,
+          };
+        } catch (_) {
+          progress = null;
+        }
+      }
+
+      return res.json({
+        session: {
+          questions,
+          gameType: d.gameType,
+          classId: d.classId || "",
+          materialIds: Array.isArray(d.materialIds) ? d.materialIds : [],
+          savedAt: d.savedAt || 0,
+        },
+        progress,
+      });
+    } catch (error) {
+      console.error("Get active game session error:", error);
+      return res.status(500).json({ error: "Failed to load the unfinished quiz." });
+    }
+  });
+
+  app.put("/game-ai/active-session/progress", requireAuth, async (req, res) => {
+    try {
+      const key = String(req.body?.key || "").slice(0, 200);
+      const snapshot = req.body?.snapshot;
+      if (!key || !snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+        return res.status(400).json({ error: "key and snapshot are required." });
+      }
+      const progressJson = JSON.stringify(snapshot);
+      if (progressJson.length > MAX_ACTIVE_PROGRESS_JSON_CHARS) {
+        return res.status(413).json({ error: "Progress snapshot is too large." });
+      }
+      const savedAt = Number(snapshot.savedAt) || Date.now();
+
+      const ref = activeGameSessionRef(req.user.uid);
+      let outcome = { status: 200, skipped: false };
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) {
+          outcome = { status: 404 };
+          return;
+        }
+        const d = snap.data() || {};
+        // Never let an older save (e.g. a slow request from another device)
+        // overwrite newer progress for the same quiz.
+        if (d.progressKey === key && (Number(d.progressSavedAt) || 0) > savedAt) {
+          outcome = { status: 200, skipped: true };
+          return;
+        }
+        tx.update(ref, { progressKey: key, progressJson, progressSavedAt: savedAt });
+      });
+
+      if (outcome.status === 404) {
+        // Finished or discarded on another device — tell this one to stop syncing.
+        return res.status(404).json({ error: "No active quiz session.", code: "NO_ACTIVE_SESSION" });
+      }
+      return res.json({ success: true, skipped: !!outcome.skipped });
+    } catch (error) {
+      console.error("Save active game progress error:", error);
+      return res.status(500).json({ error: "Failed to save quiz progress." });
+    }
+  });
+
+  app.delete("/game-ai/active-session", requireAuth, async (req, res) => {
+    try {
+      await activeGameSessionRef(req.user.uid).delete();
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Delete active game session error:", error);
+      return res.status(500).json({ error: "Failed to discard the unfinished quiz." });
+    }
+  });
+
   app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
     let reservedUsage = null; // { uid, key } once a daily slot is held
     let usageSnapshot = null;
@@ -6215,6 +6346,21 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         gameType: resolvedGameType,
         numberOfQuestions: numberOfQuestions || 10
       });
+
+      // Students only (not teachers previewing questions): remember this quiz on
+      // the account so it can be resumed from any device. Never fails the request.
+      if (usageProfile?.role === "student") {
+        try {
+          await saveActiveGameSession(req.user.uid, {
+            questions: generated.questions,
+            gameType: resolvedGameType,
+            classId,
+            materialIds,
+          });
+        } catch (sessionError) {
+          console.warn("Failed to save active game session:", sessionError?.message || sessionError);
+        }
+      }
 
       return res.json({
         success: true,
