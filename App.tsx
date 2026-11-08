@@ -328,7 +328,7 @@ export default function App() {
       sessionIdRef.current = newSessionId;
       await AsyncStorage.setItem(SESSION_ID_KEY, newSessionId);
       try {
-        await fetch(`${API_BASE_URL}/auth/claim-session`, {
+        const claimRes = await fetch(`${API_BASE_URL}/auth/claim-session`, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -337,6 +337,12 @@ export default function App() {
           },
           body: JSON.stringify({ sessionId: newSessionId }),
         });
+        if (!claimRes.ok) {
+          // 404 here = the server is not running the new build yet.
+          console.error('[session] claim-session failed:', claimRes.status, await claimRes.text().catch(() => ''));
+        } else {
+          console.log('[session] claimed session', newSessionId.slice(0, 8));
+        }
       } catch (e) {
         console.error('claim-session failed:', e);
       }
@@ -405,8 +411,10 @@ export default function App() {
   // offline, in the background, or briefly disconnected.
   const checkSessionNow = useCallback(async () => {
     try {
-      const sessionId = await getSessionId();
-      if (!sessionId || !auth.currentUser) return; // legacy / not claimed yet
+      if (!auth.currentUser) return;
+      // A device with no stored id (logged in before this feature) sends
+      // "none": it only counts as replaced once someone has claimed a session.
+      const sessionId = (await getSessionId()) || 'none';
       const token = await refreshAuthToken(false);
       if (!token) return;
       const response = await fetch(`${API_BASE_URL}/auth/session-status`, {
@@ -417,7 +425,7 @@ export default function App() {
           'X-Session-Id': sessionId,
         },
       });
-      if (response.status === 409 && sessionIdRef.current === sessionId) {
+      if (response.status === 409 && (sessionIdRef.current || 'none') === sessionId) {
         setSessionReplaced(true);
       }
     } catch {
@@ -438,8 +446,10 @@ export default function App() {
     getHeaders: () => (idTokenRef.current ? { Authorization: `Bearer ${idTokenRef.current}` } : undefined),
     handlers: {
       session: (payload: any) => {
+        // Another device claimed the account. A device with no stored id
+        // (logged in before this feature) is replaced too.
         const mine = sessionIdRef.current;
-        if (!mine) return; // this device has no claimed session (legacy build)
+        console.log('[session] live event', payload?.sessionId?.slice?.(0, 8), 'mine', mine?.slice?.(0, 8));
         if (payload?.sessionId && payload.sessionId !== mine) setSessionReplaced(true);
       },
     },

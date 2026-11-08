@@ -4435,11 +4435,12 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       const canonicalId = String(
         profile.data?.studentId || profile.data?.teacherId || profile.data?.adminId || profile.id
       ).trim();
-      publishToPeople(
+      const delivered = publishToPeople(
         "session",
         [{ userId: canonicalId, userUid: req.user.uid }],
         { kind: "replaced", sessionId }
       );
+      console.log(`[session] claimed for ${canonicalId}; live event delivered to ${delivered} stream(s)`);
 
       return res.json({ success: true });
     } catch (error) {
