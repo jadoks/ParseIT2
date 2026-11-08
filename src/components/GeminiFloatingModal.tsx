@@ -75,43 +75,47 @@ const emptyUsage = (): DailyUsage => ({
   fileUploads: 0,
 });
 
-const getUsageStorageKey = (studentId: string) => `ai-usage-${studentId}`;
+// Usage is stored on the server per account (GET /usage/daily and
+// POST /usage/daily/consume), so every device shares the same counts.
+// The DAILY_* constants above are for messages/UI and must match the server's
+// DAILY_USAGE_LIMITS; the server is the one that actually enforces them.
+const usageFromSnapshot = (snap: any): DailyUsage => ({
+  date: snap?.date || getTodayDateString(),
+  chatPrompts: Number(snap?.counts?.aiChatPrompts) || 0,
+  generations: Number(snap?.counts?.aiGenerations) || 0,
+  fileUploads: Number(snap?.counts?.aiFileUploads) || 0,
+});
 
-const readDailyUsage = async (studentId: string): Promise<DailyUsage> => {
-  if (!studentId) return emptyUsage();
-  const key = getUsageStorageKey(studentId);
+const fetchServerUsage = async (): Promise<DailyUsage | null> => {
   try {
-    const raw =
-      Platform.OS === 'web'
-        ? (globalThis as any).localStorage?.getItem(key)
-        : await FileSystem.readAsStringAsync(`${FileSystem.documentDirectory}${key}.json`);
-    if (!raw) return emptyUsage();
-    const parsed = JSON.parse(raw);
-    // Reset automatically if the stored usage is from a previous day
-    if (parsed?.date !== getTodayDateString()) return emptyUsage();
-    return {
-      date: parsed.date,
-      chatPrompts: Number(parsed.chatPrompts) || 0,
-      generations: Number(parsed.generations) || 0,
-      fileUploads: Number(parsed.fileUploads) || 0,
-    };
+    const response = await apiFetch(`${API_BASE_URL}/usage/daily`);
+    if (!response.ok) return null;
+    return usageFromSnapshot(await response.json());
   } catch {
-    return emptyUsage();
+    return null;
   }
 };
 
-const writeDailyUsage = async (studentId: string, usage: DailyUsage) => {
-  if (!studentId) return;
-  const key = getUsageStorageKey(studentId);
-  const raw = JSON.stringify(usage);
+type ServerUsageKey = 'aiChatPrompts' | 'aiGenerations' | 'aiFileUploads';
+
+// ok=false only when the server says the daily limit is already used up.
+// Network/other failures fail open (the action already happened).
+const consumeServerUsage = async (
+  key: ServerUsageKey
+): Promise<{ ok: boolean; usage: DailyUsage | null }> => {
   try {
-    if (Platform.OS === 'web') {
-      (globalThis as any).localStorage?.setItem(key, raw);
-      return;
-    }
-    await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}${key}.json`, raw);
-  } catch (err) {
-    console.warn('Failed to save AI usage:', err);
+    const response = await apiFetch(`${API_BASE_URL}/usage/daily/consume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    const data = await response.json().catch(() => null);
+    return {
+      ok: response.status !== 429,
+      usage: data?.usage ? usageFromSnapshot(data.usage) : null,
+    };
+  } catch {
+    return { ok: true, usage: null };
   }
 };
 
@@ -342,30 +346,49 @@ export default function GeminiFloatingModal({
     }
   }, [input]);
 
-  // ✅ Load today's usage counters (per student) whenever the student id becomes available
+  // ✅ Load today's usage from the server whenever the modal opens (or the
+  // student changes), so counts spent on another device are reflected here.
   useEffect(() => {
+    if (!visible) return;
     const loadUsage = async () => {
-      const usage = await readDailyUsage(currentStudentId || '');
-      setDailyUsage(usage);
+      const usage = await fetchServerUsage();
+      if (usage) setDailyUsage(usage);
       setUsageLoaded(true);
     };
     loadUsage();
-  }, [currentStudentId]);
+  }, [currentStudentId, visible]);
 
-  // ✅ Persist a usage increment (auto-resets if the stored day has rolled over)
-  const bumpUsage = (patch: Partial<Omit<DailyUsage, 'date'>>) => {
-    setDailyUsage((prev) => {
-      const today = getTodayDateString();
-      const base = prev.date === today ? prev : emptyUsage();
-      const next: DailyUsage = {
-        date: today,
-        chatPrompts: base.chatPrompts + (patch.chatPrompts || 0),
-        generations: base.generations + (patch.generations || 0),
-        fileUploads: base.fileUploads + (patch.fileUploads || 0),
-      };
-      void writeDailyUsage(currentStudentId || '', next);
-      return next;
-    });
+  // Re-read the account-wide usage right before a gated action (another
+  // device may have spent some). Falls back to local state if offline.
+  const refreshUsage = async (): Promise<DailyUsage> => {
+    const fresh = await fetchServerUsage();
+    if (fresh) {
+      setDailyUsage(fresh);
+      return fresh;
+    }
+    return dailyUsage;
+  };
+
+  // ✅ Spend usage on the server. Returns false if the daily limit was hit.
+  const bumpUsage = async (patch: Partial<Omit<DailyUsage, 'date'>>): Promise<boolean> => {
+    const fields: Array<[keyof Omit<DailyUsage, 'date'>, ServerUsageKey]> = [
+      ['chatPrompts', 'aiChatPrompts'],
+      ['generations', 'aiGenerations'],
+      ['fileUploads', 'aiFileUploads'],
+    ];
+    let allOk = true;
+    for (const [field, key] of fields) {
+      if (!patch[field]) continue;
+      const result = await consumeServerUsage(key);
+      if (!result.ok) allOk = false;
+      if (result.usage) {
+        setDailyUsage(result.usage);
+      } else {
+        // Offline fallback: show the increment locally until the next refresh.
+        setDailyUsage((prev) => ({ ...prev, [field]: prev[field] + (patch[field] || 0) }));
+      }
+    }
+    return allOk;
   };
 
   // Load chat history FROM FIREBASE ONLY
@@ -461,8 +484,9 @@ export default function GeminiFloatingModal({
   const sendTutorSuggestion = async (suggestion: TutorSuggestion) => {
     if (loading) return;
 
-    // ✅ Enforce daily chat prompt limit
-    if (dailyUsage.chatPrompts >= DAILY_CHAT_LIMIT) {
+    // ✅ Enforce daily chat prompt limit (fresh, account-wide count)
+    const usageNow = await refreshUsage();
+    if (usageNow.chatPrompts >= DAILY_CHAT_LIMIT) {
       Alert.alert(
         'Daily Limit Reached',
         `You've used your ${DAILY_CHAT_LIMIT} AI chat prompts for today. Please come back tomorrow.`
@@ -507,8 +531,9 @@ export default function GeminiFloatingModal({
   };
 
   const handlePickFile = async () => {
-    // ✅ Enforce daily file upload limit
-    if (dailyUsage.fileUploads >= DAILY_UPLOAD_LIMIT) {
+    // ✅ Enforce daily file upload limit (fresh, account-wide count)
+    const usageNow = await refreshUsage();
+    if (usageNow.fileUploads >= DAILY_UPLOAD_LIMIT) {
       Alert.alert(
         'Daily Upload Limit Reached',
         `You can upload up to ${DAILY_UPLOAD_LIMIT} files per day. Please try again tomorrow.`
@@ -556,9 +581,16 @@ export default function GeminiFloatingModal({
       else if (lowerName.endsWith('.xls')) realType = 'application/vnd.ms-excel';
       else if (lowerName.endsWith('.xlsx')) realType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+      // ✅ Count this as one of today's file uploads (server-side, shared across devices)
+      const uploadAllowed = await bumpUsage({ fileUploads: 1 });
+      if (!uploadAllowed) {
+        Alert.alert(
+          'Daily Upload Limit Reached',
+          `You can upload up to ${DAILY_UPLOAD_LIMIT} files per day. Please try again tomorrow.`
+        );
+        return;
+      }
       setSelectedFile({ name: asset.name, type: realType, uri: asset.uri });
-      // ✅ Count this as one of today's file uploads
-      bumpUsage({ fileUploads: 1 });
     } catch (err) {
       console.error('Error picking document:', err);
       Alert.alert('Error', 'Failed to pick file.');
@@ -597,8 +629,11 @@ export default function GeminiFloatingModal({
     // a plain text prompt counts as an "AI chat prompt".
     const isGenerationRequest = !!selectedFile;
 
+    // ✅ Enforce daily limits using the fresh, account-wide count
+    const usageNow = await refreshUsage();
+
     // ✅ Enforce daily AI generation limit (file-based prompts)
-    if (isGenerationRequest && dailyUsage.generations >= DAILY_GENERATION_LIMIT) {
+    if (isGenerationRequest && usageNow.generations >= DAILY_GENERATION_LIMIT) {
       Alert.alert(
         'Daily Limit Reached',
         `You've used your ${DAILY_GENERATION_LIMIT} AI generations for today. Please try again tomorrow.`
@@ -607,7 +642,7 @@ export default function GeminiFloatingModal({
     }
 
     // ✅ Enforce daily AI chat prompt limit (text-only prompts)
-    if (!isGenerationRequest && dailyUsage.chatPrompts >= DAILY_CHAT_LIMIT) {
+    if (!isGenerationRequest && usageNow.chatPrompts >= DAILY_CHAT_LIMIT) {
       Alert.alert(
         'Daily Limit Reached',
         `You've used your ${DAILY_CHAT_LIMIT} AI chat prompts for today. Please come back tomorrow.`

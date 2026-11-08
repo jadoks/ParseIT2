@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Platform,
   Pressable,
@@ -99,21 +100,11 @@ const gameOptions = [
 
 // 🌟 NEW: Daily AI generation limit config
 const MAX_QUESTIONS_PER_GENERATION = 20;
-const MAX_GENERATIONS_PER_DAY = 10;
+// Fallback only — the real limit comes from the server (GET /usage/daily).
+const DEFAULT_MAX_GENERATIONS_PER_DAY = 10;
 // Max number of lessons (materials) a student can select for one generation.
 const MAX_MODULE_LESSONS = 5;
 const MAX_MODULE_LESSONS_MESSAGE = `Max ${MAX_MODULE_LESSONS} lessons.`;
-
-function getTodayKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-}
-
-// 🌟 NEW: Per-student storage key so each student gets their own 10/day pool,
-// even if multiple students use the same device.
-function getGenerationLimitStorageKey(studentId?: string) {
-  return `gameAi_dailyGenerationLimit_${studentId || 'anonymous'}`;
-}
 
 // 🆕 RESUME SUPPORT: same key scheme as quiz-masters.tsx so a session saved
 // there (right after a successful generation, and cleared once the quiz is
@@ -158,6 +149,7 @@ const Game = ({
   // 🌟 NEW: Track how many AI generations have been used today
   const [generationsUsedToday, setGenerationsUsedToday] = useState<number>(0);
   const [isLimitLoaded, setIsLimitLoaded] = useState(false);
+  const [maxGenerationsPerDay, setMaxGenerationsPerDay] = useState<number>(DEFAULT_MAX_GENERATIONS_PER_DAY);
 
   // 🆕 RESUME SUPPORT: an in-progress quiz from a previous visit (found in
   // storage on mount), which the user can jump back into instead of
@@ -172,8 +164,8 @@ const Game = ({
 
   const parsedCount = parseInt(numberOfQuestions, 10) || 0;
   const isInvalidCount = parsedCount > MAX_QUESTIONS_PER_GENERATION || parsedCount < 1;
-  const remainingGenerations = Math.max(0, MAX_GENERATIONS_PER_DAY - generationsUsedToday);
-  const hasReachedDailyLimit = generationsUsedToday >= MAX_GENERATIONS_PER_DAY;
+  const remainingGenerations = Math.max(0, maxGenerationsPerDay - generationsUsedToday);
+  const hasReachedDailyLimit = generationsUsedToday >= maxGenerationsPerDay;
 
   // ✅ Toast state — same shape/usage as Assignments / TeacherCourseDetail.
   const [toast, setToast] = useState<{
@@ -190,37 +182,45 @@ const Game = ({
   const [availableMaterials, setAvailableMaterials] = useState<{ id: string; title: string }[]>([]);
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
 
-  // 🌟 NEW: Load this student's generation count on mount, and whenever the
-  // logged-in student changes (resets automatically on a new day too).
+  // Apply a usage snapshot from the server ({ counts, limits }) — returned by
+  // GET /usage/daily and by the generate route (including its 429 response).
+  const applyUsageSnapshot = (usage: any) => {
+    if (!usage) return;
+    const used = Number(usage?.counts?.gameGenerations);
+    const limit = Number(usage?.limits?.gameGenerations);
+    if (Number.isFinite(used)) setGenerationsUsedToday(used);
+    if (Number.isFinite(limit) && limit > 0) setMaxGenerationsPerDay(limit);
+  };
+
+  // The daily count lives on the server (per account), so every device shows
+  // the same number. Load it on mount, whenever the app returns to the
+  // foreground, and every 30s — so a generation made on another device shows
+  // up here without needing a reload.
   useEffect(() => {
     let isCancelled = false;
     const loadGenerationCount = async () => {
-      setIsLimitLoaded(false);
-      const storageKey = getGenerationLimitStorageKey(studentId);
       try {
-        const raw = await AsyncStorage.getItem(storageKey);
-        const todayKey = getTodayKey();
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed.date === todayKey) {
-            if (!isCancelled) setGenerationsUsedToday(parsed.count || 0);
-          } else {
-            if (!isCancelled) setGenerationsUsedToday(0);
-            await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: 0 }));
-          }
-        } else {
-          if (!isCancelled) setGenerationsUsedToday(0);
-          await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: 0 }));
+        const response = await apiFetch(`${API_BASE_URL}/usage/daily`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'Failed to load usage');
+        if (!isCancelled) {
+          applyUsageSnapshot(data);
+          setIsLimitLoaded(true);
         }
       } catch (err) {
         console.warn('Failed to load AI generation limit:', err);
-      } finally {
-        if (!isCancelled) setIsLimitLoaded(true);
       }
     };
+    setIsLimitLoaded(false);
     loadGenerationCount();
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadGenerationCount();
+    });
+    const interval = setInterval(loadGenerationCount, 30000);
     return () => {
       isCancelled = true;
+      appStateSub.remove();
+      clearInterval(interval);
     };
   }, [studentId]);
 
@@ -301,43 +301,6 @@ const Game = ({
     setIsClassDropdownOpen(false);
   };
 
-  // 🌟 NEW: Increment and persist this student's generation count
-  // 🐛 FIX: previously incremented off the in-memory `generationsUsedToday`
-  // state, which resets to 0 whenever Game.tsx remounts (e.g. every "Play
-  // Again" — the screen switches away to quiz-masters and back, unmounting
-  // and remounting Game) and only becomes correct again once the async
-  // loadGenerationCount() effect resolves. If a generate call fired before
-  // that reload finished, this computed `0 + 1 = 1` and OVERWROTE the real
-  // persisted count instead of advancing it — so two generations in a row
-  // could net out to only +1 recorded. Re-reading the persisted value here,
-  // right before incrementing, means it's always correct regardless of
-  // whether the in-memory state has caught up yet.
-  const recordGenerationUsed = async () => {
-    const storageKey = getGenerationLimitStorageKey(studentId);
-    const todayKey = getTodayKey();
-    let currentCount = generationsUsedToday;
-    try {
-      const raw = await AsyncStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.date === todayKey) {
-          currentCount = parsed.count || 0;
-        } else {
-          currentCount = 0; // stale persisted count from a previous day
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to re-read AI generation limit before recording use:', err);
-    }
-    const nextCount = currentCount + 1;
-    setGenerationsUsedToday(nextCount);
-    try {
-      await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: nextCount }));
-    } catch (err) {
-      console.warn('Failed to persist AI generation limit:', err);
-    }
-  };
-
   const previousClassIdRef = React.useRef<string>('');
 
   useEffect(() => {
@@ -388,7 +351,7 @@ const Game = ({
     if (isInvalidCount) return showToast(`Enter 1–${MAX_QUESTIONS_PER_GENERATION} items.`, 'error');
     // 🌟 NEW: Enforce daily AI generation limit
     if (hasReachedDailyLimit) {
-      return showToast(`Daily limit (${MAX_GENERATIONS_PER_DAY}) reached.`, 'error');
+      return showToast(`Daily limit (${maxGenerationsPerDay}) reached.`, 'error');
     }
 
     setIsGenerating(true);
@@ -405,13 +368,14 @@ const Game = ({
         }),
       });
       const data = await response.json();
+      // The server counts the generation and returns the account-wide usage
+      // (also on a 429), so the badge matches every other device.
+      applyUsageSnapshot(data?.usage);
       if (!response.ok) throw new Error(data.error || 'Generation failed');
       if (!data.questions?.length) throw new Error('No questions generated');
 
       setGeneratedQuestions(data.questions);
       setMode('quizmasters');
-      // 🌟 NEW: Count this as one of today's AI generations
-      await recordGenerationUsed();
       // 🆕 RESUME SUPPORT: remember this session so it can be picked back up
       // if the user closes the app/website before finishing. quiz-masters.tsx
       // clears this once the quiz is actually completed (or abandoned via
@@ -685,9 +649,9 @@ const Game = ({
             >
               {isLargeScreen
                 ? hasReachedDailyLimit
-                  ? `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today. Come back tomorrow!`
-                  : `${remainingGenerations} of ${MAX_GENERATIONS_PER_DAY} AI generations remaining today`
-                : `${remainingGenerations}/${MAX_GENERATIONS_PER_DAY} generations`}
+                  ? `You've used all ${maxGenerationsPerDay} AI generations today. Come back tomorrow!`
+                  : `${remainingGenerations} of ${maxGenerationsPerDay} AI generations remaining today`
+                : `${remainingGenerations}/${maxGenerationsPerDay} generations`}
             </Text>
           </View>
         )}

@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Linking,
   Modal,
   PanResponder,
@@ -570,12 +571,6 @@ const MAX_QUESTIONS_PER_GENERATION = 45;
 // updating an assignment (also the cap enforced before AI Generate runs).
 const MAX_MODULE_LESSONS = 5;
 const MAX_MODULE_LESSONS_MESSAGE = `Max ${MAX_MODULE_LESSONS} lessons.`;
-const GENERATION_USAGE_KEY = 'teacher_question_gen_usage_v1';
-
-const getTodayDateKey = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 
 // ─── LessonModeDropdown ──────────────────────────────────────────────────────
 // Mirrors CustomDropdown in Honors.tsx (same UI + behavior), with a separate
@@ -710,47 +705,21 @@ function LessonModeDropdown({
   );
 }
 
-type GenerationUsageMap = Record<string, { date: string; count: number }>;
-
-const readGenerationUsage = async (): Promise<GenerationUsageMap> => {
-  try {
-    if (Platform.OS === 'web') {
-      const raw = typeof window !== 'undefined' ? window.localStorage?.getItem(GENERATION_USAGE_KEY) : null;
-      return raw ? JSON.parse(raw) : {};
-    }
-    const path = `${FileSystem.documentDirectory}${GENERATION_USAGE_KEY}.json`;
-    const info = await FileSystem.getInfoAsync(path);
-    if (!info.exists) return {};
-    const raw = await FileSystem.readAsStringAsync(path);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-};
-
-const writeGenerationUsage = async (data: GenerationUsageMap) => {
-  try {
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined') {
-        window.localStorage?.setItem(GENERATION_USAGE_KEY, JSON.stringify(data));
-      }
-      return;
-    }
-    const path = `${FileSystem.documentDirectory}${GENERATION_USAGE_KEY}.json`;
-    await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
-  } catch (e) {
-    console.warn('Failed to persist question generation usage', e);
-  }
-};
-
+// The daily generation count is stored on the server per account, so a
+// generation made on any device (phone / laptop / tablet) counts everywhere.
+// The server increments it inside /game-ai/generate-quiz-materials, so the
+// client only reads it (and syncs from the `usage` returned by that route).
 const getTodayUsageForTeacher = async (
-  teacherKey: string
-): Promise<{ usageMap: GenerationUsageMap; count: number }> => {
-  const usageMap = await readGenerationUsage();
-  const todayKey = getTodayDateKey();
-  const entry = usageMap[teacherKey];
-  const count = entry && entry.date === todayKey ? entry.count : 0;
-  return { usageMap, count };
+  _teacherKey?: string
+): Promise<{ count: number; ok: boolean }> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/usage/daily`, { credentials: 'include' });
+    if (!response.ok) return { count: 0, ok: false };
+    const data = await response.json();
+    return { count: Number(data?.counts?.teacherQuestionGenerations) || 0, ok: true };
+  } catch {
+    return { count: 0, ok: false };
+  }
 };
 
 const mapMaterial = (item: any): Material => {
@@ -2817,11 +2786,24 @@ const TeacherCourseDetail2 = ({
     loadCourseTemplate();
   }, []);
 
+  // Keep the daily count in sync with the server (other devices may spend it):
+  // on mount, when the app returns to the foreground, and every 30s.
   useEffect(() => {
-    (async () => {
-      const { count } = await getTodayUsageForTeacher(teacherIdentity);
-      setDailyGenerationsUsed(count);
-    })();
+    let cancelled = false;
+    const sync = async () => {
+      const { count, ok } = await getTodayUsageForTeacher(teacherIdentity);
+      if (!cancelled && ok) setDailyGenerationsUsed(count);
+    };
+    sync();
+    const interval = setInterval(sync, 30000);
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') sync();
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      appStateSub.remove();
+    };
   }, [teacherIdentity]);
 
   // Tracks whether ANY modal/preview/confirmation is currently open, so the
@@ -5126,7 +5108,7 @@ useEffect(() => {
       );
       return;
     }
-    const { usageMap, count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
+    const { count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
     if (usedToday >= DAILY_GENERATION_LIMIT) {
       setDailyGenerationsUsed(usedToday);
       toast.show(
@@ -5151,6 +5133,10 @@ useEffect(() => {
         }),
       });
       const data = await response.json();
+      // Server returns the account-wide count (also on a 429) — keep the badge in sync.
+      if (typeof data?.usage?.counts?.teacherQuestionGenerations === 'number') {
+        setDailyGenerationsUsed(data.usage.counts.teacherQuestionGenerations);
+      }
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       const uniqueQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
@@ -5212,12 +5198,7 @@ useEffect(() => {
           correctIndex: correctIndex !== -1 ? correctIndex : 0
         };
       });
-      const nextCount = usedToday + 1;
-      const nextUsageMap: GenerationUsageMap = {
-        ...usageMap,
-        [teacherIdentity]: { date: getTodayDateKey(), count: nextCount },
-      };
-      await writeGenerationUsage(nextUsageMap);
+      const nextCount = Number(data?.usage?.counts?.teacherQuestionGenerations ?? usedToday + 1);
       setDailyGenerationsUsed(nextCount);
       setGeneratedQuestions(editableQuestions);
       setShowGeneratedPreview(true);
@@ -5298,7 +5279,7 @@ useEffect(() => {
       );
       return;
     }
-    const { usageMap, count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
+    const { count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
     if (usedToday >= DAILY_GENERATION_LIMIT) {
       setDailyGenerationsUsed(usedToday);
       toast.show(
@@ -5323,6 +5304,10 @@ useEffect(() => {
         }),
       });
       const data = await response.json();
+      // Server returns the account-wide count (also on a 429) — keep the badge in sync.
+      if (typeof data?.usage?.counts?.teacherQuestionGenerations === 'number') {
+        setDailyGenerationsUsed(data.usage.counts.teacherQuestionGenerations);
+      }
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
 
@@ -5381,11 +5366,7 @@ useEffect(() => {
         return;
       }
 
-      const nextCount = usedToday + 1;
-      await writeGenerationUsage({
-        ...usageMap,
-        [teacherIdentity]: { date: getTodayDateKey(), count: nextCount },
-      });
+      const nextCount = Number(data?.usage?.counts?.teacherQuestionGenerations ?? usedToday + 1);
       setDailyGenerationsUsed(nextCount);
       setGeneratedQuestions((prev) => [...prev, ...newUnique]);
       toast.show(

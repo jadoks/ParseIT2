@@ -6037,7 +6037,125 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
     };
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // SHARED DAILY AI USAGE — one counter per Firebase account, stored in
+  // Firestore, so every device (phone / laptop / tablet / another browser)
+  // sees and spends the SAME daily allowance. The "day" is decided here on
+  // the server (USAGE_TIMEZONE), never by the device clock, so devices in
+  // different timezones can't disagree about when the count resets.
+  // ════════════════════════════════════════════════════════════════════
+  const DAILY_USAGE_LIMITS = {
+    gameGenerations: 10,            // student: Games → AI quiz generation
+    teacherQuestionGenerations: 30, // teacher/admin: game question generation
+    aiChatPrompts: 30,              // student: AI chat prompts (GeminiFloatingModal)
+    aiGenerations: 10,              // student: AI prompts that analyze a file
+    aiFileUploads: 10,              // student: file uploads in the AI modal
+  };
+  // Keys the client may spend through POST /usage/daily/consume. The two
+  // generation keys are charged by the server itself inside the generate route.
+  const CLIENT_CONSUMABLE_USAGE_KEYS = ["aiChatPrompts", "aiGenerations", "aiFileUploads"];
+  const USAGE_TIMEZONE = process.env.USAGE_TIMEZONE || "Asia/Manila";
+
+  function getUsageDayKey(date = new Date()) {
+    // en-CA formats as YYYY-MM-DD
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: USAGE_TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+
+  function dailyUsageRef(uid, dayKey) {
+    return db.collection("daily_ai_usage").doc(`${uid}_${dayKey}`);
+  }
+
+  function buildUsageSnapshot(dayKey, rawCounts = {}) {
+    const counts = {};
+    const remaining = {};
+    for (const key of Object.keys(DAILY_USAGE_LIMITS)) {
+      counts[key] = Math.max(0, Number(rawCounts?.[key]) || 0);
+      remaining[key] = Math.max(0, DAILY_USAGE_LIMITS[key] - counts[key]);
+    }
+    return { date: dayKey, timezone: USAGE_TIMEZONE, limits: { ...DAILY_USAGE_LIMITS }, counts, remaining };
+  }
+
+  async function getDailyUsageSnapshot(uid) {
+    const dayKey = getUsageDayKey();
+    const snap = await dailyUsageRef(uid, dayKey).get();
+    return buildUsageSnapshot(dayKey, snap.exists ? snap.data()?.counts : {});
+  }
+
+  // Atomically spends `amount` from today's allowance. Firestore transactions
+  // make this safe when two devices fire at the same moment.
+  async function reserveDailyUsage(uid, key, amount = 1) {
+    const limit = DAILY_USAGE_LIMITS[key];
+    if (!uid || !limit) throw new Error(`Unknown usage key: ${key}`);
+    const dayKey = getUsageDayKey();
+    const ref = dailyUsageRef(uid, dayKey);
+    let outcome = null;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const counts = snap.exists ? { ...(snap.data()?.counts || {}) } : {};
+      const used = Number(counts[key]) || 0;
+      if (used + amount > limit) {
+        outcome = { ok: false, snapshot: buildUsageSnapshot(dayKey, counts) };
+        return;
+      }
+      counts[key] = used + amount;
+      tx.set(ref, { uid, date: dayKey, counts, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      outcome = { ok: true, snapshot: buildUsageSnapshot(dayKey, counts) };
+    });
+    return outcome;
+  }
+
+  // Gives back a slot that was reserved but never produced a result
+  // (e.g. the AI call failed), so a failed attempt doesn't cost the user.
+  async function releaseDailyUsage(uid, key, amount = 1) {
+    const dayKey = getUsageDayKey();
+    const ref = dailyUsageRef(uid, dayKey);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const counts = { ...(snap.data()?.counts || {}) };
+      counts[key] = Math.max(0, (Number(counts[key]) || 0) - amount);
+      tx.set(ref, { counts, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
+  }
+
+  app.get("/usage/daily", requireAuth, async (req, res) => {
+    try {
+      return res.json(await getDailyUsageSnapshot(req.user.uid));
+    } catch (error) {
+      console.error("Get daily usage error:", error);
+      return res.status(500).json({ error: "Failed to load daily usage." });
+    }
+  });
+
+  app.post("/usage/daily/consume", requireAuth, async (req, res) => {
+    try {
+      const key = String(req.body?.key || "");
+      if (!CLIENT_CONSUMABLE_USAGE_KEYS.includes(key)) {
+        return res.status(400).json({ error: "Invalid usage key." });
+      }
+      const result = await reserveDailyUsage(req.user.uid, key, 1);
+      if (!result.ok) {
+        return res.status(429).json({
+          error: `Daily limit (${DAILY_USAGE_LIMITS[key]}) reached.`,
+          code: "DAILY_LIMIT_REACHED",
+          usage: result.snapshot,
+        });
+      }
+      return res.json({ success: true, usage: result.snapshot });
+    } catch (error) {
+      console.error("Consume daily usage error:", error);
+      return res.status(500).json({ error: "Failed to record usage." });
+    }
+  });
+
   app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
+    let reservedUsage = null; // { uid, key } once a daily slot is held
+    let usageSnapshot = null;
     try {
       const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body;
       
@@ -6061,6 +6179,22 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
           error: "No readable content found in the materials."
         });
       }
+
+      // Spend one of today's generations BEFORE calling the AI. Students and
+      // teachers/admins have separate allowances. The count lives on the
+      // account (not the device), so it is identical everywhere.
+      const usageProfile = await findUserProfileByAuthUid(req.user.uid);
+      const usageKey = usageProfile?.role === "student" ? "gameGenerations" : "teacherQuestionGenerations";
+      const reservation = await reserveDailyUsage(req.user.uid, usageKey, 1);
+      if (!reservation.ok) {
+        return res.status(429).json({
+          error: `Daily limit (${DAILY_USAGE_LIMITS[usageKey]}) reached.`,
+          code: "DAILY_LIMIT_REACHED",
+          usage: reservation.snapshot,
+        });
+      }
+      reservedUsage = { uid: req.user.uid, key: usageKey };
+      usageSnapshot = reservation.snapshot;
 
       const promptText = buildGamePrompt({
         extractedText: combinedExtractedText,
@@ -6087,9 +6221,18 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         classId,
         materialIds,
         filesProcessed: geminiContents.length,
+        usage: usageSnapshot,
       });
     } catch (error) {
       console.error("Generate quiz from materials (direct) error:", error);
+      // The AI call failed, so don't charge the user for it.
+      if (reservedUsage) {
+        try {
+          await releaseDailyUsage(reservedUsage.uid, reservedUsage.key, 1);
+        } catch (releaseError) {
+          console.error("Failed to release daily usage:", releaseError);
+        }
+      }
       return res.status(500).json({
         error: error.message || "Failed to generate quiz from materials."
       });
