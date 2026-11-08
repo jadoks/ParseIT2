@@ -811,6 +811,86 @@ async function buildLatinHonorsWorkbook(students) {
     }
   }
 
+  /**
+   * SINGLE-DEVICE LOGIN ENFORCEMENT
+   *
+   * The account's only valid session is profile.activeSessionId (set by
+   * /auth/claim-session on every fresh login, in ANY browser, incognito window
+   * or device - each one generates its own random id). Every authenticated
+   * request carries the caller's id in X-Session-Id; requireAuth() below
+   * rejects a mismatch with 409 SESSION_REPLACED, so the older browser stops
+   * working on its very next request instead of waiting for a push event or a
+   * poll to arrive.
+   */
+  const sessionReplacedBody = {
+    success: false,
+    code: "SESSION_REPLACED",
+    error: "Your account was signed in on another device.",
+  };
+
+  // Endpoints a device must be able to reach while it is still logging in,
+  // i.e. before its new session id has been claimed.
+  const SESSION_CHECK_EXEMPT_PATHS = new Set([
+    "/auth/claim-session",
+    "/auth/user-profile",
+    "/auth/session-logout",
+  ]);
+
+  // authUid -> { id, at }. Short TTL keeps this to ~1 Firestore read per user
+  // per window even under heavy traffic; claim-session refreshes it instantly
+  // on this instance.
+  const activeSessionIdCache = new Map();
+  const ACTIVE_SESSION_CACHE_TTL_MS = 10 * 1000;
+
+  function setCachedActiveSessionId(authUid, id) {
+    if (!authUid) return;
+    activeSessionIdCache.set(authUid, { id: id || null, at: Date.now() });
+    if (activeSessionIdCache.size > 5000) {
+      const cutoff = Date.now() - ACTIVE_SESSION_CACHE_TTL_MS;
+      for (const [key, entry] of activeSessionIdCache) {
+        if (entry.at < cutoff) activeSessionIdCache.delete(key);
+      }
+    }
+  }
+
+  async function getActiveSessionId(authUid) {
+    const cached = activeSessionIdCache.get(authUid);
+    if (cached && Date.now() - cached.at < ACTIVE_SESSION_CACHE_TTL_MS) return cached.id;
+
+    const profile = await findUserProfileByAuthUid(authUid);
+    if (!profile?.ref) return null;
+    // Read fresh: findUserProfileByAuthUid() is cached and may be stale.
+    const snap = await profile.ref.get();
+    const id = normalizeOptionalText(snap.data()?.activeSessionId) || null;
+    setCachedActiveSessionId(authUid, id);
+    return id;
+  }
+
+  async function isRequestSessionReplaced(req, authUid) {
+    const requestPath = String(req.originalUrl || req.url || "").split("?")[0];
+    let clientSessionId = normalizeOptionalText(req.headers["x-session-id"]);
+    // The browser's EventSource cannot send custom headers, so the live stream
+    // passes its session id as ?sessionId= instead.
+    if (!clientSessionId && requestPath === "/events/stream") {
+      clientSessionId = normalizeOptionalText(req.query?.sessionId);
+    }
+    // No id = a device that has not claimed one yet (mid-login, or a build
+    // from before this feature); the explicit 'none' check on reconnect and
+    // the login bootstrap endpoints cover those.
+    if (!clientSessionId || !authUid) return false;
+
+    if (SESSION_CHECK_EXEMPT_PATHS.has(requestPath)) return false;
+
+    try {
+      const activeId = await getActiveSessionId(authUid);
+      return Boolean(activeId && activeId !== clientSessionId);
+    } catch (error) {
+      // A Firestore hiccup must not sign everybody out.
+      console.error("Session check failed (allowing request):", error?.message || error);
+      return false;
+    }
+  }
+
   async function requireAuth(req, res, next) {
     const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME] || "";
     const bearerToken = getAuthBearerToken(req);
@@ -840,6 +920,11 @@ async function buildLatinHonorsWorkbook(students) {
 
     req.user = decoded;
     req.clientIp = getClientIp(req);
+
+    if (await isRequestSessionReplaced(req, decoded.uid)) {
+      return res.status(409).json(sessionReplacedBody);
+    }
+
     return next();
   }
 
@@ -4396,20 +4481,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
    * refresh) never claims, so an old device can't steal the session back.
    * Clients that send no sessionId (older app builds) are not checked.
    */
-  async function isSessionReplaced(profile, req) {
-    const clientSessionId = normalizeOptionalText(req.headers["x-session-id"]);
-    if (!clientSessionId || !profile?.ref) return false;
-    // Read fresh: findUserProfileByAuthUid() is cached and may be stale.
-    const fresh = await profile.ref.get();
-    const activeId = normalizeOptionalText(fresh.data()?.activeSessionId);
-    return Boolean(activeId && activeId !== clientSessionId);
-  }
-
-  const sessionReplacedBody = {
-    success: false,
-    code: "SESSION_REPLACED",
-    error: "Your account was signed in on another device.",
-  };
+  // (The per-request check lives in requireAuth() / isRequestSessionReplaced()
+  // above, so /auth/session-status and /auth/session-me are covered by it too.)
 
   app.post("/auth/claim-session", requireAuth, async (req, res) => {
     try {
@@ -4428,6 +4501,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
         },
         { merge: true }
       );
+      // Older browsers / devices are rejected from their very next request.
+      setCachedActiveSessionId(req.user.uid, sessionId);
 
       // Tell every open stream of this account instantly. Devices compare
       // payload.sessionId with their own and only react if it differs, so the
@@ -4452,10 +4527,6 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
   // Lightweight poll used by the app to detect a login on another device.
   app.get("/auth/session-status", requireAuth, async (req, res) => {
     try {
-      const profile = await findUserProfileByAuthUid(req.user.uid);
-      if (await isSessionReplaced(profile, req)) {
-        return res.status(409).json(sessionReplacedBody);
-      }
       return res.json({ success: true });
     } catch (error) {
       console.error("Session status error:", error);
@@ -4466,9 +4537,6 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
   app.get("/auth/session-me", requireAuth, async (req, res) => {
     try {
       const profile = await findUserProfileByAuthUid(req.user.uid);
-      if (await isSessionReplaced(profile, req)) {
-        return res.status(409).json(sessionReplacedBody);
-      }
       const hydratedUserData = profile
         ? await hydrateUserImageUrls(profile.data || {})
         : null;

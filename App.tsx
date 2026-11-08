@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'; // Install
 import Constants from 'expo-constants';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { auth } from './firebaseConfig';
@@ -36,6 +36,10 @@ const SESSION_ID_KEY = '@session_id';
 
 // Seconds the "signed in on another device" modal waits before auto-logout.
 const SESSION_REPLACED_AUTO_LOGOUT_SECONDS = 4;
+
+// Safety-net poll while signed in. The server also rejects every request from
+// a replaced session (409), so this only matters for an idle tab.
+const SESSION_CHECK_INTERVAL_MS = 30 * 1000;
 
 function generateSessionId() {
   const g: any = globalThis as any;
@@ -114,6 +118,80 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// ─────────────────────────────────────────────────────────────────────────
+// SINGLE-DEVICE LOGIN — one session id per browser / incognito window / device.
+// Lives at module level (not in component state) so the fetch guard below can
+// read it for requests made by StudentApp / TeacherApp / AdminApp too.
+// ─────────────────────────────────────────────────────────────────────────
+const sessionIdRef: { current: string | null } = { current: null };
+
+// Warm the id from disk so requests made right after a cold start already
+// carry it, instead of waiting for the first background verification.
+AsyncStorage.getItem(SESSION_ID_KEY)
+  .then((stored) => {
+    if (stored && !sessionIdRef.current) sessionIdRef.current = stored;
+  })
+  .catch(() => {});
+
+// Endpoints that must work before this device has claimed its session id.
+const SESSION_GUARD_SKIP_PATHS = [
+  '/auth/claim-session',
+  '/auth/session-login',
+  '/auth/session-logout',
+  '/auth/lookup-user',
+  '/auth/login-failed',
+];
+
+// Set by <App/>; called when ANY backend request answers 409 SESSION_REPLACED.
+let onSessionReplacedByServer: ((sentSessionId: string | null) => void) | null = null;
+let sessionFetchGuardInstalled = false;
+
+// Wraps global fetch once so that EVERY call to our backend (including the
+// ones inside the role apps' own apiFetch helpers) sends X-Session-Id and
+// reacts to the server saying the session was replaced. Without this, an
+// older browser would keep working until a push event or poll noticed.
+function installSessionFetchGuard() {
+  if (sessionFetchGuardInstalled || typeof globalThis.fetch !== 'function') return;
+  sessionFetchGuardInstalled = true;
+  const originalFetch = globalThis.fetch.bind(globalThis);
+
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url: string = typeof input === 'string' ? input : input?.url || String(input);
+    const isBackendCall = typeof url === 'string' && url.startsWith(API_BASE_URL);
+    const skip = isBackendCall && SESSION_GUARD_SKIP_PATHS.some((path) => url.startsWith(`${API_BASE_URL}${path}`));
+    if (!isBackendCall || skip) return originalFetch(input, init);
+
+    let nextInit = init;
+    let sentSessionId: string | null = sessionIdRef.current;
+    try {
+      const headers = new Headers(init?.headers ?? (typeof input !== 'string' ? input?.headers : undefined));
+      const explicit = headers.get('X-Session-Id');
+      if (explicit) {
+        sentSessionId = explicit; // e.g. the explicit 'none' used by checkSessionNow
+      } else if (sessionIdRef.current) {
+        headers.set('X-Session-Id', sessionIdRef.current);
+        nextInit = { ...init, headers };
+      }
+    } catch {
+      // Header merge failed: send the request untouched rather than break it.
+    }
+
+    const response = await originalFetch(input, nextInit);
+    if (response.status === 409) {
+      response
+        .clone()
+        .json()
+        .then((body: any) => {
+          if (body?.code === 'SESSION_REPLACED') onSessionReplacedByServer?.(sentSessionId);
+        })
+        .catch(() => {});
+    }
+    return response;
+  }) as typeof fetch;
+}
+
+installSessionFetchGuard();
+
 function mapProfileToUser(data: any): SignedInUser {
   return {
     role: data.role,
@@ -158,9 +236,22 @@ export default function App() {
 
   // SINGLE-DEVICE LOGIN: this device's own session id (claimed on a fresh
   // login only) and whether another device has since replaced it.
-  const sessionIdRef = useRef<string | null>(null);
   const [sessionReplaced, setSessionReplaced] = useState(false);
   const isLoggingOutRef = useRef(false);
+
+  // Any backend request answering 409 SESSION_REPLACED lands here. Ignored if
+  // this device has claimed a newer session since that request was sent (a
+  // fresh login racing an older in-flight request).
+  useEffect(() => {
+    onSessionReplacedByServer = (sentSessionId) => {
+      if (isLoggingOutRef.current) return;
+      if ((sessionIdRef.current || 'none') !== (sentSessionId || 'none')) return;
+      setSessionReplaced(true);
+    };
+    return () => {
+      onSessionReplacedByServer = null;
+    };
+  }, []);
 
   const getSessionId = useCallback(async () => {
     if (!sessionIdRef.current) {
@@ -322,30 +413,50 @@ export default function App() {
       token = await refreshAuthToken(true);
     }
     if (token) {
-      // SINGLE-DEVICE LOGIN: this fresh login becomes the account's only
-      // valid session; any other device gets kicked on its next check.
+      // SINGLE-DEVICE LOGIN: this fresh login (any browser, incognito window or
+      // device) becomes the account's only valid session; every other one is
+      // rejected by the server on its next request and told to log out.
       const newSessionId = generateSessionId();
+
+      // Claim BEFORE exposing the id to the fetch guard, otherwise this
+      // device's own early requests would be rejected as "not the active
+      // session". Retried, because a missed claim means the older browser
+      // would never be kicked.
+      let claimed = false;
+      for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
+        try {
+          const claimRes = await fetch(`${API_BASE_URL}/auth/claim-session`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ sessionId: newSessionId }),
+          });
+          claimed = claimRes.ok;
+          if (!claimed) {
+            console.error('[session] claim-session failed:', claimRes.status, await claimRes.text().catch(() => ''));
+          }
+        } catch (e) {
+          console.error('claim-session failed:', e);
+        }
+        if (!claimed) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      }
+
+      if (!claimed) {
+        // Fail closed: a login that could not claim the session would leave
+        // the other browser signed in too.
+        const message = 'We could not secure your session. Please check your connection and sign in again.';
+        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert(message);
+        else Alert.alert('Sign-in failed', message);
+        try { await signOut(auth); } catch {}
+        return;
+      }
+
       sessionIdRef.current = newSessionId;
       await AsyncStorage.setItem(SESSION_ID_KEY, newSessionId);
-      try {
-        const claimRes = await fetch(`${API_BASE_URL}/auth/claim-session`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ sessionId: newSessionId }),
-        });
-        if (!claimRes.ok) {
-          // 404 here = the server is not running the new build yet.
-          console.error('[session] claim-session failed:', claimRes.status, await claimRes.text().catch(() => ''));
-        } else {
-          console.log('[session] claimed session', newSessionId.slice(0, 8));
-        }
-      } catch (e) {
-        console.error('claim-session failed:', e);
-      }
+      console.log('[session] claimed session', newSessionId.slice(0, 8));
       isLoggingOutRef.current = false;
       setSessionReplaced(false);
       hasCachedSessionRef.current = true;
@@ -433,6 +544,23 @@ export default function App() {
     }
   }, [getSessionId, refreshAuthToken]);
 
+  // SAFETY NET #1: re-check on a timer while signed in...
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser?.id || sessionReplaced) return;
+    const interval = setInterval(() => void checkSessionNow(), SESSION_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, currentUser?.id, sessionReplaced, checkSessionNow]);
+
+  // ...and SAFETY NET #2: the moment this tab / app comes back to the
+  // foreground (background tabs get their timers and streams throttled).
+  useEffect(() => {
+    if (!isLoggedIn || !currentUser?.id || sessionReplaced) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkSessionNow();
+    });
+    return () => sub.remove();
+  }, [isLoggedIn, currentUser?.id, sessionReplaced, checkSessionNow]);
+
   // INSTANT KICK: the server pushes a "session" event the moment another
   // device logs in to this account. Owned by App.tsx (not StudentApp /
   // TeacherApp) so it also works for admins and while the landing page is
@@ -443,6 +571,7 @@ export default function App() {
     role: (currentUser?.role || 'student') as 'student' | 'teacher' | 'admin',
     enabled: isLoggedIn && !!currentUser?.id && !sessionReplaced,
     debounceMs: 0,
+    getSessionId: () => sessionIdRef.current,
     getHeaders: () => (idTokenRef.current ? { Authorization: `Bearer ${idTokenRef.current}` } : undefined),
     handlers: {
       session: (payload: any) => {

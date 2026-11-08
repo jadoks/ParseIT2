@@ -54,6 +54,8 @@ export type UseLiveEventsOptions = {
    * The browser EventSource cannot send custom headers and ignores this.
    */
   getHeaders?: () => Record<string, string> | undefined;
+  /** Current single-device session id; sent as ?sessionId= so the server can reject a replaced session (EventSource cannot send headers). */
+  getSessionId?: () => string | null | undefined;
   safetySyncMs?: number; // 0 disables the safety timer
   staleAfterMs?: number;
 };
@@ -74,6 +76,7 @@ export function useLiveEvents({
   onSync,
   enabled = true,
   getHeaders,
+  getSessionId,
   debounceMs = 300,
   safetySyncMs = 120_000,
   staleAfterMs = 50_000,
@@ -82,6 +85,8 @@ export function useLiveEvents({
   const handlersRef = useRef(handlers);
   const onSyncRef = useRef(onSync);
   const getHeadersRef = useRef(getHeaders);
+  const getSessionIdRef = useRef(getSessionId);
+  getSessionIdRef.current = getSessionId;
   handlersRef.current = handlers;
   onSyncRef.current = onSync;
   getHeadersRef.current = getHeaders;
@@ -96,9 +101,15 @@ export function useLiveEvents({
     if (!enabled || !userId || !baseUrl) return;
 
     const topics = topicsKey ? topicsKey.split(',') : [];
-    const url =
-      `${baseUrl.replace(/\/+$/, '')}/events/stream` +
-      `?userId=${encodeURIComponent(userId)}&role=${encodeURIComponent(role)}`;
+    // Built per connect so a reconnect always carries the latest session id.
+    const buildUrl = () => {
+      const sid = getSessionIdRef.current?.();
+      return (
+        `${baseUrl.replace(/\/+$/, '')}/events/stream` +
+        `?userId=${encodeURIComponent(userId)}&role=${encodeURIComponent(role)}` +
+        (sid ? `&sessionId=${encodeURIComponent(sid)}` : '')
+      );
+    };
 
     let disposed = false;
     let source: SseLike | null = null;
@@ -162,7 +173,7 @@ export function useLiveEvents({
 
       const Ctor: any = (globalThis as any).EventSource ?? RNEventSource;
       const headers = getHeadersRef.current?.();
-      const mine: SseLike = new Ctor(url, headers ? { withCredentials: true, headers } : { withCredentials: true });
+      const mine: SseLike = new Ctor(buildUrl(), headers ? { withCredentials: true, headers } : { withCredentials: true });
       source = mine;
       lastHeardAt = Date.now();
 
