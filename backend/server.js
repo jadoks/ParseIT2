@@ -2629,7 +2629,7 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
       model: GEMINI_GAME_MODEL,
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 200,
+        maxOutputTokens: 512,
         responseMimeType: "application/json",
         responseSchema: {
           type: SchemaType.OBJECT,
@@ -2654,7 +2654,7 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
                 model: modelName,
                 generationConfig: {
                   temperature: 0,
-                  maxOutputTokens: 200,
+                  maxOutputTokens: 512,
                   responseMimeType: "application/json",
                   responseSchema: {
                     type: SchemaType.OBJECT,
@@ -2668,7 +2668,11 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
               });
 
         const result = await attemptModel.generateContent(prompt);
-        const parsed = JSON.parse(result.response.text());
+        // Some responses add text around the JSON (e.g. "Here is the JSON..."),
+        // so parse only the part between the first { and the last }.
+        const rawText = result.response.text();
+        const jsonText = rawText.slice(rawText.indexOf("{"), rawText.lastIndexOf("}") + 1);
+        const parsed = JSON.parse(jsonText);
         return {
           isCorrect: !!parsed.isCorrect,
           feedback: typeof parsed.feedback === "string" ? parsed.feedback.slice(0, 200) : "",
