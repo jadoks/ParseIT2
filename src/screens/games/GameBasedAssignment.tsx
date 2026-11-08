@@ -837,17 +837,21 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     onPress: () => void = handleNext
   ) => (
     <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
-      <AppText style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</AppText>
-      {lines.filter(Boolean).length > 0 && (
-        <View style={styles.feedbackLines}>
-          {lines.filter(Boolean).map((line, i) => (
-            <AppText key={i} style={styles.feedbackLine}>{line}</AppText>
-          ))}
-        </View>
-      )}
-      <TouchableOpacity style={[styles.nextButton, styles.feedbackNextButton]} onPress={onPress}>
-        <AppText style={styles.nextButtonText}>{label}</AppText>
-      </TouchableOpacity>
+      <View style={styles.feedbackBody}>
+        <AppText style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</AppText>
+        {lines.filter(Boolean).length > 0 && (
+          <View style={styles.feedbackLines}>
+            {lines.filter(Boolean).map((line, i) => (
+              <AppText key={i} style={styles.feedbackLine}>{line}</AppText>
+            ))}
+          </View>
+        )}
+      </View>
+      <View style={styles.feedbackActions}>
+        <TouchableOpacity style={[styles.nextButton, styles.feedbackNextButton]} onPress={onPress}>
+          <AppText style={styles.nextButtonText}>{label}</AppText>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -1557,29 +1561,36 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     feedbackBar: {
       width: '100%',
-      // Large screens: keep the feedback container compact and centered.
-      ...(r.isDesktop ? { maxWidth: 720, alignSelf: 'center' as const } : null),
       borderRadius: 16,
       paddingVertical: r.spacing.sm + 2,
       paddingHorizontal: r.cardPadding,
       alignItems: 'center',
+      // Large screens: use the full width — message on the left, button on the
+      // right — so the sticky footer stays short instead of stacking vertically.
+      ...(r.isDesktop ? { flexDirection: 'row' as const, gap: r.spacing.lg } : null),
     },
+    feedbackBody: r.isDesktop
+      ? { flex: 1, minWidth: 0, alignItems: 'flex-start' as const }
+      : { alignSelf: 'stretch' as const, alignItems: 'center' as const },
+    feedbackActions: r.isDesktop
+      ? { flexShrink: 0, justifyContent: 'center' as const }
+      : { alignSelf: 'stretch' as const },
     feedbackTitle: {
       fontFamily: FONT_BODY,
       fontSize: r.font.subheading + 2,
       fontWeight: WEIGHT_EMPHASIS,
-      textAlign: 'center',
+      textAlign: r.isDesktop ? 'left' : 'center',
     },
     feedbackLines: { alignSelf: 'stretch', marginTop: 4 },
     feedbackLine: {
       fontFamily: FONT_BODY,
       fontSize: r.font.caption + 1,
       color: '#555',
-      textAlign: 'center',
+      textAlign: r.isDesktop ? 'left' : 'center',
       marginBottom: 2,
     },
     feedbackNextButton: r.isDesktop
-      ? { marginTop: r.spacing.sm, alignSelf: 'center', minWidth: 280 }
+      ? { marginTop: 0, alignSelf: 'center', minWidth: 220 }
       : { marginTop: r.spacing.sm, alignSelf: 'stretch', minWidth: undefined },
     fixedInput: { minHeight: 48, maxHeight: 96 },
     flashcardScrollFill: { alignSelf: 'stretch' },

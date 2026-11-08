@@ -1174,19 +1174,23 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     buttons: Array<{ label: string; onPress: () => void }>
   ) => (
     <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
-      <AppText style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</AppText>
-      {lines.filter(Boolean).length > 0 && (
-        <View style={styles.feedbackLines}>
-          {lines.filter(Boolean).map((line, i) => (
-            <AppText key={i} style={styles.feedbackLine}>{line}</AppText>
-          ))}
-        </View>
-      )}
-      {buttons.map(b => (
-        <Pressable key={b.label} style={[styles.nextButton, styles.feedbackNextButton]} onPress={b.onPress}>
-          <AppText style={styles.nextButtonText}>{b.label}</AppText>
-        </Pressable>
-      ))}
+      <View style={styles.feedbackBody}>
+        <AppText style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</AppText>
+        {lines.filter(Boolean).length > 0 && (
+          <View style={styles.feedbackLines}>
+            {lines.filter(Boolean).map((line, i) => (
+              <AppText key={i} style={styles.feedbackLine}>{line}</AppText>
+            ))}
+          </View>
+        )}
+      </View>
+      <View style={styles.feedbackActions}>
+        {buttons.map(b => (
+          <Pressable key={b.label} style={[styles.nextButton, styles.feedbackNextButton]} onPress={b.onPress}>
+            <AppText style={styles.nextButtonText}>{b.label}</AppText>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 
@@ -1654,13 +1658,24 @@ const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInf
     paddingVertical: 10,
     paddingHorizontal: 16,
     alignItems: 'center',
-    // Wide screens: keep the feedback container compact and centered.
-    ...(wide ? { width: '100%' as const, maxWidth: 720, alignSelf: 'center' as const } : null),
+    // Wide screens: use the full width — message on the left, button on the right —
+    // so the sticky footer stays short instead of stacking vertically.
+    ...(wide
+      ? { width: '100%' as const, flexDirection: 'row' as const, gap: 24, paddingHorizontal: 24 }
+      : null),
   },
-  feedbackTitle: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
+  feedbackBody: wide
+    ? { flex: 1, minWidth: 0, alignItems: 'flex-start' as const }
+    : { alignSelf: 'stretch' as const, alignItems: 'center' as const },
+  feedbackActions: wide
+    ? { flexShrink: 0, justifyContent: 'center' as const }
+    : { alignSelf: 'stretch' as const },
+  feedbackTitle: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, textAlign: wide ? 'left' : 'center' },
   feedbackLines: { alignSelf: 'stretch', marginTop: 4 },
-  feedbackLine: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#555', textAlign: 'center', marginBottom: 2 },
-  feedbackNextButton: { marginTop: 8, paddingVertical: 12 },
+  feedbackLine: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#555', textAlign: wide ? 'left' : 'center', marginBottom: 2 },
+  feedbackNextButton: wide
+    ? { marginTop: 0, paddingVertical: 12, minWidth: 220 }
+    : { marginTop: 8, paddingVertical: 12 },
   fixedInput: { minHeight: 48, maxHeight: 96 },
   flashcardScrollFill: { alignSelf: 'stretch' },
   flashcardScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
