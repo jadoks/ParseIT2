@@ -162,7 +162,7 @@ async function clearServerActiveSessionIfSameQuiz(
   }
 }
 
-type GameMode = 'menu' | 'matchingCards' | 'flashcards' | 'fillBlank' | 'trivia' | 'summary';
+type GameMode = 'matchingCards' | 'flashcards' | 'fillBlank' | 'trivia' | 'summary';
 
 type MatchingCard = {
   id: string;
@@ -471,7 +471,19 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return createFillBlankItems(questions);
   }, [fillBlankItemsRaw, questions]);
 
-  const [mode, setMode] = useState<GameMode>('menu');
+  // The game type is chosen in Game.tsx, so there is no in-component menu:
+  // the mode is always derived from the generated game type.
+  const pickMode = (): GameMode => {
+    if (gameType === 'memory_match' && matchingItems.length > 0) return 'matchingCards';
+    if (gameType === 'fill_in_blanks' && fillBlankItems.length > 0) return 'fillBlank';
+    if (gameType === 'flashcard' && (flashcardItems.length > 0 || questions.length > 0)) return 'flashcards';
+    if (gameType === 'quiz_master' && questions.length > 0) return 'trivia';
+    if (matchingItems.length > 0) return 'matchingCards';
+    if (fillBlankItems.length > 0) return 'fillBlank';
+    if (flashcardItems.length > 0 || questions.length > 0) return 'flashcards';
+    return 'trivia';
+  };
+  const [mode, setMode] = useState<GameMode>(pickMode);
   const [userAnswers, setUserAnswers] = useState<UserAnswer[]>([]);
 
   // Matching Cards State
@@ -595,17 +607,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   const currentFillItem = fillBlankItems[fillIndex];
   const currentTrivia = questions[triviaIndex];
 
-  const autoSelectMode = () => {
-    if (gameType === 'memory_match' && matchingItems.length > 0) setMode('matchingCards');
-    else if (gameType === 'fill_in_blanks' && fillBlankItems.length > 0) setMode('fillBlank');
-    else if (gameType === 'flashcard' && (flashcardItems.length > 0 || questions.length > 0)) setMode('flashcards');
-    else if (gameType === 'quiz_master' && questions.length > 0) setMode('trivia');
-    else if (matchingItems.length > 0) setMode('matchingCards');
-    else if (fillBlankItems.length > 0) setMode('fillBlank');
-    else if (flashcardItems.length > 0 || questions.length > 0) setMode('flashcards');
-    else if (questions.length > 0) setMode('trivia');
-    else setMode('menu');
-  };
+  const autoSelectMode = () => setMode(pickMode());
 
   // 🆕 RESUME SUPPORT: on a fresh set of generated questions, first check
   // whether there's saved progress for this exact quiz (same student, game
@@ -658,7 +660,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           // Only a real finish-button tap should end a session (those already
           // call clearSavedProgress() explicitly); just reaching the results
           // screen should still be resumable.
-          if (saved && saved.mode && saved.mode !== 'menu') {
+          if (saved && saved.mode) {
             if (!isCancelled) {
               setTriviaIndex(saved.triviaIndex ?? 0);
               setTriviaScore(saved.triviaScore ?? 0);
@@ -735,7 +737,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   // fully-closed-and-reopened app/website can pick back up at the right
   // question and score. Skipped until the restore effect above has run
   // (avoids clobbering saved progress with blank initial state), and while
-  // on the menu (nothing to resume yet). 🐛 FIX: 'summary' is intentionally
+  // 🐛 FIX: 'summary' is intentionally
   // NOT skipped anymore — closing the app while sitting on the results
   // screen (before tapping a finish button) needs an up-to-date snapshot to
   // resume back into, otherwise it looks like the quiz never happened. A
@@ -743,7 +745,6 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   // calls clearSavedProgress() explicitly.
   useEffect(() => {
     if (!isProgressRestoredRef.current || !hasGeneratedGame) return;
-    if (mode === 'menu') return;
 
     const snapshot = {
       mode,
@@ -849,7 +850,6 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     resetFillBlank();
     resetTrivia();
     setUserAnswers([]);
-    setMode('menu');
     setShowResults(false);
   };
 
@@ -913,16 +913,6 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     }
 
     onBack();
-  };
-
-  const openMode = (nextMode: GameMode) => {
-    if (nextMode === 'matchingCards') resetMatchingCards();
-    if (nextMode === 'flashcards') resetFlashcards();
-    if (nextMode === 'fillBlank') resetFillBlank();
-    if (nextMode === 'trivia') resetTrivia();
-    setUserAnswers([]);
-    setMode(nextMode);
-    setShowResults(false);
   };
 
   // One-to-one matching: each term owns at most one definition and each
@@ -1085,40 +1075,6 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       setTriviaIndex((prev) => prev + 1);
       setTriviaSelected(null);
     }
-  };
-
-  const renderMenu = () => {
-    const modes = [
-      { id: 'matchingCards' as GameMode, title: 'Matching Cards', desc: 'Match terms with their correct definitions.', icon: 'grid-outline', bgColor: '#E3F2FD', iconColor: '#2196F3' },
-      { id: 'flashcards' as GameMode, title: 'Flashcards', desc: 'Test your knowledge and reveal answers.', icon: 'albums-outline', bgColor: '#FFF3E0', iconColor: '#FF9800' },
-      { id: 'fillBlank' as GameMode, title: 'Fill in the Blank', desc: 'Complete key sentences from the lesson.', icon: 'create-outline', bgColor: '#E8F5E9', iconColor: '#4CAF50' },
-      { id: 'trivia' as GameMode, title: 'Trivia Challenge', desc: 'Answer multiple-choice questions.', icon: 'trophy-outline', bgColor: '#FCE4EC', iconColor: '#E91E63' },
-    ];
-
-    return (
-      <View style={styles.gameContainer}>
-        <View style={styles.headerSection}>
-          <AppText style={styles.eyebrow}>Practice Games</AppText>
-          <AppText style={styles.title}>Choose a Game</AppText>
-          <AppText style={styles.subtitle}>Review your lessons with interactive games.</AppText>
-        </View>
-
-        <View style={styles.modeGrid}>
-          {modes.map((m) => (
-            <Pressable key={m.id} style={styles.modeCard} onPress={() => openMode(m.id)}>
-              <View style={[styles.modeIconBox, { backgroundColor: m.bgColor }]}>
-                <Ionicons name={m.icon as any} size={28} color={m.iconColor} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText style={styles.modeTitle}>{m.title}</AppText>
-                <AppText style={styles.modeDescription}>{m.desc}</AppText>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#CCC" />
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    );
   };
 
   const renderMatchingResults = () => {
@@ -1634,9 +1590,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     if (mode === 'matchingCards') return renderMatchingCardGame();
     if (mode === 'flashcards') return renderFlashcardGame();
     if (mode === 'fillBlank') return renderFillBlankGame();
-    if (mode === 'trivia') return renderTriviaGame();
-
-    return renderMenu();
+    return renderTriviaGame();
   };
 
   const content = renderContent();
@@ -1648,7 +1602,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </Pressable>
         <AppText style={styles.topBarTitle} numberOfLines={1}>
-          {mode === 'menu' ? 'Quiz Masters' : mode === 'summary' ? 'Practice Results' : 'Practice Game'}
+          {mode === 'summary' ? 'Practice Results' : 'Practice Game'}
         </AppText>
         <View style={{ width: 40 }} />
       </View>
@@ -2007,22 +1961,4 @@ const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInf
   eyebrow: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: fs(13), fontWeight: WEIGHT_EMPHASIS, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
   title: { fontFamily: FONT_TITLE, fontSize: fs(26), fontWeight: WEIGHT_TITLE, color: '#222', textAlign: 'center', marginBottom: 8 },
   subtitle: { fontFamily: FONT_BODY, fontSize: fs(15), color: '#555', textAlign: 'center', lineHeight: fs(22) },
-  modeGrid: { gap: 14, paddingHorizontal: 16 },
-  modeCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#E3EAF5',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  modeIconBox: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  modeTitle: { fontFamily: FONT_TITLE, color: '#122033', fontSize: fs(18), fontWeight: WEIGHT_TITLE, marginBottom: 4 },
-  modeDescription: { fontFamily: FONT_BODY, color: '#5A6B7F', fontSize: fs(14), lineHeight: fs(20) },
 });

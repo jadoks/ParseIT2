@@ -2,11 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage'; // Install
 import Constants from 'expo-constants';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { auth } from './firebaseConfig';
 import AdminApp from './src/AdminApp';
+import { useLiveEvents } from './src/hooks/useLiveEvents';
 import LandingPage from './src/screens/LandingPage';
 import Register from './src/screens/Register';
 import SignIn from './src/screens/SignIn';
@@ -31,6 +32,59 @@ type SignedInUser = {
 
 const CACHED_USER_KEY = '@cached_user';
 const CACHED_TOKEN_KEY = '@auth_token';
+const SESSION_ID_KEY = '@session_id';
+
+// Seconds the "signed in on another device" modal waits before auto-logout.
+const SESSION_REPLACED_AUTO_LOGOUT_SECONDS = 4;
+
+function generateSessionId() {
+  const g: any = globalThis as any;
+  if (g?.crypto?.randomUUID) return g.crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Shown on top of whatever screen is open when the account is signed in on
+// another device. OK logs out immediately; otherwise it logs out by itself.
+function SessionReplacedModal({ visible, onConfirm }: { visible: boolean; onConfirm: () => void }) {
+  const [secondsLeft, setSecondsLeft] = useState(SESSION_REPLACED_AUTO_LOGOUT_SECONDS);
+
+  useEffect(() => {
+    if (!visible) return;
+    setSecondsLeft(SESSION_REPLACED_AUTO_LOGOUT_SECONDS);
+    const interval = setInterval(() => {
+      setSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    const timeout = setTimeout(onConfirm, SESSION_REPLACED_AUTO_LOGOUT_SECONDS * 1000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [visible, onConfirm]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onConfirm}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{ width: '100%', maxWidth: 380, backgroundColor: '#FFF', borderRadius: 16, padding: 24, alignItems: 'center' }}>
+          <Text style={{ fontSize: 20, fontWeight: '700', color: '#222', marginBottom: 8, textAlign: 'center' }}>
+            Signed in on another device
+          </Text>
+          <Text style={{ fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22, marginBottom: 6 }}>
+            Another device just signed in to this account, so you are being logged out here.
+          </Text>
+          <Text style={{ fontSize: 13, color: '#888', marginBottom: 20 }}>
+            Logging out in {secondsLeft}s…
+          </Text>
+          <TouchableOpacity
+            onPress={onConfirm}
+            style={{ backgroundColor: '#D32F2F', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 40 }}
+          >
+            <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '700' }}>OK</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
@@ -88,6 +142,9 @@ export default function App() {
 
   // Store the latest valid ID Token for manual injection
   const [idToken, setIdToken] = useState<string | null>(null);
+  // Latest token for the live stream's (synchronous) header callback.
+  const idTokenRef = useRef<string | null>(null);
+  idTokenRef.current = idToken;
 
   // Avoid flashing the landing/login screen if we already restored a cached
   // session and are just waiting on a background verification.
@@ -98,6 +155,19 @@ export default function App() {
   // the window between "temp password accepted" and "real password set"
   // during first-login setup in SignIn.
   const suppressAutoLoginRef = useRef(false);
+
+  // SINGLE-DEVICE LOGIN: this device's own session id (claimed on a fresh
+  // login only) and whether another device has since replaced it.
+  const sessionIdRef = useRef<string | null>(null);
+  const [sessionReplaced, setSessionReplaced] = useState(false);
+  const isLoggingOutRef = useRef(false);
+
+  const getSessionId = useCallback(async () => {
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = await AsyncStorage.getItem(SESSION_ID_KEY);
+    }
+    return sessionIdRef.current;
+  }, []);
 
   // 🔥 REFRESH TOKEN — cached/instant by default, only hits network if expired.
   // Pass forceRefresh=true only when you specifically need a brand-new token
@@ -131,14 +201,24 @@ export default function App() {
         body: JSON.stringify({ idToken: token, deviceId: Platform.OS }),
       }).catch((e) => console.error("session-login failed:", e));
 
+      const sessionId = await getSessionId();
       const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
         method: 'GET',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          ...(sessionId ? { 'X-Session-Id': sessionId } : {}),
         },
       });
+
+      if (response.status === 409) {
+        // Another device signed in after this one. Ignore the answer if this
+        // device has since claimed a newer session itself (a fresh login
+        // racing this background check).
+        if (sessionIdRef.current === sessionId) setSessionReplaced(true);
+        return;
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -168,7 +248,7 @@ export default function App() {
     } finally {
       setIsCheckingAuth(false);
     }
-  }, [refreshAuthToken]);
+  }, [refreshAuthToken, getSessionId]);
 
   // 🔥 MAIN AUTH CHECKER
   useEffect(() => {
@@ -210,7 +290,9 @@ export default function App() {
         await verifySessionInBackground(false); // non-forced: instant if token still valid
       } else {
         hasCachedSessionRef.current = false;
+        sessionIdRef.current = null;
         await AsyncStorage.removeItem(CACHED_USER_KEY);
+        await AsyncStorage.removeItem(SESSION_ID_KEY);
         setIsLoggedIn(false);
         setShowLanding(true);
         setIsCheckingAuth(false);
@@ -240,6 +322,26 @@ export default function App() {
       token = await refreshAuthToken(true);
     }
     if (token) {
+      // SINGLE-DEVICE LOGIN: this fresh login becomes the account's only
+      // valid session; any other device gets kicked on its next check.
+      const newSessionId = generateSessionId();
+      sessionIdRef.current = newSessionId;
+      await AsyncStorage.setItem(SESSION_ID_KEY, newSessionId);
+      try {
+        await fetch(`${API_BASE_URL}/auth/claim-session`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ sessionId: newSessionId }),
+        });
+      } catch (e) {
+        console.error('claim-session failed:', e);
+      }
+      isLoggingOutRef.current = false;
+      setSessionReplaced(false);
       hasCachedSessionRef.current = true;
       setCurrentUser(user);
       setIsLoggedIn(true);
@@ -271,18 +373,78 @@ export default function App() {
       });
       await AsyncStorage.removeItem(CACHED_TOKEN_KEY);
       await AsyncStorage.removeItem(CACHED_USER_KEY);
+      await AsyncStorage.removeItem(SESSION_ID_KEY);
       await signOut(auth);
     } catch (error) {
       console.error("Sign out error:", error);
     }
 
+    sessionIdRef.current = null;
     hasCachedSessionRef.current = false;
+    setSessionReplaced(false);
     setCurrentUser(null);
     setIsLoggedIn(false);
     setShowLanding(true);
     setShowRegister(false);
     setIdToken(null);
   };
+
+  // Called by the "signed in on another device" modal — from the OK button
+  // (immediately) or its 4-second timer. Guarded so it only runs once.
+  const handleSessionReplacedConfirm = useCallback(() => {
+    if (isLoggingOutRef.current) return;
+    isLoggingOutRef.current = true;
+    void handleLogout().finally(() => {
+      isLoggingOutRef.current = false;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // One-off check against the server. Used when the live stream (re)connects,
+  // which covers a login on another device that happened while this one was
+  // offline, in the background, or briefly disconnected.
+  const checkSessionNow = useCallback(async () => {
+    try {
+      const sessionId = await getSessionId();
+      if (!sessionId || !auth.currentUser) return; // legacy / not claimed yet
+      const token = await refreshAuthToken(false);
+      if (!token) return;
+      const response = await fetch(`${API_BASE_URL}/auth/session-status`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Session-Id': sessionId,
+        },
+      });
+      if (response.status === 409 && sessionIdRef.current === sessionId) {
+        setSessionReplaced(true);
+      }
+    } catch {
+      // Offline / transient error: the next reconnect checks again.
+    }
+  }, [getSessionId, refreshAuthToken]);
+
+  // INSTANT KICK: the server pushes a "session" event the moment another
+  // device logs in to this account. Owned by App.tsx (not StudentApp /
+  // TeacherApp) so it also works for admins and while the landing page is
+  // showing. onSync = reconnect catch-up + a 2-minute safety check.
+  useLiveEvents({
+    baseUrl: API_BASE_URL,
+    userId: currentUser?.id,
+    role: (currentUser?.role || 'student') as 'student' | 'teacher' | 'admin',
+    enabled: isLoggedIn && !!currentUser?.id && !sessionReplaced,
+    debounceMs: 0,
+    getHeaders: () => (idTokenRef.current ? { Authorization: `Bearer ${idTokenRef.current}` } : undefined),
+    handlers: {
+      session: (payload: any) => {
+        const mine = sessionIdRef.current;
+        if (!mine) return; // this device has no claimed session (legacy build)
+        if (payload?.sessionId && payload.sessionId !== mine) setSessionReplaced(true);
+      },
+    },
+    onSync: () => void checkSessionNow(),
+  });
 
   const handleGetStarted = () => {
     setShowLanding(false);
@@ -303,103 +465,112 @@ export default function App() {
     setShowRegister(false);
   };
 
-  if (isCheckingAuth) {
-    return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' }}>
-        <ActivityIndicator size="large" color="#D32F2F" />
-      </SafeAreaView>
-    );
-  }
+  const renderScreen = () => {
+    if (isCheckingAuth) {
+      return (
+        <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' }}>
+          <ActivityIndicator size="large" color="#D32F2F" />
+        </SafeAreaView>
+      );
+    }
 
-  if (showLanding) {
-    return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <LandingPage onGetStarted={handleGetStarted} isSignedIn={isLoggedIn} />
-      </SafeAreaView>
-    );
-  }
+    if (showLanding) {
+      return (
+        <SafeAreaView style={{ flex: 1 }}>
+          <LandingPage onGetStarted={handleGetStarted} isSignedIn={isLoggedIn} />
+        </SafeAreaView>
+      );
+    }
 
-  if (showRegister) {
-    return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <Register
-          onBack={() => setShowRegister(false)}
-          onRegisterSuccess={handleRegisterSuccess}
-          onGoToLanding={() => setShowLanding(true)}
+    if (showRegister) {
+      return (
+        <SafeAreaView style={{ flex: 1 }}>
+          <Register
+            onBack={() => setShowRegister(false)}
+            onRegisterSuccess={handleRegisterSuccess}
+            onGoToLanding={() => setShowLanding(true)}
+          />
+        </SafeAreaView>
+      );
+    }
+
+    if (!isLoggedIn) {
+      return (
+        <SafeAreaView style={{ flex: 1 }}>
+          <SignIn
+            onLogIn={handleLogin}
+            onGoToLanding={() => setShowLanding(true)}
+            onGoToRegister={() => setShowRegister(true)}
+            onFirstLoginPending={handleFirstLoginPending}
+            onFirstLoginResolved={handleFirstLoginResolved}
+          />
+        </SafeAreaView>
+      );
+    }
+
+    // 🔥 PASS THE TOKEN DOWN TO YOUR APPS SO THEY CAN USE IT FOR API CALLS
+    const commonProps = {
+      onLogout: handleLogout,
+      idToken: idToken, // Pass this to StudentApp, TeacherApp, AdminApp
+      onGoToLanding: handleGoToLanding, // Lets the header logo open the Landing Page
+    };
+
+    if (currentUser?.role === 'teacher') {
+      return (
+        <TeacherApp
+          {...commonProps}
+          currentTeacher={{
+            teacherId: currentUser.teacherId || currentUser.id,
+            authUid: currentUser.authUid || null,
+            firstName: currentUser.firstName || '',
+            lastName: currentUser.lastName || '',
+            email: currentUser.email || '',
+            profileImage: currentUser.profileImage || null,
+            bannerImage: currentUser.bannerImage || null,
+          }}
         />
-      </SafeAreaView>
-    );
-  }
+      );
+    }
 
-  if (!isLoggedIn) {
-    return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <SignIn
-          onLogIn={handleLogin}
-          onGoToLanding={() => setShowLanding(true)}
-          onGoToRegister={() => setShowRegister(true)}
-          onFirstLoginPending={handleFirstLoginPending}
-          onFirstLoginResolved={handleFirstLoginResolved}
+    if (currentUser?.role === 'student') {
+      return (
+        <StudentApp
+          {...commonProps}
+          currentStudent={{
+            studentId: currentUser.studentId || currentUser.id,
+            authUid: currentUser.authUid || null,
+            firstName: currentUser.firstName || '',
+            lastName: currentUser.lastName || '',
+            email: currentUser.email || '',
+            profileImage: currentUser.profileImage || null,
+            bannerImage: currentUser.bannerImage || null,
+          }}
         />
-      </SafeAreaView>
-    );
-  }
+      );
+    }
 
-  // 🔥 PASS THE TOKEN DOWN TO YOUR APPS SO THEY CAN USE IT FOR API CALLS
-  const commonProps = {
-    onLogout: handleLogout,
-    idToken: idToken, // Pass this to StudentApp, TeacherApp, AdminApp
-    onGoToLanding: handleGoToLanding, // Lets the header logo open the Landing Page
+    if (currentUser?.role === 'admin') {
+      return (
+        <AdminApp
+          {...commonProps}
+          currentAdmin={{
+            adminId: currentUser.adminId || currentUser.id,
+            authUid: currentUser.authUid || null,
+            firstName: currentUser.firstName || '',
+            lastName: currentUser.lastName || '',
+            email: currentUser.email || '',
+          }}
+        />
+      );
+    }
+
+    return null;
   };
 
-  if (currentUser?.role === 'teacher') {
-    return (
-      <TeacherApp
-        {...commonProps}
-        currentTeacher={{
-          teacherId: currentUser.teacherId || currentUser.id,
-          authUid: currentUser.authUid || null,
-          firstName: currentUser.firstName || '',
-          lastName: currentUser.lastName || '',
-          email: currentUser.email || '',
-          profileImage: currentUser.profileImage || null,
-          bannerImage: currentUser.bannerImage || null,
-        }}
-      />
-    );
-  }
-
-  if (currentUser?.role === 'student') {
-    return (
-      <StudentApp
-        {...commonProps}
-        currentStudent={{
-          studentId: currentUser.studentId || currentUser.id,
-          authUid: currentUser.authUid || null,
-          firstName: currentUser.firstName || '',
-          lastName: currentUser.lastName || '',
-          email: currentUser.email || '',
-          profileImage: currentUser.profileImage || null,
-          bannerImage: currentUser.bannerImage || null,
-        }}
-      />
-    );
-  }
-
-  if (currentUser?.role === 'admin') {
-    return (
-      <AdminApp
-        {...commonProps}
-        currentAdmin={{
-          adminId: currentUser.adminId || currentUser.id,
-          authUid: currentUser.authUid || null,
-          firstName: currentUser.firstName || '',
-          lastName: currentUser.lastName || '',
-          email: currentUser.email || '',
-        }}
-      />
-    );
-  }
-
-  return null;
+  return (
+    <>
+      {renderScreen()}
+      <SessionReplacedModal visible={sessionReplaced} onConfirm={handleSessionReplacedConfirm} />
+    </>
+  );
 }

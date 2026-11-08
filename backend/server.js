@@ -4386,9 +4386,88 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
     }
   });
 
+  /**
+   * SINGLE-DEVICE LOGIN
+   *
+   * Each fresh login calls /auth/claim-session with a new random sessionId,
+   * which becomes the account's only valid one (activeSessionId). Any other
+   * device still holding an older sessionId is told SESSION_REPLACED the next
+   * time it checks in. Background re-verification (app restart, token
+   * refresh) never claims, so an old device can't steal the session back.
+   * Clients that send no sessionId (older app builds) are not checked.
+   */
+  async function isSessionReplaced(profile, req) {
+    const clientSessionId = normalizeOptionalText(req.headers["x-session-id"]);
+    if (!clientSessionId || !profile?.ref) return false;
+    // Read fresh: findUserProfileByAuthUid() is cached and may be stale.
+    const fresh = await profile.ref.get();
+    const activeId = normalizeOptionalText(fresh.data()?.activeSessionId);
+    return Boolean(activeId && activeId !== clientSessionId);
+  }
+
+  const sessionReplacedBody = {
+    success: false,
+    code: "SESSION_REPLACED",
+    error: "Your account was signed in on another device.",
+  };
+
+  app.post("/auth/claim-session", requireAuth, async (req, res) => {
+    try {
+      const sessionId = normalizeOptionalText(req.body?.sessionId);
+      if (!sessionId || sessionId.length < 16 || sessionId.length > 128) {
+        return res.status(400).json({ error: "A valid sessionId is required." });
+      }
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (!profile?.ref) {
+        return res.status(403).json({ error: "User profile not found." });
+      }
+      await profile.ref.set(
+        {
+          activeSessionId: sessionId,
+          activeSessionClaimedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // Tell every open stream of this account instantly. Devices compare
+      // payload.sessionId with their own and only react if it differs, so the
+      // device that just logged in ignores its own event.
+      const canonicalId = String(
+        profile.data?.studentId || profile.data?.teacherId || profile.data?.adminId || profile.id
+      ).trim();
+      publishToPeople(
+        "session",
+        [{ userId: canonicalId, userUid: req.user.uid }],
+        { kind: "replaced", sessionId }
+      );
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Claim session error:", error);
+      return res.status(500).json({ error: "Failed to claim session." });
+    }
+  });
+
+  // Lightweight poll used by the app to detect a login on another device.
+  app.get("/auth/session-status", requireAuth, async (req, res) => {
+    try {
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (await isSessionReplaced(profile, req)) {
+        return res.status(409).json(sessionReplacedBody);
+      }
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Session status error:", error);
+      return res.status(500).json({ error: "Failed to check session." });
+    }
+  });
+
   app.get("/auth/session-me", requireAuth, async (req, res) => {
     try {
       const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (await isSessionReplaced(profile, req)) {
+        return res.status(409).json(sessionReplacedBody);
+      }
       const hydratedUserData = profile
         ? await hydrateUserImageUrls(profile.data || {})
         : null;
