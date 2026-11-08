@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
+import { ResponsiveInfo, useResponsive } from './gameResponsive';
 
 // 🆕 AI GRADING: same backend base-url resolution as Game.tsx (duplicated
 // rather than imported since the two files don't currently share a utils
@@ -39,7 +40,14 @@ function getGameAiBaseUrl() {
 }
 
 const API_BASE_URL = getGameAiBaseUrl();
+
 const apiFetch = (url: string, options: any = {}) => fetch(url, { credentials: 'include', ...options });
+
+// Text that stops growing past 1.3x the user's system font size, so large
+// accessibility fonts can't break the game layouts.
+const AppText: React.FC<React.ComponentProps<typeof Text>> = (props) => (
+  <Text maxFontSizeMultiplier={1.3} {...props} />
+);
 
 export interface QuizQuestion {
   question: string;
@@ -283,7 +291,8 @@ const matchColor = (index: number) => MATCH_COLORS[index % MATCH_COLORS.length];
 const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '94%'; 
 
 export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId, onPlayAgain, canStartNewQuiz }: Props) {
-  const { width, height: windowHeight } = useWindowDimensions();
+  const { width } = useWindowDimensions();
+  const r = useResponsive(); // shared tokens (font scale, spacing, short-screen tuning)
   const isLargeScreen = width >= 768;
   // Show answer choices side by side in one row on wide screens.
   const optionsInRow = width >= 900;
@@ -291,25 +300,22 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   // Responsive text: phones keep the base sizes; tablets and larger screens scale up.
   const fontScale = width >= 1440 ? 1.3 : width >= 1024 ? 1.2 : width >= 768 ? 1.1 : 1;
   const styles = useMemo(
-    () => createStyles((n: number) => Math.round(n * fontScale), optionsInRow),
-    [fontScale, optionsInRow]
+    () => createStyles((n: number) => Math.round(n * fontScale), optionsInRow, r),
+    [fontScale, optionsInRow, r]
   );
 
-  // The question card normally flexes to fill leftover space, so with big text and
-  // several answers it shrank to its 80px minimum and clipped the question. Measure
-  // the question text and give the card at least that much room (capped at 45% of
-  // the window so the answers and footer stay on screen; longer questions scroll).
-  const [questionTextHeight, setQuestionTextHeight] = useState(0);
-  const onQuestionTextLayout = (e: any) => {
-    const h = Math.ceil(e.nativeEvent.layout.height);
-    setQuestionTextHeight((prev) => (prev === h ? prev : h));
+  // The sticky bottom bar (feedback + Next / Submit button) is collected while
+  // a game renders via setFooter(...), then drawn outside the scrolling page so
+  // it is always on screen — however small the device or long the question.
+  const footerSlot: { node: React.ReactNode } = { node: null };
+  const setFooter = (node: React.ReactNode) => {
+    footerSlot.node = node;
+    return null;
   };
-  const fixedQuestionCardStyle = [
-    styles.fixedQuestionCard,
-    questionTextHeight > 0 && {
-      minHeight: Math.min(questionTextHeight + 40, windowHeight * 0.45),
-    },
-  ];
+
+  // The page scrolls now, so the question card simply sizes to its text
+  // (and stretches to fill spare height on tall screens).
+  const fixedQuestionCardStyle = styles.fixedQuestionCard;
 
   // 0 = questions in their generated order. "Play Again" sets a new non-zero
   // seed, which reshuffles the question order (and the answer options) of the
@@ -944,9 +950,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return (
       <View style={styles.gameContainer}>
         <View style={styles.headerSection}>
-          <Text style={styles.eyebrow}>Practice Games</Text>
-          <Text style={styles.title}>Choose a Game</Text>
-          <Text style={styles.subtitle}>Review your lessons with interactive games.</Text>
+          <AppText style={styles.eyebrow}>Practice Games</AppText>
+          <AppText style={styles.title}>Choose a Game</AppText>
+          <AppText style={styles.subtitle}>Review your lessons with interactive games.</AppText>
         </View>
 
         <View style={styles.modeGrid}>
@@ -956,8 +962,8 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                 <Ionicons name={m.icon as any} size={28} color={m.iconColor} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modeTitle}>{m.title}</Text>
-                <Text style={styles.modeDescription}>{m.desc}</Text>
+                <AppText style={styles.modeTitle}>{m.title}</AppText>
+                <AppText style={styles.modeDescription}>{m.desc}</AppText>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#CCC" />
             </Pressable>
@@ -975,12 +981,12 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       <View style={styles.gameContainer}>
         <View style={styles.summaryHeader}>
           <Ionicons name={percentage >= 75 ? 'trophy' : 'school'} size={60} color={percentage >= 75 ? '#FFC107' : '#2196F3'} />
-          <Text style={styles.summaryTitle}>Matching Completed!</Text>
-          <Text style={styles.summaryScore}>{matchingScore} / {total}</Text>
-          <Text style={styles.summaryPercentage}>{percentage}% Accuracy</Text>
+          <AppText style={styles.summaryTitle}>Matching Completed!</AppText>
+          <AppText style={styles.summaryScore}>{matchingScore} / {total}</AppText>
+          <AppText style={styles.summaryPercentage}>{percentage}% Accuracy</AppText>
         </View>
 
-        <Text style={styles.reviewTitle}>Review Your Matches</Text>
+        <AppText style={styles.reviewTitle}>Review Your Matches</AppText>
         <View style={styles.reviewList}>
           {terms.map((term, idx) => {
             const ans = userAnswers[idx];
@@ -990,20 +996,20 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               <View key={term.id} style={[styles.reviewItem, isCorrect ? styles.reviewCorrect : styles.reviewWrong]}>
                 <View style={styles.reviewItemHeader}>
                   <Ionicons name={isCorrect ? 'checkmark-circle' : 'close-circle'} size={20} color={isCorrect ? '#4CAF50' : '#F44336'} />
-                  <Text style={styles.reviewQuestionText} numberOfLines={2}>
+                  <AppText style={styles.reviewQuestionText} numberOfLines={2}>
                     Term: {term.text}
-                  </Text>
+                  </AppText>
                 </View>
                 <View style={styles.reviewAnswers}>
-                  <Text style={styles.reviewUserAnswer}>
+                  <AppText style={styles.reviewUserAnswer}>
                     Your Match:{'\n'}
                     {ans?.userAnswer || 'No Answer'}
-                  </Text>
+                  </AppText>
                   {!isCorrect && (
-                    <Text style={styles.reviewCorrectAnswer}>
+                    <AppText style={styles.reviewCorrectAnswer}>
                       Correct Match:{'\n'}
                       {ans?.correctAnswer}
-                    </Text>
+                    </AppText>
                   )}
                 </View>
               </View>
@@ -1013,13 +1019,13 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
 
         <View style={styles.resultsActions}>
           <Pressable style={[styles.saveBtn, styles.resultsBtn]} onPress={handleReplay}>
-            <Text style={styles.saveBtnText}>Play Again</Text>
+            <AppText style={styles.saveBtnText}>Play Again</AppText>
           </Pressable>
           <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleNewQuiz}>
-            <Text style={styles.cancelBtnText}>New Quiz</Text>
+            <AppText style={styles.cancelBtnText}>New Quiz</AppText>
           </Pressable>
           <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleBackToGames}>
-            <Text style={styles.cancelBtnText}>Back to Games</Text>
+            <AppText style={styles.cancelBtnText}>Back to Games</AppText>
           </Pressable>
         </View>
       </View>
@@ -1041,13 +1047,13 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return (
       <View style={styles.gameContainer}>
         <View style={styles.header}>
-          <Text style={styles.progressText}>Paired: {pairedCount}/{terms.length}</Text>
+          <AppText style={styles.progressText}>Paired: {pairedCount}/{terms.length}</AppText>
         </View>
 
-        <Text style={styles.memoryMatchInstructions}>
+        <AppText style={styles.memoryMatchInstructions}>
           Pick a term, then pick its definition. Each definition can only be used once.
           Tap a paired card to change it.
-        </Text>
+        </AppText>
 
         {/* Progress: one dot per term, filled with that term's color once paired */}
         <View style={styles.matchProgressRow}>
@@ -1062,15 +1068,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           ))}
         </View>
 
-        <Text style={[styles.matchPrompt, activeColor ? { color: activeColor } : null]}>
+        <AppText style={[styles.matchPrompt, activeColor ? { color: activeColor } : null]}>
           {selectedTermId
             ? `Now choose the match for term ${activeTermIndex + 1}`
             : 'Select a term from Column A'}
-        </Text>
+        </AppText>
 
         <View style={styles.memoryMatchContainer}>
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>Column A (Terms)</Text>
+            <AppText style={styles.memoryColumnHeader}>Column A (Terms)</AppText>
             {terms.map((card, tIdx) => {
               const color = matchColor(tIdx);
               const pairedDefIndex = definitions.findIndex(d => d.id === userChoices[card.id]);
@@ -1095,12 +1101,12 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                   onPress={() => handleTermPress(card.id)}
                 >
                   <View style={[styles.matchBadge, { backgroundColor: color }]}>
-                    <Text style={styles.matchBadgeText}>{tIdx + 1}</Text>
+                    <AppText style={styles.matchBadgeText}>{tIdx + 1}</AppText>
                   </View>
-                  <Text style={styles.matchCardText}>{card.text}</Text>
+                  <AppText style={styles.matchCardText}>{card.text}</AppText>
                   {isPaired ? (
                     <View style={[styles.matchChip, { backgroundColor: color }]}>
-                      <Text style={styles.matchChipText}>{String.fromCharCode(65 + pairedDefIndex)}</Text>
+                      <AppText style={styles.matchChipText}>{String.fromCharCode(65 + pairedDefIndex)}</AppText>
                     </View>
                   ) : isActive ? (
                     <Ionicons name="radio-button-on" size={22} color={color} />
@@ -1111,7 +1117,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </View>
 
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>Column B (Definitions)</Text>
+            <AppText style={styles.memoryColumnHeader}>Column B (Definitions)</AppText>
             {definitions.map((card, index) => {
               const letter = String.fromCharCode(65 + index);
               const ownerId = Object.keys(userChoices).find(k => userChoices[k] === card.id);
@@ -1132,12 +1138,12 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                   onPress={() => handleDefinitionPress(card.id)}
                 >
                   <View style={[styles.matchBadge, { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' }]}>
-                    <Text style={[styles.matchBadgeText, !isTaken && { color: '#546E7A' }]}>{letter}</Text>
+                    <AppText style={[styles.matchBadgeText, !isTaken && { color: '#546E7A' }]}>{letter}</AppText>
                   </View>
-                  <Text style={styles.matchCardText}>{card.text}</Text>
+                  <AppText style={styles.matchCardText}>{card.text}</AppText>
                   {isTaken && (
                     <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
-                      <Text style={styles.matchChipText}>{ownerIndex + 1}</Text>
+                      <AppText style={styles.matchChipText}>{ownerIndex + 1}</AppText>
                     </View>
                   )}
                 </Pressable>
@@ -1146,13 +1152,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           </View>
         </View>
 
-        <Pressable
-          style={[styles.nextButton, isSubmitDisabled && styles.nextButtonDisabled]}
+        {setFooter(
+          <Pressable
+            style={[styles.nextButton, styles.stickyButton, isSubmitDisabled && styles.nextButtonDisabled]}
           onPress={handleSubmitMatching}
           disabled={isSubmitDisabled}
         >
-          <Text style={styles.nextButtonText}>Submit Answers</Text>
+          <AppText style={styles.nextButtonText}>Submit Answers</AppText>
         </Pressable>
+        )}
       </View>
     );
   };
@@ -1166,17 +1174,17 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     buttons: Array<{ label: string; onPress: () => void }>
   ) => (
     <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
-      <Text style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</Text>
+      <AppText style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</AppText>
       {lines.filter(Boolean).length > 0 && (
-        <ScrollView style={styles.feedbackLines} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+        <View style={styles.feedbackLines}>
           {lines.filter(Boolean).map((line, i) => (
-            <Text key={i} style={styles.feedbackLine}>{line}</Text>
+            <AppText key={i} style={styles.feedbackLine}>{line}</AppText>
           ))}
-        </ScrollView>
+        </View>
       )}
       {buttons.map(b => (
         <Pressable key={b.label} style={[styles.nextButton, styles.feedbackNextButton]} onPress={b.onPress}>
-          <Text style={styles.nextButtonText}>{b.label}</Text>
+          <AppText style={styles.nextButtonText}>{b.label}</AppText>
         </Pressable>
       ))}
     </View>
@@ -1189,36 +1197,34 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return (
       <View style={styles.gameContainer}>
         <View style={styles.header}>
-          <Text style={styles.progressText}>Card {flashcardIndex + 1} of {flashcardTotal}</Text>
+          <AppText style={styles.progressText}>Card {flashcardIndex + 1} of {flashcardTotal}</AppText>
         </View>
 
         <View style={styles.flashcardContainer}>
-          <ScrollView
-            style={styles.flashcardScrollFill}
-            contentContainerStyle={styles.flashcardScroll}
-            showsVerticalScrollIndicator={false}
-          >
+          <View style={[styles.flashcardScrollFill, styles.flashcardScroll]}>
             {!isFlashcardAnswerVisible ? (
               <>
                 <Ionicons name="help-circle-outline" size={40} color="#8B0000" />
-                <Text style={styles.flashcardQuestion}>{currentFlashcard.question}</Text>
+                <AppText style={styles.flashcardQuestion}>{currentFlashcard.question}</AppText>
               </>
             ) : (
               <>
                 <Ionicons name="checkmark-circle-outline" size={40} color="#4CAF50" />
-                <Text style={styles.flashcardAnswerText}>{currentFlashcard.answer}</Text>
+                <AppText style={styles.flashcardAnswerText}>{currentFlashcard.answer}</AppText>
                 {currentFlashcard.explanation ? (
-                  <Text style={styles.flashcardExplanation}>{currentFlashcard.explanation}</Text>
+                  <AppText style={styles.flashcardExplanation}>{currentFlashcard.explanation}</AppText>
                 ) : null}
               </>
             )}
-          </ScrollView>
+          </View>
         </View>
 
-        <View style={styles.fixedFooter}>
+        {setFooter(
+          <>
           {!flashcardChecked ? (
             <View style={styles.flashcardInputContainer}>
               <TextInput
+                maxFontSizeMultiplier={1.3}
                 style={[styles.flashcardInput, styles.fixedInput]}
                 placeholder="Type your answer here..."
                 placeholderTextColor="#999"
@@ -1234,7 +1240,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                 {isFlashcardGrading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.nextButtonText}>Check Answer</Text>
+                  <AppText style={styles.nextButtonText}>Check Answer</AppText>
                 )}
               </Pressable>
             </View>
@@ -1251,7 +1257,8 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                   }]
             )
           )}
-        </View>
+          </>
+        )}
       </View>
     );
   };
@@ -1262,18 +1269,20 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return (
       <View style={styles.gameContainer}>
         <View style={styles.header}>
-          <Text style={styles.progressText}>Item {fillIndex + 1} of {fillBlankItems.length}</Text>
-          <Text style={styles.scoreText}>Score: {fillScore}</Text>
+          <AppText style={styles.progressText}>Item {fillIndex + 1} of {fillBlankItems.length}</AppText>
+          <AppText style={styles.scoreText}>Score: {fillScore}</AppText>
         </View>
 
         <View style={fixedQuestionCardStyle}>
-          <ScrollView contentContainerStyle={styles.fixedQuestionScroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentFillItem.prompt}</Text>
-          </ScrollView>
+          <View style={styles.fixedQuestionScroll}>
+            <AppText style={styles.questionText}>{currentFillItem.prompt}</AppText>
+          </View>
         </View>
 
-        <View style={styles.fixedFooter}>
+        {setFooter(
+          <>
           <TextInput
+                maxFontSizeMultiplier={1.3}
             style={[
               styles.flashcardInput,
               styles.fixedInput,
@@ -1303,11 +1312,12 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               {isFillGrading ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.nextButtonText}>Check Answer</Text>
+                <AppText style={styles.nextButtonText}>Check Answer</AppText>
               )}
             </Pressable>
           )}
-        </View>
+          </>
+        )}
       </View>
     );
   };
@@ -1319,14 +1329,14 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return (
       <View style={styles.gameContainer}>
         <View style={styles.header}>
-          <Text style={styles.progressText}>Question {triviaIndex + 1} of {questions.length}</Text>
-          <Text style={styles.scoreText}>Score: {triviaScore}</Text>
+          <AppText style={styles.progressText}>Question {triviaIndex + 1} of {questions.length}</AppText>
+          <AppText style={styles.scoreText}>Score: {triviaScore}</AppText>
         </View>
 
         <View style={fixedQuestionCardStyle}>
-          <ScrollView contentContainerStyle={styles.fixedQuestionScroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentTrivia.question}</Text>
-          </ScrollView>
+          <View style={styles.fixedQuestionScroll}>
+            <AppText style={styles.questionText}>{currentTrivia.question}</AppText>
+          </View>
         </View>
 
         <View style={[styles.optionsContainer, optionsInRow && { flexDirection: 'row', gap: 14 }]}>
@@ -1361,14 +1371,15 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                 onPress={() => handleTriviaSelect(opt)}
                 disabled={!!triviaSelected}
               >
-                <Text style={[styles.optionText, { color: textColor, flex: 1 }]}>{opt}</Text>
+                <AppText style={[styles.optionText, { color: textColor, flex: 1 }]}>{opt}</AppText>
                 {icon}
               </Pressable>
             );
           })}
         </View>
 
-        <View style={[styles.fixedFooter, styles.fixedFooterMin]}>
+        {setFooter(
+          <>
           {triviaSelected ? (
             renderFeedbackBar(
               triviaCorrect,
@@ -1378,10 +1389,11 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             )
           ) : (
             <View style={styles.footerHint}>
-              <Text style={styles.footerHintText}>Choose an answer</Text>
+              <AppText style={styles.footerHintText}>Choose an answer</AppText>
             </View>
           )}
-        </View>
+          </>
+        )}
       </View>
     );
   };
@@ -1395,34 +1407,34 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       <View style={styles.gameContainer}>
         <View style={styles.summaryHeader}>
           <Ionicons name={percentage >= 75 ? 'trophy' : 'school'} size={60} color={percentage >= 75 ? '#FFC107' : '#2196F3'} />
-          <Text style={styles.summaryTitle}>Practice Completed!</Text>
-          <Text style={styles.summaryScore}>
+          <AppText style={styles.summaryTitle}>Practice Completed!</AppText>
+          <AppText style={styles.summaryScore}>
             {correctCount} / {total}
-          </Text>
-          <Text style={styles.summaryPercentage}>{percentage}% Accuracy</Text>
-          <Text style={styles.summarySubtext}>
+          </AppText>
+          <AppText style={styles.summaryPercentage}>{percentage}% Accuracy</AppText>
+          <AppText style={styles.summarySubtext}>
             {percentage >= 80
               ? 'Excellent work! Keep it up.'
               : percentage >= 50
               ? 'Good job! Review the missed questions.'
               : 'Nice try! Review the lesson and play again.'}
-          </Text>
+          </AppText>
         </View>
 
-        <Text style={styles.reviewTitle}>Review Your Answers</Text>
+        <AppText style={styles.reviewTitle}>Review Your Answers</AppText>
         <View style={styles.reviewList}>
           {userAnswers.map((ans, idx) => (
             <View key={idx} style={[styles.reviewItem, ans.isCorrect ? styles.reviewCorrect : styles.reviewWrong]}>
               <View style={styles.reviewItemHeader}>
                 <Ionicons name={ans.isCorrect ? 'checkmark-circle' : 'close-circle'} size={20} color={ans.isCorrect ? '#4CAF50' : '#F44336'} />
-                <Text style={styles.reviewQuestionText} numberOfLines={2}>
+                <AppText style={styles.reviewQuestionText} numberOfLines={2}>
                   Q{idx + 1}: {ans.question}
-                </Text>
+                </AppText>
               </View>
               <View style={styles.reviewAnswers}>
-                <Text style={styles.reviewUserAnswer}>Your Answer: {ans.userAnswer || 'No answer'}</Text>
-                {!ans.isCorrect && <Text style={styles.reviewCorrectAnswer}>Correct Answer: {ans.correctAnswer}</Text>}
-                {ans.explanation && <Text style={styles.reviewExplanation}>Explanation: {ans.explanation}</Text>}
+                <AppText style={styles.reviewUserAnswer}>Your Answer: {ans.userAnswer || 'No answer'}</AppText>
+                {!ans.isCorrect && <AppText style={styles.reviewCorrectAnswer}>Correct Answer: {ans.correctAnswer}</AppText>}
+                {ans.explanation && <AppText style={styles.reviewExplanation}>Explanation: {ans.explanation}</AppText>}
               </View>
             </View>
           ))}
@@ -1430,30 +1442,37 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
 
         <View style={styles.resultsActions}>
           <Pressable style={[styles.saveBtn, styles.resultsBtn]} onPress={handleReplay}>
-            <Text style={styles.saveBtnText}>Play Again</Text>
+            <AppText style={styles.saveBtnText}>Play Again</AppText>
           </Pressable>
           <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleNewQuiz}>
-            <Text style={styles.cancelBtnText}>New Quiz</Text>
+            <AppText style={styles.cancelBtnText}>New Quiz</AppText>
           </Pressable>
           <Pressable style={[styles.cancelBtn, styles.resultsBtn]} onPress={handleBackToGames}>
-            <Text style={styles.cancelBtnText}>Back to Games</Text>
+            <AppText style={styles.cancelBtnText}>Back to Games</AppText>
           </Pressable>
         </View>
       </View>
     );
   };
 
+  // Page scroll: back to the top on every new question / card.
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [mode, triviaIndex, flashcardIndex, fillIndex]);
+
   const renderContent = () => {
     if (!hasGeneratedGame) {
       return (
         <View style={styles.gameContainer}>
           <View style={styles.headerSection}>
-            <Text style={styles.eyebrow}>Quiz Masters</Text>
-            <Text style={styles.title}>No Questions Generated</Text>
-            <Text style={styles.subtitle}>Upload a lesson file first to generate practice questions.</Text>
+            <AppText style={styles.eyebrow}>Quiz Masters</AppText>
+            <AppText style={styles.title}>No Questions Generated</AppText>
+            <AppText style={styles.subtitle}>Upload a lesson file first to generate practice questions.</AppText>
           </View>
           <Pressable style={styles.nextButton} onPress={onBack}>
-            <Text style={styles.nextButtonText}>Back to Games</Text>
+            <AppText style={styles.nextButtonText}>Back to Games</AppText>
           </Pressable>
         </View>
       );
@@ -1468,10 +1487,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     return renderMenu();
   };
 
-  // Matching has a long two-column list and the summary/menu are plain pages, so they
-  // keep the scrolling page; the other practice games are a fixed, no-scroll layout.
-  const isFixedLayout =
-    hasGeneratedGame && (mode === 'flashcards' || mode === 'fillBlank' || mode === 'trivia');
+  const content = renderContent();
 
   return (
     <View style={styles.container}>
@@ -1479,55 +1495,65 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
         <Pressable onPress={goToGameScreen} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </Pressable>
-        <Text style={styles.topBarTitle} numberOfLines={1}>
+        <AppText style={styles.topBarTitle} numberOfLines={1}>
           {mode === 'menu' ? 'Quiz Masters' : mode === 'summary' ? 'Practice Results' : 'Practice Game'}
-        </Text>
+        </AppText>
         <View style={{ width: 40 }} />
       </View>
-      {isFixedLayout ? (
-        // Question-style games fit the screen: no page scrolling, so the
-        // correct/wrong response and Next button are always visible.
-        <KeyboardAvoidingView
-          style={styles.fixedShell}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+
+      {/* One scrolling page for every mode: tall screens stretch the content to
+          fill the height, short screens scroll — so the feedback bar and Next
+          button can never be clipped off-screen. */}
+      <KeyboardAvoidingView
+        style={styles.scrollShell}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scrollShell}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator
+          persistentScrollbar
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         >
           <View
             style={[
               isLargeScreen
                 ? [styles.contentWrapLarge, { width: LARGE_SCREEN_CONTENT_WIDTH_PERCENT }]
                 : styles.contentWrapSmall,
-              styles.fixedFill,
+              styles.contentGrow,
             ]}
           >
-            {renderContent()}
-          </View>
-        </KeyboardAvoidingView>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator persistentScrollbar>
-          <View
-            style={
-              isLargeScreen
-                ? [styles.contentWrapLarge, { width: LARGE_SCREEN_CONTENT_WIDTH_PERCENT }]
-                : styles.contentWrapSmall
-            }
-          >
-            {renderContent()}
+            {content}
           </View>
         </ScrollView>
-      )}
+          {footerSlot.node ? (
+            <View style={styles.stickyFooter}>
+              <ScrollView
+                style={{ maxHeight: r.height * 0.45 }}
+                contentContainerStyle={styles.stickyFooterInner}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+              >
+                {footerSlot.node}
+              </ScrollView>
+            </View>
+          ) : null}
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
-const createStyles = (fs: (n: number) => number, wide: boolean = false) => StyleSheet.create({
+const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInfo) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#8B0000',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: r.horizontalPadding,
+    paddingVertical: r.isSmallPhone ? 10 : 14,
   },
   backBtn: {
     width: 40,
@@ -1538,13 +1564,15 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     justifyContent: 'center',
   },
   topBarTitle: { fontFamily: FONT_TITLE, color: '#FFF', fontSize: fs(18), fontWeight: WEIGHT_TITLE, flex: 1, textAlign: 'center' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
+  scrollShell: { flex: 1 },
+  scrollContent: { flexGrow: 1, padding: r.horizontalPadding, paddingBottom: r.spacing.xl },
+  contentGrow: { flexGrow: 1 },
   contentWrapSmall: { width: '100%' },
   contentWrapLarge: { maxWidth: 1800, minWidth: 480, alignSelf: 'center' },
-  gameContainer: { flex: 1 },
+  gameContainer: { flexGrow: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  progressText: { fontFamily: FONT_BODY, fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS, color: '#555' },
-  scoreText: { fontFamily: FONT_BODY, fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
+  progressText: { fontFamily: FONT_BODY, fontSize: r.font.body, fontWeight: WEIGHT_EMPHASIS, color: '#555' },
+  scoreText: { fontFamily: FONT_BODY, fontSize: r.font.body, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
   questionCard: {
     backgroundColor: '#FFF',
     padding: 24,
@@ -1555,7 +1583,7 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     shadowRadius: 10,
     elevation: 4,
   },
-  questionText: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, color: '#222', lineHeight: fs(26) },
+  questionText: { fontFamily: FONT_BODY, fontSize: r.font.question, fontWeight: WEIGHT_EMPHASIS, color: '#222', lineHeight: r.font.question * 1.4 },
   optionsContainer: { gap: 10 },
   optionButton: {
     backgroundColor: '#FFF',
@@ -1568,7 +1596,7 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  optionText: { fontFamily: FONT_BODY, fontSize: fs(15), fontWeight: WEIGHT_EMPHASIS },
+  optionText: { fontFamily: FONT_BODY, fontSize: r.font.body, fontWeight: WEIGHT_EMPHASIS },
   feedbackCard: { marginTop: 24, padding: 20, borderRadius: 16, alignItems: 'center' },
   feedbackCorrect: { backgroundColor: '#E8F5E9' },
   feedbackWrong: { backgroundColor: '#FFEBEE' },
@@ -1586,14 +1614,12 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     ...(wide ? { alignSelf: 'center' as const, minWidth: 280 } : { width: '100%' as const }),
   },
   nextButtonDisabled: { backgroundColor: '#CCC' },
-  nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: fs(16), fontWeight: WEIGHT_EMPHASIS },
+  nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: r.font.button, fontWeight: WEIGHT_EMPHASIS },
   // Fixed (no-scroll) game layout
-  fixedShell: { flex: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 32 },
-  fixedFill: { flex: 1 },
   fixedQuestionCard: {
     flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
     minHeight: 80,
     backgroundColor: '#FFF',
     borderRadius: 16,
@@ -1604,10 +1630,24 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     elevation: 4,
     overflow: 'hidden',
   },
-  fixedQuestionScroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
-  fixedFooter: { flexShrink: 0, marginTop: 8, justifyContent: 'flex-end', gap: 8 },
-  fixedFooterMin: { minHeight: 134 },
-  footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  fixedQuestionScroll: { flexGrow: 1, justifyContent: 'center', padding: r.cardPadding },
+  // Sticky bottom bar — always visible, never scrolls away with the page
+  stickyFooter: {
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E3E8',
+    paddingHorizontal: r.horizontalPadding,
+    paddingTop: r.spacing.sm,
+    paddingBottom: r.spacing.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 10,
+  },
+  stickyFooterInner: { width: '100%', maxWidth: r.contentWidth, alignSelf: 'center', gap: 8 },
+  stickyButton: { marginTop: 0 },
+  footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
   footerHintText: { fontFamily: FONT_BODY, color: '#8A8F98', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS },
   feedbackBar: {
     borderRadius: 16,
@@ -1618,14 +1658,16 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     ...(wide ? { width: '100%' as const, maxWidth: 720, alignSelf: 'center' as const } : null),
   },
   feedbackTitle: { fontFamily: FONT_BODY, fontSize: fs(18), fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
-  feedbackLines: { maxHeight: 84, alignSelf: 'stretch', marginTop: 4 },
+  feedbackLines: { alignSelf: 'stretch', marginTop: 4 },
   feedbackLine: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#555', textAlign: 'center', marginBottom: 2 },
   feedbackNextButton: { marginTop: 8, paddingVertical: 12 },
   fixedInput: { minHeight: 48, maxHeight: 96 },
   flashcardScrollFill: { alignSelf: 'stretch' },
   flashcardScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
   flashcardContainer: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
+    minHeight: r.isShortScreen ? 160 : r.flashcardHeight,
     backgroundColor: '#FFF',
     borderRadius: 20,
     marginBottom: 12,
@@ -1635,7 +1677,7 @@ const createStyles = (fs: (n: number) => number, wide: boolean = false) => Style
     elevation: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: r.cardPadding,
     overflow: 'hidden',
   },
   flashcardFront: { alignItems: 'center', justifyContent: 'center', flex: 1 },

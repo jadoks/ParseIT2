@@ -11,7 +11,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,8 +18,16 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
 // ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
 import Toast from '../../Final_Admin_Components/Toast';
+// Shared responsive tokens (breakpoints, font scale, spacing) — also used by quiz-masters.
+import { ResponsiveInfo, useResponsive } from './gameResponsive';
 
 type ToastType = 'success' | 'error' | 'info';
+
+// Text that stops growing past 1.3x the user's system font size, so large
+// accessibility fonts can't break the game layouts.
+const AppText: React.FC<React.ComponentProps<typeof Text>> = (props) => (
+  <Text maxFontSizeMultiplier={1.3} {...props} />
+);
 
 // 🆕 AI GRADING: same backend base-url resolution as Game.tsx / quiz-masters.tsx
 // (duplicated rather than imported since these files don't currently share a
@@ -129,139 +136,6 @@ function getGameProgressStorageKey(assignmentId?: string, studentId?: string) {
   return `gameProgress_${studentId || 'anonymous'}_${assignmentId || 'unknown'}`;
 }
 
-// ============================================================
-// RESPONSIVE DESIGN SYSTEM
-// ============================================================
-// Centralizes every breakpoint, scale, and spacing decision so
-// no component below ever reaches for a hardcoded pixel value.
-// ============================================================
-
-const BREAKPOINTS = {
-  smallPhone: 400,
-  mobile: 600,
-  tablet: 900,
-};
-
-interface ResponsiveInfo {
-  width: number;
-  height: number;
-  isSmallPhone: boolean;
-  isMobile: boolean;
-  isTablet: boolean;
-  isDesktop: boolean;
-  isLandscape: boolean;
-  isWeb: boolean;
-  contentWidth: number;
-  horizontalPadding: number;
-  cardPadding: number;
-  spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
-  font: {
-    heading: number;
-    subheading: number;
-    body: number;
-    question: number;
-    caption: number;
-    button: number;
-  };
-  flashcardWidth: number;
-  flashcardHeight: number;
-  memoryColumns: 1 | 2;
-  touchTarget: number;
-  optionsInRow: boolean;
-}
-
-const useResponsive = (): ResponsiveInfo => {
-  const { width, height } = useWindowDimensions();
-
-  return useMemo(() => {
-    const isSmallPhone = width < BREAKPOINTS.smallPhone;
-    const isMobile = width >= BREAKPOINTS.smallPhone && width < BREAKPOINTS.mobile;
-    const isTablet = width >= BREAKPOINTS.mobile && width < BREAKPOINTS.tablet;
-    const isDesktop = width >= BREAKPOINTS.tablet;
-    const isLandscape = width > height;
-    const isWeb = Platform.OS === 'web';
-
-    // Centered content container max width, scales by device class.
-    let contentWidth: number;
-    if (isDesktop) {
-      // Use nearly the full screen on desktop (was capped at 1100px).
-      contentWidth = Math.min(width * 0.96, 1800);
-    } else if (isTablet) {
-      contentWidth = Math.min(width * 0.92, 800);
-      contentWidth = Math.max(Math.min(contentWidth, width - 24), 700 > width ? width - 24 : 700);
-    } else {
-      contentWidth = width; // small phone / mobile: full width with internal padding
-    }
-
-    const horizontalPadding = isSmallPhone ? 12 : isMobile ? 16 : isTablet ? 24 : 20;
-    const cardPadding = isSmallPhone ? 16 : isMobile ? 20 : isTablet ? 24 : 28;
-
-    const spacing = {
-      xs: isSmallPhone ? 4 : 6,
-      sm: isSmallPhone ? 8 : isMobile ? 10 : 12,
-      md: isSmallPhone ? 12 : isMobile ? 16 : isTablet ? 20 : 24,
-      lg: isSmallPhone ? 16 : isMobile ? 20 : isTablet ? 28 : 32,
-      xl: isSmallPhone ? 20 : isMobile ? 28 : isTablet ? 36 : 44,
-    };
-
-    // Extra scale for wide monitors on top of the per-breakpoint sizes below.
-    const fontScale = width >= 1440 ? 1.2 : width >= 1100 ? 1.1 : 1;
-    const fs = (n: number) => Math.round(n * fontScale);
-
-    const font = {
-      heading: fs(isSmallPhone ? 18 : isMobile ? 20 : isTablet ? 25 : 30),
-      subheading: fs(isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 18 : 20),
-      body: fs(isSmallPhone ? 14 : isMobile ? 15 : isTablet ? 16 : 18),
-      question: fs(isSmallPhone ? 18 : isMobile ? 19 : isTablet ? 23 : 26),
-      caption: fs(isSmallPhone ? 12 : isMobile ? 13 : 14),
-      button: fs(isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 17 : 18),
-    };
-
-    // Flashcards: scale width with screen, keep a comfortable aspect ratio.
-    const flashcardWidth = isDesktop
-      ? Math.min(contentWidth * 0.7, 560)
-      : isTablet
-      ? contentWidth * 0.8
-      : width - horizontalPadding * 2;
-    const flashcardHeight = isSmallPhone
-      ? 200
-      : isMobile
-      ? 230
-      : isTablet
-      ? 280
-      : 320;
-
-    // Memory match: stack on phones, two columns side-by-side on tablet/desktop.
-    const memoryColumns: 1 | 2 = isTablet || isDesktop ? 2 : 1;
-
-    const touchTarget = 48;
-
-    // Multiple choice: lay all answers out in a single row on wide screens.
-    const optionsInRow = width >= BREAKPOINTS.tablet;
-
-    return {
-      width,
-      height,
-      isSmallPhone,
-      isMobile,
-      isTablet,
-      isDesktop,
-      isLandscape,
-      isWeb,
-      contentWidth,
-      horizontalPadding,
-      cardPadding,
-      spacing,
-      font,
-      flashcardWidth,
-      flashcardHeight,
-      memoryColumns,
-      touchTarget,
-      optionsInRow,
-    };
-  }, [width, height]);
-};
-
 const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   assignmentTitle,
   questions,
@@ -274,6 +148,15 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 }) => {
   const r = useResponsive();
   const styles = useMemo(() => createStyles(r), [r]);
+
+  // The sticky bottom bar (feedback + Next / Submit button) is collected while
+  // a game renders via setFooter(...), then drawn outside the scrolling page so
+  // it is always on screen — however small the device or long the question.
+  const footerSlot: { node: React.ReactNode } = { node: null };
+  const setFooter = (node: React.ReactNode) => {
+    footerSlot.node = node;
+    return null;
+  };
 
   // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
   const [toast, setToast] = useState<{
@@ -303,21 +186,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // spinner) and any feedback line the grader returned with its verdict.
   const [isGradingAnswer, setIsGradingAnswer] = useState(false);
 
-  // The question card normally flexes to fill leftover space, so with big text and
-  // several answers it shrank to its 80px minimum and clipped the question. Measure
-  // the question text and give the card at least that much room (capped at 45% of
-  // the window so the answers and footer stay on screen; longer questions scroll).
-  const [questionTextHeight, setQuestionTextHeight] = useState(0);
-  const onQuestionTextLayout = (e: any) => {
-    const h = Math.ceil(e.nativeEvent.layout.height);
-    setQuestionTextHeight((prev) => (prev === h ? prev : h));
-  };
-  const fixedQuestionCardStyle = [
-    styles.fixedQuestionCard,
-    questionTextHeight > 0 && {
-      minHeight: Math.min(questionTextHeight + r.cardPadding * 2, r.height * 0.45),
-    },
-  ];
+  // The page scrolls now, so the question card simply sizes to its text
+  // (and stretches to fill spare height on tall screens).
+  const fixedQuestionCardStyle = styles.fixedQuestionCard;
   const [answerFeedback, setAnswerFeedback] = useState<string | null>(null);
 
   // Memory match specific (Two-column matching)
@@ -364,6 +235,13 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       setGlobalTimeLeft(null); // Unlimited
     }
   }, [timeLimitMinutes]);
+
+  // Page scroll: jump back to the top on every new question / card / summary.
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [currentIndex, gameFinished]);
 
   // Handle Time Up
   // 🌟 UPDATED: Only finalizes local state and shows the Review screen.
@@ -777,9 +655,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // Unified Header with Global Timer
   const renderHeader = (progressText: string) => (
     <View style={styles.header}>
-      <Text style={styles.progressText} numberOfLines={1}>
+      <AppText style={styles.progressText} numberOfLines={1}>
         {progressText}
-      </Text>
+      </AppText>
 
       {/* Global Timer Badge */}
       {globalTimeLeft !== null && (
@@ -789,15 +667,15 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             size={r.isSmallPhone ? 14 : 16}
             color={globalTimeLeft <= 60 ? '#D32F2F' : '#FFF'}
           />
-          <Text style={[styles.timerText, globalTimeLeft <= 60 && styles.timerTextUrgent]} numberOfLines={1}>
+          <AppText style={[styles.timerText, globalTimeLeft <= 60 && styles.timerTextUrgent]} numberOfLines={1}>
             {gameType === 'quiz_master' ? 'Time Limit ' : ''}{formatTime(globalTimeLeft)}
-          </Text>
+          </AppText>
         </View>
       )}
 
-      <Text style={styles.scoreText} numberOfLines={1}>
+      <AppText style={styles.scoreText} numberOfLines={1}>
         Score: {score}/{questions.length}
-      </Text>
+      </AppText>
     </View>
   );
 
@@ -815,16 +693,16 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             size={r.isDesktop ? 80 : r.isTablet ? 70 : r.isSmallPhone ? 48 : 60}
             color={percentage >= 75 ? '#FFC107' : '#2196F3'}
           />
-          <Text style={styles.summaryTitle}>Game Completed!</Text>
-          <Text style={styles.summaryScore}>{score} / {totalQuestions}</Text>
-          <Text style={styles.summaryPercentage}>{percentage}% Accuracy</Text>
-          <Text style={styles.summarySubtext}>
+          <AppText style={styles.summaryTitle}>Game Completed!</AppText>
+          <AppText style={styles.summaryScore}>{score} / {totalQuestions}</AppText>
+          <AppText style={styles.summaryPercentage}>{percentage}% Accuracy</AppText>
+          <AppText style={styles.summarySubtext}>
             You got {correctCount} out of {totalQuestions} correct.
-          </Text>
+          </AppText>
         </View>
 
-        <Text style={styles.reviewTitle}>Review Your Answers</Text>
-        <ScrollView style={styles.reviewList} showsVerticalScrollIndicator persistentScrollbar>
+        <AppText style={styles.reviewTitle}>Review Your Answers</AppText>
+        <View style={styles.reviewList}>
           {questions.map((q, idx) => {
             const userAns = userAnswers[idx];
             const isAnsCorrect = userAns?.isCorrect || false;
@@ -865,34 +743,34 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                     }
                   />
 
-                  <Text
+                  <AppText
                     style={styles.reviewQuestionText}
                     numberOfLines={2}
                   >
                     Q{idx + 1}: {q.question}
-                  </Text>
+                  </AppText>
                 </View>
 
                 <View style={styles.reviewAnswers}>
                   {gameType === 'memory_match' ? (
                     <>
                       {/* UPDATED: Show Letter + Full Sentence */}
-                      <Text style={styles.reviewUserAnswer}>
+                      <AppText style={styles.reviewUserAnswer}>
                         Your Answer:{'\n'}
                         {matchingResults[idx]?.selectedLetter || 'No Answer'}: {' '}
                         {matchingResults[idx]?.selectedText || 'No Answer'}
-                      </Text>
+                      </AppText>
 
                       {/* Only show correct answer if wrong */}
                       {!isAnsCorrect && (
-                        <Text style={styles.reviewCorrectAnswer}>
+                        <AppText style={styles.reviewCorrectAnswer}>
                           Correct Answer:{'\n'}
                           {matchingResults[idx]?.correctLetter}: {' '}
                           {matchingResults[idx]?.correctText}
-                        </Text>
+                        </AppText>
                       )}
 
-                      <Text
+                      <AppText
                         style={{
                           marginTop: r.spacing.xs + 4,
                           fontWeight: '700',
@@ -905,21 +783,21 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                         {matchingResults[idx]?.isCorrect
                           ? '✓ Correct'
                           : ' Wrong'}
-                      </Text>
+                      </AppText>
                     </>
                   ) : (
                     <>
-                      <Text style={styles.reviewUserAnswer}>
+                      <AppText style={styles.reviewUserAnswer}>
                         Your Answer: {userAnswerText}
-                      </Text>
+                      </AppText>
 
                       {!isAnsCorrect && (
-                        <Text
+                        <AppText
                           style={styles.reviewCorrectAnswer}
                         >
                           Correct Answer:{' '}
                           {correctAnswerText}
-                        </Text>
+                        </AppText>
                       )}
                     </>
                   )}
@@ -927,20 +805,24 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               </View>
             );
           })}
-        </ScrollView>
+        </View>
 
+        {setFooter(
+          <>
         {isTimeUp && (
-          <Text style={styles.timeUpNotice}>
+          <AppText style={styles.timeUpNotice}>
             ⏱ Time's up — tap Done when you're ready to submit your score.
-          </Text>
+          </AppText>
         )}
 
         {/* This button is the ONLY thing that submits the score and exits.
             It stays here until the student actively taps it — nothing
             navigates away automatically, even after a timeout. */}
-        <TouchableOpacity style={styles.nextButton} onPress={handleSubmitGame}>
-          <Text style={styles.nextButtonText}>{isTimeUp ? 'Done' : 'Return Home'}</Text>
+        <TouchableOpacity style={[styles.nextButton, styles.stickyButton]} onPress={handleSubmitGame}>
+          <AppText style={styles.nextButtonText}>{isTimeUp ? 'Done' : 'Return Home'}</AppText>
         </TouchableOpacity>
+          </>
+        )}
       </View>
     );
   };
@@ -955,20 +837,16 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     onPress: () => void = handleNext
   ) => (
     <View style={[styles.feedbackBar, correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
-      <Text style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</Text>
+      <AppText style={[styles.feedbackTitle, { color: correct ? '#2E7D32' : '#C62828' }]}>{title}</AppText>
       {lines.filter(Boolean).length > 0 && (
-        <ScrollView
-          style={styles.feedbackLines}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={styles.feedbackLines}>
           {lines.filter(Boolean).map((line, i) => (
-            <Text key={i} style={styles.feedbackLine}>{line}</Text>
+            <AppText key={i} style={styles.feedbackLine}>{line}</AppText>
           ))}
-        </ScrollView>
+        </View>
       )}
       <TouchableOpacity style={[styles.nextButton, styles.feedbackNextButton]} onPress={onPress}>
-        <Text style={styles.nextButtonText}>{label}</Text>
+        <AppText style={styles.nextButtonText}>{label}</AppText>
       </TouchableOpacity>
     </View>
   );
@@ -978,12 +856,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       {renderHeader(`Question ${currentIndex + 1} / ${questions.length}`)}
 
       <View style={fixedQuestionCardStyle}>
-        <ScrollView
-          contentContainerStyle={styles.fixedQuestionScroll}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentQuestion.question}</Text>
-        </ScrollView>
+        <View style={styles.fixedQuestionScroll}>
+          <AppText style={styles.questionText}>{currentQuestion.question}</AppText>
+        </View>
       </View>
 
       <View style={styles.optionsContainer}>
@@ -1007,7 +882,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               onPress={() => handleSelectOption(idx)}
               disabled={hasAnswered}
             >
-              <Text style={[styles.optionText, { color: textColor }]}>{opt}</Text>
+              <AppText style={[styles.optionText, { color: textColor }]}>{opt}</AppText>
               {hasAnswered && idx === currentQuestion.correctIndex && (
                 <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
               )}
@@ -1019,7 +894,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         })}
       </View>
 
-      <View style={[styles.fixedFooter, styles.fixedFooterMin]}>
+      {setFooter(
+        <>
         {hasAnswered ? (
           renderFeedbackBar(
             !!isCorrect,
@@ -1029,10 +905,11 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           )
         ) : (
           <View style={styles.footerHint}>
-            <Text style={styles.footerHintText}>Choose an answer</Text>
+            <AppText style={styles.footerHintText}>Choose an answer</AppText>
           </View>
         )}
-      </View>
+        </>
+      )}
     </View>
   );
 
@@ -1042,30 +919,28 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
       <View style={styles.flashcardOuter}>
         <View style={[styles.flashcardContainer, isFlipped && styles.flashcardFlipped]}>
-          <ScrollView
-            style={styles.flashcardScrollFill}
-            contentContainerStyle={styles.flashcardScroll}
-            showsVerticalScrollIndicator={false}
-          >
+          <View style={[styles.flashcardScrollFill, styles.flashcardScroll]}>
             {!isFlipped ? (
               <>
                 <Ionicons name="help-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#8B0000" />
-                <Text style={styles.flashcardQuestion}>{currentQuestion.question}</Text>
+                <AppText style={styles.flashcardQuestion}>{currentQuestion.question}</AppText>
               </>
             ) : (
               <>
                 <Ionicons name="checkmark-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#4CAF50" />
-                <Text style={styles.flashcardAnswerText}>{currentQuestion.answer}</Text>
+                <AppText style={styles.flashcardAnswerText}>{currentQuestion.answer}</AppText>
               </>
             )}
-          </ScrollView>
+          </View>
         </View>
       </View>
 
-      <View style={styles.fixedFooter}>
+      {setFooter(
+        <>
         {!flashcardSubmitted ? (
           <View style={styles.flashcardInputContainer}>
             <TextInput
+              maxFontSizeMultiplier={1.3}
               style={[styles.flashcardInput, styles.fixedInput]}
               placeholder="Type your answer here..."
               placeholderTextColor="#999"
@@ -1082,7 +957,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               {isGradingAnswer ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.nextButtonText}>Submit & Flip Card</Text>
+                <AppText style={styles.nextButtonText}>Submit & Flip Card</AppText>
               )}
             </TouchableOpacity>
           </View>
@@ -1102,7 +977,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                 currentIndex < questions.length - 1 ? 'Next Card' : 'Finish Game'
               )
         )}
-      </View>
+        </>
+      )}
     </View>
   );
 
@@ -1131,18 +1007,17 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       {renderHeader(`Question ${currentIndex + 1} / ${questions.length}`)}
 
       <View style={fixedQuestionCardStyle}>
-        <ScrollView
-          contentContainerStyle={styles.fixedQuestionScroll}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.questionText} onLayout={onQuestionTextLayout}>{currentQuestion.question}</Text>
-        </ScrollView>
+        <View style={styles.fixedQuestionScroll}>
+          <AppText style={styles.questionText}>{currentQuestion.question}</AppText>
+        </View>
       </View>
 
-      <View style={styles.fixedFooter}>
+      {setFooter(
+        <>
         {!hasAnswered ? (
           <View style={styles.flashcardInputContainer}>
             <TextInput
+              maxFontSizeMultiplier={1.3}
               style={[styles.flashcardInput, styles.fixedInput]}
               placeholder="Type the missing word..."
               placeholderTextColor="#999"
@@ -1158,7 +1033,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               {isGradingAnswer ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.nextButtonText}>Submit Answer</Text>
+                <AppText style={styles.nextButtonText}>Submit Answer</AppText>
               )}
             </TouchableOpacity>
           </View>
@@ -1170,7 +1045,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             currentIndex < questions.length - 1 ? 'Next Question' : 'Finish Game'
           )
         )}
-      </View>
+        </>
+      )}
     </View>
   );
 
@@ -1187,10 +1063,10 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       <View style={styles.gameContainer}>
         {renderHeader('Match Terms to Definitions')}
 
-        <Text style={styles.memoryMatchInstructions}>
+        <AppText style={styles.memoryMatchInstructions}>
           Pick a term, then pick its definition. Each definition can only be used once.
           Tap a paired card to change it.
-        </Text>
+        </AppText>
 
         {/* Progress: one dot per term, filled with that term's color once paired */}
         <View style={styles.matchProgressRow}>
@@ -1206,12 +1082,12 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               />
             );
           })}
-          <Text style={styles.matchProgressText}>
+          <AppText style={styles.matchProgressText}>
             {pairedCount}/{questions.length} paired
-          </Text>
+          </AppText>
         </View>
 
-        <Text
+        <AppText
           style={[
             styles.memoryMatchPrompt,
             activeColor ? { color: activeColor } : null,
@@ -1220,12 +1096,12 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           {selectedTerm !== null
             ? `Now choose the match for term ${activeTermIndex + 1} in Column B`
             : 'Select a term from Column A'}
-        </Text>
+        </AppText>
 
         <View style={styles.memoryMatchContainer}>
           {/* COLUMN A */}
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>Column A (Terms)</Text>
+            <AppText style={styles.memoryColumnHeader}>Column A (Terms)</AppText>
 
             {terms.map((card, tIdx) => {
               const color = matchColor(tIdx);
@@ -1257,16 +1133,16 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                   onPress={() => handleMemoryCardPress(card)}
                 >
                   <View style={[styles.matchBadge, { backgroundColor: color }]}>
-                    <Text style={styles.matchBadgeText}>{tIdx + 1}</Text>
+                    <AppText style={styles.matchBadgeText}>{tIdx + 1}</AppText>
                   </View>
 
-                  <Text style={styles.matchCardText}>{card.text}</Text>
+                  <AppText style={styles.matchCardText}>{card.text}</AppText>
 
                   {isPaired ? (
                     <View style={[styles.matchChip, { backgroundColor: color }]}>
-                      <Text style={styles.matchChipText}>
+                      <AppText style={styles.matchChipText}>
                         {String.fromCharCode(65 + defIndex)}
-                      </Text>
+                      </AppText>
                     </View>
                   ) : isActive ? (
                     <Ionicons name="radio-button-on" size={22} color={color} />
@@ -1278,7 +1154,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
           {/* COLUMN B */}
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>Column B (Choices)</Text>
+            <AppText style={styles.memoryColumnHeader}>Column B (Choices)</AppText>
 
             {defs.map((card, dIdx) => {
               const letter = String.fromCharCode(65 + dIdx);
@@ -1317,21 +1193,21 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                       { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' },
                     ]}
                   >
-                    <Text
+                    <AppText
                       style={[
                         styles.matchBadgeText,
                         !isTaken && { color: '#546E7A' },
                       ]}
                     >
                       {letter}
-                    </Text>
+                    </AppText>
                   </View>
 
-                  <Text style={styles.matchCardText}>{card.text}</Text>
+                  <AppText style={styles.matchCardText}>{card.text}</AppText>
 
                   {isTaken && (
                     <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
-                      <Text style={styles.matchChipText}>{ownerIndex + 1}</Text>
+                      <AppText style={styles.matchChipText}>{ownerIndex + 1}</AppText>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1340,16 +1216,19 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.nextButton,
-            !allAnswered && styles.nextButtonDisabled,
-          ]}
+        {setFooter(
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              styles.stickyButton,
+              !allAnswered && styles.nextButtonDisabled,
+            ]}
           onPress={handleSubmitMatching}
           disabled={!allAnswered}
         >
-          <Text style={styles.nextButtonText}>Submit Matching</Text>
+          <AppText style={styles.nextButtonText}>Submit Matching</AppText>
         </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -1365,9 +1244,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     }
   };
 
-  // Matching has a long two-column list and the summary has a review list, so they
-  // keep the scrolling page; every other game is a fixed, no-scroll layout.
-  const isFixedLayout = !gameFinished && gameType !== 'memory_match';
+  const gameBody = isProgressLoaded ? renderGame() : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -1375,9 +1252,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         <TouchableOpacity onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Go back">
           <Ionicons name="arrow-back" size={r.isSmallPhone ? 20 : 24} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle} numberOfLines={1} ellipsizeMode="tail">
+        <AppText style={styles.topBarTitle} numberOfLines={1} ellipsizeMode="tail">
           {assignmentTitle}
-        </Text>
+        </AppText>
         <View style={styles.topBarSpacer} />
       </View>
       {!isProgressLoaded ? (
@@ -1386,28 +1263,40 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         // flash of "Question 1" right before jumping to where they left off.
         <View style={styles.resumeLoadingContainer}>
           <ActivityIndicator size="large" color="#8B0000" />
-          <Text style={styles.resumeLoadingText}>Resuming your game...</Text>
+          <AppText style={styles.resumeLoadingText}>Resuming your game...</AppText>
         </View>
       ) : (
-        isFixedLayout ? (
-          // Question-style games fit the screen: no page scrolling, so the
-          // correct/wrong response and Next button are always visible.
-          <KeyboardAvoidingView
-            style={styles.fixedShell}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <View style={styles.fixedContent}>{renderGame()}</View>
-          </KeyboardAvoidingView>
-        ) : (
+        // One scrolling page for every game type: tall screens stretch the
+        // content to fill the height, short screens scroll — so the answer
+        // feedback and Next button can never be clipped off-screen.
+        <KeyboardAvoidingView
+          style={styles.scrollShell}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <ScrollView
+            ref={scrollRef}
+            style={styles.scrollShell}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator
             persistentScrollbar
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
           >
-            <View style={styles.centeredContent}>{renderGame()}</View>
+            <View style={styles.centeredContent}>{gameBody}</View>
           </ScrollView>
-        )
+          {footerSlot.node ? (
+            <View style={styles.stickyFooter}>
+              <ScrollView
+                style={{ maxHeight: r.height * 0.45 }}
+                contentContainerStyle={styles.stickyFooterInner}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+              >
+                {footerSlot.node}
+              </ScrollView>
+            </View>
+          ) : null}
+        </KeyboardAvoidingView>
       )}
 
       {/* Toast — portal-based so it renders above the game/summary screens */}
@@ -1486,7 +1375,9 @@ const createStyles = (r: ResponsiveInfo) => {
       fontWeight: WEIGHT_EMPHASIS,
       color: '#777',
     },
+    scrollShell: { flex: 1 },
     scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: r.horizontalPadding,
       paddingTop: r.spacing.md,
       paddingBottom: r.spacing.xl + 16,
@@ -1494,11 +1385,12 @@ const createStyles = (r: ResponsiveInfo) => {
       width: '100%',
     },
     centeredContent: {
+      flexGrow: 1,
       width: '100%',
       maxWidth: r.contentWidth,
       alignSelf: 'center',
     },
-    gameContainer: { flex: 1, width: '100%' },
+    gameContainer: { flexGrow: 1, width: '100%' },
     header: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -1614,24 +1506,11 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     nextButtonDisabled: { backgroundColor: '#CCC' },
     nextButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: r.font.button, fontWeight: WEIGHT_EMPHASIS },
-    // Fixed (no-scroll) game layout
-    fixedShell: {
-      flex: 1,
-      paddingHorizontal: r.horizontalPadding,
-      paddingTop: r.spacing.sm,
-      paddingBottom: r.spacing.xl,
-      alignItems: 'center',
-    },
-    fixedContent: {
-      flex: 1,
-      width: '100%',
-      maxWidth: r.contentWidth,
-      alignSelf: 'center',
-    },
+    // Question-card / footer layout (page scrolls, so nothing is clipped)
     fixedQuestionCard: {
       flexGrow: 1,
-      flexShrink: 1,
-      flexBasis: 0,
+      flexShrink: 0,
+      flexBasis: 'auto',
       minHeight: 80,
       backgroundColor: '#FFF',
       borderRadius: 16,
@@ -1648,14 +1527,28 @@ const createStyles = (r: ResponsiveInfo) => {
       justifyContent: 'center',
       padding: r.cardPadding,
     },
-    fixedFooter: {
-      flexShrink: 0,
-      width: '100%',
-      marginTop: r.spacing.sm,
-      justifyContent: 'flex-end',
+    // Sticky bottom bar — always visible, never scrolls away with the page
+    stickyFooter: {
+      backgroundColor: '#FFF',
+      borderTopWidth: 1,
+      borderTopColor: '#E0E3E8',
+      paddingHorizontal: r.horizontalPadding,
+      paddingTop: r.spacing.sm,
+      paddingBottom: r.spacing.sm,
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: -2 },
+      elevation: 10,
     },
-    fixedFooterMin: { minHeight: r.touchTarget + 84 },
-    footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: r.spacing.md },
+    stickyFooterInner: {
+      width: '100%',
+      maxWidth: r.contentWidth,
+      alignSelf: 'center',
+      gap: r.spacing.xs,
+    },
+    stickyButton: { marginTop: 0 },
+    footerHint: { alignItems: 'center', justifyContent: 'center', paddingVertical: r.spacing.xs },
     footerHintText: {
       fontFamily: FONT_BODY,
       color: '#8A8F98',
@@ -1677,7 +1570,7 @@ const createStyles = (r: ResponsiveInfo) => {
       fontWeight: WEIGHT_EMPHASIS,
       textAlign: 'center',
     },
-    feedbackLines: { maxHeight: 84, alignSelf: 'stretch', marginTop: 4 },
+    feedbackLines: { alignSelf: 'stretch', marginTop: 4 },
     feedbackLine: {
       fontFamily: FONT_BODY,
       fontSize: r.font.caption + 1,
@@ -1694,12 +1587,15 @@ const createStyles = (r: ResponsiveInfo) => {
     // Flashcard
     flashcardOuter: {
       width: '100%',
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 0,
       alignItems: 'center',
     },
     flashcardContainer: {
       width: r.flashcardWidth,
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 0,
+      minHeight: r.isShortScreen ? 160 : r.flashcardHeight,
       backgroundColor: '#FFF',
       borderRadius: 20,
       marginBottom: r.spacing.sm,
