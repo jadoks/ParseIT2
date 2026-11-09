@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   KeyboardAvoidingView,
   Modal,
   NativeScrollEvent,
@@ -276,6 +277,66 @@ export default function GeminiFloatingModal({
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
+  // ---- Cross-device chat sync helpers ----
+  // dirtyRef: true only while THIS device has edits that are not saved yet.
+  // loadedModeRef: which mode's history was last loaded successfully
+  // (saving is blocked until the matching history has been loaded).
+  const dirtyRef = useRef(false);
+  const loadedModeRef = useRef<ChatMode | null>(null);
+  const modeRef = useRef<ChatMode>(mode);
+  const messagesRef = useRef<Message[]>(messages);
+  modeRef.current = mode;
+  messagesRef.current = messages;
+
+  // Use this (instead of setMessages) for messages created on this device.
+  const updateMessages = (
+    update: Message[] | ((prev: Message[]) => Message[])
+  ) => {
+    dirtyRef.current = true;
+    setMessages(update);
+  };
+
+  const saveNow = async (m: ChatMode, msgs: Message[]) => {
+    if (!dirtyRef.current || loadedModeRef.current !== m) return;
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/ai/chat-history/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: m, messages: msgs }),
+      });
+      if (res.ok) dirtyRef.current = false;
+    } catch (err) {
+      console.warn("Failed to sync chat to server:", err);
+    }
+  };
+
+  const loadHistory = async (m: ChatMode, force = false) => {
+    // Never overwrite unsaved local edits with the server copy.
+    if (!force && dirtyRef.current && loadedModeRef.current === m) return;
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${m}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to load chat history.");
+      if (modeRef.current !== m) return; // user switched mode while loading
+
+      const remote: Message[] =
+        Array.isArray(data?.data) && data.data.length > 0
+          ? data.data
+          : getDefaultMessages(m);
+
+      setMessages((prev) =>
+        JSON.stringify(prev) === JSON.stringify(remote) ? prev : remote
+      );
+      loadedModeRef.current = m;
+      dirtyRef.current = false;
+      setHydrated(true); // only after a SUCCESSFUL load
+    } catch (error) {
+      // Do NOT mark hydrated and do NOT fall back to the greeting here,
+      // otherwise the greeting could be saved over the real history.
+      console.warn("Failed to load AI chat history:", error);
+    }
+  };
+
   const isAssistant = mode === "assistant";
 
   const visibleMessages = useMemo(() => {
@@ -391,57 +452,43 @@ export default function GeminiFloatingModal({
     return allOk;
   };
 
-  // Load chat history FROM FIREBASE ONLY
+  // Load chat history when the modal opens, refresh it every 10s while open,
+  // and again whenever the app returns to the foreground. This is what keeps
+  // conversations in sync across devices.
   useEffect(() => {
-    const loadSavedChat = async () => {
-      try {
-        // Default to assistant mode since we are not storing mode locally anymore
-        const restoredMode: ChatMode = "assistant";
-        setMode(restoredMode);
+    if (!visible) return;
 
-        // Fetch from Firebase
-        const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${restoredMode}`);
-        const data = await response.json();
-        
-        if (response.ok && Array.isArray(data?.data) && data.data.length > 0) {
-          setMessages(data.data);
-        } else {
-          // If Firebase has no history, start fresh with default greeting
-          setMessages(getDefaultMessages(restoredMode));
-        }
-        setVisibleCount(PAGE_SIZE);
-      } catch (error) {
-        console.warn("Failed to load AI chat from Firebase:", error);
-        // Fallback to default if network fails completely
-        setMessages(getDefaultMessages("assistant"));
-      } finally {
-        setHydrated(true);
-      }
+    loadHistory(modeRef.current);
+
+    const intervalId = setInterval(() => loadHistory(modeRef.current), 10000);
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") loadHistory(modeRef.current);
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      appStateSub.remove();
     };
-    loadSavedChat();
-  }, []);
+  }, [visible, currentStudentId]);
 
-  // Save messages TO FIREBASE ONLY
+  // Save to the server only when this device actually changed something.
   useEffect(() => {
-    if (!hydrated) return;
-
-    const saveChatToFirebase = async () => {
-      try {
-        await apiFetch(`${API_BASE_URL}/ai/chat-history/save`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, messages }),
-        });
-      } catch (err) {
-        console.warn("Failed to sync chat to Firebase:", err);
-      }
-    };
-
-    // Debounce save to avoid excessive writes
-    const timeoutId = setTimeout(saveChatToFirebase, 1000);
+    if (!hydrated || !dirtyRef.current) return;
+    const timeoutId = setTimeout(() => saveNow(mode, messages), 1000);
     return () => clearTimeout(timeoutId);
-
   }, [messages, mode, hydrated]);
+
+  // Flush any pending save when the modal closes.
+  useEffect(() => {
+    if (!visible) saveNow(modeRef.current, messagesRef.current);
+  }, [visible]);
+
+  // Flush any pending save if the component unmounts.
+  useEffect(() => {
+    return () => {
+      saveNow(modeRef.current, messagesRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -498,7 +545,7 @@ export default function GeminiFloatingModal({
     const prompt = suggestion.text || `Help me understand ${suggestion.topic} step by step.`;
     const userMessage: Message = { role: "user", text: prompt };
     const historyForRequest = [...messages, userMessage];
-    setMessages(historyForRequest);
+    updateMessages(historyForRequest);
     setVisibleCount(PAGE_SIZE);
     setInput("");
     setLoading(true);
@@ -520,11 +567,11 @@ export default function GeminiFloatingModal({
       if (!response.ok) {
         throw new Error(data?.error || "Failed to get AI tutor response.");
       }
-      setMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
+      updateMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
       setVisibleCount(PAGE_SIZE);
       bumpUsage({ chatPrompts: 1 });
     } catch (error: any) {
-      setMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
+      updateMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
     } finally {
       setLoading(false);
     }
@@ -674,7 +721,7 @@ export default function GeminiFloatingModal({
     const userMessage: Message = { role: "user", text: trimmed, fileName: selectedFile?.name };
     const historyForRequest = [...messages, userMessage];
 
-    setMessages(historyForRequest);
+    updateMessages(historyForRequest);
     setVisibleCount(PAGE_SIZE);
     setInput("");
     setSelectedFile(null);
@@ -698,7 +745,7 @@ export default function GeminiFloatingModal({
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to get AI response.");
 
-      setMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
+      updateMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
       setVisibleCount(PAGE_SIZE);
 
       // ✅ Only count usage against the daily limit on a successful response
@@ -708,38 +755,25 @@ export default function GeminiFloatingModal({
         bumpUsage({ chatPrompts: 1 });
       }
     } catch (error: any) {
-      setMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
+      updateMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch new mode's history from Firebase API when switching
+  // Switch mode: flush the old mode's pending save, then load the new mode's history.
   const resetForMode = async (nextMode: ChatMode) => {
     if (nextMode === mode || loading) return;
+    shouldScrollToBottomRef.current = true;
+    setLoading(true);
     try {
-      shouldScrollToBottomRef.current = true;
-      
+      await saveNow(mode, messages);   // save the old mode first
+      loadedModeRef.current = null;    // block saves until the new mode is loaded
+      modeRef.current = nextMode;
       setMode(nextMode);
       setInput("");
       setVisibleCount(PAGE_SIZE);
-      setLoading(true); // Optional: show loading while fetching history
-      
-      const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${nextMode}`);
-      const data = await response.json();
-      
-      if (response.ok && Array.isArray(data?.data) && data.data.length > 0) {
-        setMessages(data.data);
-      } else {
-        // Start fresh if no history in Firebase
-        setMessages(getDefaultMessages(nextMode));
-      }
-    } catch (error) {
-      console.warn("Error switching mode:", error);
-      setMode(nextMode);
-      setInput("");
-      setVisibleCount(PAGE_SIZE);
-      setMessages(getDefaultMessages(nextMode));
+      await loadHistory(nextMode, true);
     } finally {
       setLoading(false);
     }
