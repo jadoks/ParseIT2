@@ -587,9 +587,9 @@ const Game = ({
         {selectedClassId !== '' && (
           <View style={styles.materialsSection}>
             <View style={styles.materialsHeaderRow}>
-              <Text style={styles.inputLabel}>{`Select one or more Lessons (max ${MAX_MODULE_LESSONS})`}</Text>
+              <Text style={[styles.inputLabel, styles.materialsHeaderLabel]} numberOfLines={1}>{`Select lessons (max ${MAX_MODULE_LESSONS})`}</Text>
               {selectedMaterialIds.length > 0 && (
-                <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
+                <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8} style={styles.clearSelectionBtn}>
                   <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length}/{MAX_MODULE_LESSONS})</Text>
                 </TouchableOpacity>
               )}
@@ -1126,16 +1126,35 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   materialsHeaderRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 8,
-},
-clearSelectionText: { fontFamily: FONT_BODY,
-  color: '#8B0000',
-  fontSize: 13,
-  fontWeight: WEIGHT_EMPHASIS,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  // Label takes the leftover space and wraps instead of pushing "Clear" out
+  materialsHeaderLabel: {
+    flex: 1,
+    flexShrink: 1,
+    marginBottom: 0,
+    fontSize: 12,
+    letterSpacing: 0.3,
+  },
+  // Button keeps its full width and never shrinks or wraps
+  clearSelectionBtn: {
+    flexShrink: 0,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 100,
+    backgroundColor: '#FDECEC',
+  },
+  clearSelectionText: {
+    fontFamily: FONT_BODY,
+    color: '#8B0000',
+    fontSize: 12,
+    fontWeight: WEIGHT_EMPHASIS,
+    flexShrink: 0,
+  },
   materialChipSelected: { backgroundColor: '#8B0000', borderColor: '#8B0000' },
   materialTitle: { fontFamily: FONT_TITLE, fontSize: 13, fontWeight: WEIGHT_TITLE, color: '#444', flexShrink: 1 },
   materialTitleSelected: { color: '#FFF' },

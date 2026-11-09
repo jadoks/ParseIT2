@@ -188,7 +188,7 @@ const MetricCard = ({
     ]}
   >
     <View style={styles.metricTitleRow}>
-      <Text style={[styles.metricTitle, { marginBottom: 0 }]}>{title}</Text>
+      <Text style={[styles.metricTitle, styles.metricTitleText]}>{title}</Text>
       {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
     </View>
     <View style={styles.metricRow}>
@@ -1146,8 +1146,10 @@ const styles = StyleSheet.create({
   recommendationRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   recommendationDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: COLORS.primary, marginTop: 6, marginRight: 10 },
   recommendationText: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: '#374151', lineHeight: 22 },
-  infoButton: { padding: 2, alignItems: 'center', justifyContent: 'center' },
-  metricTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  infoButton: { padding: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  // Title takes the remaining width and wraps; the icon keeps its size and stays pinned top-right inside the card.
+  metricTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 8 },
+  metricTitleText: { flex: 1, flexShrink: 1, marginBottom: 0 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexShrink: 1 },
   // ✅ NEW: pairs a section title with a See All / Show Less button on the
   // same row (title/info on the left, button pinned to the right) — same

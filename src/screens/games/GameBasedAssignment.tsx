@@ -1136,21 +1136,23 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                   ]}
                   onPress={() => handleMemoryCardPress(card)}
                 >
-                  <View style={[styles.matchBadge, { backgroundColor: color }]}>
-                    <AppText style={styles.matchBadgeText}>{tIdx + 1}</AppText>
+                  <View style={styles.matchCardTop}>
+                    <View style={[styles.matchBadge, { backgroundColor: color }]}>
+                      <AppText style={styles.matchBadgeText}>{tIdx + 1}</AppText>
+                    </View>
+
+                    {isPaired ? (
+                      <View style={[styles.matchChip, { backgroundColor: color }]}>
+                        <AppText style={styles.matchChipText}>
+                          {String.fromCharCode(65 + defIndex)}
+                        </AppText>
+                      </View>
+                    ) : isActive ? (
+                      <Ionicons name="radio-button-on" size={22} color={color} />
+                    ) : null}
                   </View>
 
                   <AppText style={styles.matchCardText}>{card.text}</AppText>
-
-                  {isPaired ? (
-                    <View style={[styles.matchChip, { backgroundColor: color }]}>
-                      <AppText style={styles.matchChipText}>
-                        {String.fromCharCode(65 + defIndex)}
-                      </AppText>
-                    </View>
-                  ) : isActive ? (
-                    <Ionicons name="radio-button-on" size={22} color={color} />
-                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -1191,29 +1193,31 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                   ]}
                   onPress={() => handleMemoryCardPress(card)}
                 >
-                  <View
-                    style={[
-                      styles.matchBadge,
-                      { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' },
-                    ]}
-                  >
-                    <AppText
+                  <View style={styles.matchCardTop}>
+                    <View
                       style={[
-                        styles.matchBadgeText,
-                        !isTaken && { color: '#546E7A' },
+                        styles.matchBadge,
+                        { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' },
                       ]}
                     >
-                      {letter}
-                    </AppText>
+                      <AppText
+                        style={[
+                          styles.matchBadgeText,
+                          !isTaken && { color: '#546E7A' },
+                        ]}
+                      >
+                        {letter}
+                      </AppText>
+                    </View>
+
+                    {isTaken && (
+                      <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
+                        <AppText style={styles.matchChipText}>{ownerIndex + 1}</AppText>
+                      </View>
+                    )}
                   </View>
 
                   <AppText style={styles.matchCardText}>{card.text}</AppText>
-
-                  {isTaken && (
-                    <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
-                      <AppText style={styles.matchChipText}>{ownerIndex + 1}</AppText>
-                    </View>
-                  )}
                 </TouchableOpacity>
               );
             })}
@@ -1730,9 +1734,11 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     // Matching — colored pair cards
     matchCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
+      // Two-column layout is narrow: stack badge/chip above the text so the
+      // text gets the full card width instead of ~40px.
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 8,
       width: '100%',
       backgroundColor: '#FFF',
       borderRadius: 16,
@@ -1746,6 +1752,11 @@ const createStyles = (r: ResponsiveInfo) => {
       shadowOpacity: 0.05,
       shadowRadius: 4,
       elevation: 2,
+    },
+    matchCardTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
     },
     matchBadge: {
       width: 32,
@@ -1762,7 +1773,6 @@ const createStyles = (r: ResponsiveInfo) => {
     },
     matchCardText: {
       fontFamily: FONT_BODY,
-      flex: 1,
       color: '#222',
       fontSize: r.font.caption + 1,
       fontWeight: WEIGHT_EMPHASIS,

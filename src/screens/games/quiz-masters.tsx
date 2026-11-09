@@ -1204,17 +1204,19 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                   ]}
                   onPress={() => handleTermPress(card.id)}
                 >
-                  <View style={[styles.matchBadge, { backgroundColor: color }]}>
-                    <AppText style={styles.matchBadgeText}>{tIdx + 1}</AppText>
+                  <View style={styles.matchCardTop}>
+                    <View style={[styles.matchBadge, { backgroundColor: color }]}>
+                      <AppText style={styles.matchBadgeText}>{tIdx + 1}</AppText>
+                    </View>
+                    {isPaired ? (
+                      <View style={[styles.matchChip, { backgroundColor: color }]}>
+                        <AppText style={styles.matchChipText}>{String.fromCharCode(65 + pairedDefIndex)}</AppText>
+                      </View>
+                    ) : isActive ? (
+                      <Ionicons name="radio-button-on" size={22} color={color} />
+                    ) : null}
                   </View>
                   <AppText style={styles.matchCardText}>{card.text}</AppText>
-                  {isPaired ? (
-                    <View style={[styles.matchChip, { backgroundColor: color }]}>
-                      <AppText style={styles.matchChipText}>{String.fromCharCode(65 + pairedDefIndex)}</AppText>
-                    </View>
-                  ) : isActive ? (
-                    <Ionicons name="radio-button-on" size={22} color={color} />
-                  ) : null}
                 </Pressable>
               );
             })}
@@ -1241,15 +1243,17 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                   ]}
                   onPress={() => handleDefinitionPress(card.id)}
                 >
-                  <View style={[styles.matchBadge, { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' }]}>
-                    <AppText style={[styles.matchBadgeText, !isTaken && { color: '#546E7A' }]}>{letter}</AppText>
+                  <View style={styles.matchCardTop}>
+                    <View style={[styles.matchBadge, { backgroundColor: isTaken ? (ownerColor as string) : '#ECEFF1' }]}>
+                      <AppText style={[styles.matchBadgeText, !isTaken && { color: '#546E7A' }]}>{letter}</AppText>
+                    </View>
+                    {isTaken && (
+                      <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
+                        <AppText style={styles.matchChipText}>{ownerIndex + 1}</AppText>
+                      </View>
+                    )}
                   </View>
                   <AppText style={styles.matchCardText}>{card.text}</AppText>
-                  {isTaken && (
-                    <View style={[styles.matchChip, { backgroundColor: ownerColor as string }]}>
-                      <AppText style={styles.matchChipText}>{ownerIndex + 1}</AppText>
-                    </View>
-                  )}
                 </Pressable>
               );
             })}
@@ -1826,8 +1830,8 @@ const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInf
     textAlignVertical: 'top',
   },
   memoryMatchInstructions: { fontFamily: FONT_BODY, fontSize: fs(14), color: '#666', textAlign: 'center', marginBottom: 20, fontWeight: WEIGHT_EMPHASIS },
-  memoryMatchContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 10 },
-  memoryColumn: { flex: 1, paddingHorizontal: 10 },
+  memoryMatchContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 4 },
+  memoryColumn: { flex: 1, paddingHorizontal: 6 },
   memoryColumnHeader: { fontFamily: FONT_BODY, 
     fontSize: fs(16),
     fontWeight: WEIGHT_EMPHASIS,
@@ -1857,15 +1861,15 @@ const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInf
   memoryCardMatched: { backgroundColor: '#E8F5E9', borderColor: '#4CAF50', opacity: 0.85 },
   // Matching — colored pair cards
   matchCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
     backgroundColor: '#FFF',
     borderRadius: 16,
     borderWidth: 2,
     borderColor: '#E0E3E8',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     marginBottom: 12,
     minHeight: 64,
     shadowColor: '#000',
@@ -1873,9 +1877,10 @@ const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInf
     shadowRadius: 4,
     elevation: 2,
   },
+  matchCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   matchBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   matchBadgeText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: fs(14) },
-  matchCardText: { fontFamily: FONT_BODY, flex: 1, color: '#222', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS },
+  matchCardText: { fontFamily: FONT_BODY, color: '#222', fontSize: fs(14), fontWeight: WEIGHT_EMPHASIS },
   matchChip: { minWidth: 30, height: 30, borderRadius: 15, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
   matchChipText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: fs(13) },
   matchProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
