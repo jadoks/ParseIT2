@@ -234,7 +234,7 @@ function SummaryCard({
       ]}
     >
       <View style={styles.summaryLabelRow}>
-        <Text style={[styles.summaryLabel, { marginBottom: 0 }]}>{label}</Text>
+        <Text style={[styles.summaryLabel, { marginBottom: 0, flex: 1, flexShrink: 1 }]}>{label}</Text>
         {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
       </View>
       <Text style={styles.summaryValue}>{value}</Text>
@@ -1624,7 +1624,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#EBD4D4",
   },
   trendMetricValue: { fontSize: 16, fontWeight: "900", color: "#8B0000" },
-  trendMetricLabel: { fontSize: 11, color: "#7A4A4A" },
+  trendMetricLabel: { fontSize: 11, color: "#7A4A4A", flexShrink: 1 },
 
   // ===== DROPDOWN & MODAL STYLES =====
   filterRow: {
@@ -1667,11 +1667,11 @@ const styles = StyleSheet.create({
   modalCancelText: { fontSize: 14, fontWeight: "800", color: "#7A4A4A" },
 
   // ===== "?" INFO ICON + EXPLANATION MODAL =====
-  infoButton: { padding: 2, alignItems: "center", justifyContent: "center" },
-  summaryLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  infoButton: { padding: 2, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  summaryLabelRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 10 },
   sectionCardTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   statRowLabelWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 12 },
-  trendMetricLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  trendMetricLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 },
   infoOverlay: { flex: 1, backgroundColor: "rgba(43, 17, 17, 0.45)", justifyContent: "center", alignItems: "center", padding: 16 },
   infoSheet: { width: "100%", maxWidth: 560, maxHeight: "85%", backgroundColor: "#FFFFFF", borderRadius: 22, padding: 18 },
   infoHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
