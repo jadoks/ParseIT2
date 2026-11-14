@@ -5246,6 +5246,73 @@ useEffect(() => {
     setGeneratedQuestions((prev) => prev.filter((_, index) => index !== qIndex));
   };
 
+  // ── Re-arranging ─────────────────────────────────────────────────────────
+  // Multiple Choice: the letter labels (A, B, C, D) are fixed to the SLOT, not
+  // to the text. Only the option text moves, and correctIndex follows the
+  // correct answer so the right option stays marked after a move / shuffle.
+  // `order[newPosition] = oldPosition`.
+  const reorderQuestionOptions = (q: any, order: number[]) => {
+    const options = order.map((oldIdx) => q.options[oldIdx]);
+    const hasCorrect = typeof q.correctIndex === 'number' && q.correctIndex >= 0;
+    return { ...q, options, correctIndex: hasCorrect ? order.indexOf(q.correctIndex) : q.correctIndex };
+  };
+
+  // Random permutation of 0..n-1 that is never the identity (so "Shuffle"
+  // always visibly changes something when there are 2+ items).
+  const randomOrder = (n: number): number[] => {
+    const identity = Array.from({ length: n }, (_, i) => i);
+    if (n < 2) return identity;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const arr = [...identity];
+      for (let i = n - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      if (arr.some((v, i) => v !== i)) return arr;
+    }
+    return [...identity.slice(1), identity[0]];
+  };
+
+  const moveGeneratedOption = (qIndex: number, from: number, to: number) => {
+    setGeneratedQuestions((prev) => {
+      const q = prev[qIndex];
+      if (!q?.options || to < 0 || to >= q.options.length || from === to) return prev;
+      const order = q.options.map((_: any, i: number) => i);
+      const [moved] = order.splice(from, 1);
+      order.splice(to, 0, moved);
+      const next = [...prev];
+      next[qIndex] = reorderQuestionOptions(q, order);
+      return next;
+    });
+  };
+
+  const shuffleGeneratedOptions = (qIndex: number) => {
+    setGeneratedQuestions((prev) => {
+      const q = prev[qIndex];
+      if (!q?.options) return prev;
+      const next = [...prev];
+      next[qIndex] = reorderQuestionOptions(q, randomOrder(q.options.length));
+      return next;
+    });
+  };
+
+  // Toolbar "Shuffle All Options": shuffle every Multiple Choice question.
+  const shuffleAllGenerated = () => {
+    setGeneratedQuestions((prev) =>
+      prev.map((q) =>
+        Array.isArray(q.options) ? reorderQuestionOptions(q, randomOrder(q.options.length)) : q
+      )
+    );
+  };
+
+  // Matching (memory_match), Fill-in-the-Blanks and Flashcard have no lettered
+  // options to re-arrange (matching is shuffled by the system on the student side).
+  const supportsShuffle =
+    !!gameType &&
+    gameType !== 'memory_match' &&
+    gameType !== 'fill_in_blanks' &&
+    gameType !== 'flashcard';
+
   const createBlankQuestion = () => {
     const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (gameType === 'fill_in_blanks') {
@@ -7094,11 +7161,26 @@ useEffect(() => {
     );
     const renderOptionWithDropdown = (opt: string, oIndex: number, placeholderPrefix: string) => {
       const isCorrect = q.correctIndex === oIndex;
+      const letter = String.fromCharCode(65 + oIndex);
+      const lastIndex = (q.options?.length ?? 1) - 1;
       return (
         <View
           key={oIndex}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}
         >
+          {/* Fixed letter label — belongs to the slot, never moves with the text */}
+          <View
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isCorrect ? '#2E7D32' : '#8B0000',
+            }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>{letter}</Text>
+          </View>
           <TextInput placeholderTextColor="#999"
             style={[
               styles.inputBox,
@@ -7106,8 +7188,28 @@ useEffect(() => {
             ]}
             value={opt}
             onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)}
-            placeholder={isCorrect ? `${placeholderPrefix} (Correct)` : `${placeholderPrefix} ${oIndex + 1}`}
+            placeholder={isCorrect ? `${placeholderPrefix} (Correct)` : placeholderPrefix}
           />
+          <View style={{ gap: 2 }}>
+            <TouchableOpacity
+              onPress={() => moveGeneratedOption(qIndex, oIndex, oIndex - 1)}
+              disabled={oIndex === 0}
+              hitSlop={{ top: 4, bottom: 2, left: 6, right: 6 }}
+              style={{ opacity: oIndex === 0 ? 0.3 : 1 }}
+              accessibilityLabel={`Move option ${letter} up`}
+            >
+              <Ionicons name="chevron-up" size={20} color="#555" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => moveGeneratedOption(qIndex, oIndex, oIndex + 1)}
+              disabled={oIndex === lastIndex}
+              hitSlop={{ top: 2, bottom: 4, left: 6, right: 6 }}
+              style={{ opacity: oIndex === lastIndex ? 0.3 : 1 }}
+              accessibilityLabel={`Move option ${letter} down`}
+            >
+              <Ionicons name="chevron-down" size={20} color="#555" />
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={[
               styles.correctnessDropdown,
@@ -7213,6 +7315,24 @@ useEffect(() => {
             {q.options.map((opt: string, oIndex: number) =>
               renderOptionWithDropdown(opt, oIndex, `Option ${String.fromCharCode(65 + oIndex)}`)
             )}
+            <TouchableOpacity
+              onPress={() => shuffleGeneratedOptions(qIndex)}
+              style={{
+                alignSelf: 'flex-start',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#4B6BFB',
+                marginTop: 2,
+              }}
+            >
+              <Ionicons name="shuffle" size={16} color="#4B6BFB" />
+              <Text style={{ color: '#4B6BFB', fontWeight: '700', fontSize: 12 }}>Shuffle options</Text>
+            </TouchableOpacity>
           </View>
         );
     }
@@ -7747,6 +7867,20 @@ the button looked completely dead.
                 <Ionicons name="add" size={16} color="#4B6BFB" />
                 <Text style={styles.secondaryButtonText}>Add Manually</Text>
               </TouchableOpacity>
+
+              {supportsShuffle && (
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                  ]}
+                  onPress={shuffleAllGenerated}
+                  disabled={generatedQuestions.length === 0}
+                >
+                  <Ionicons name="shuffle" size={16} color="#4B6BFB" />
+                  <Text style={styles.secondaryButtonText}>Shuffle All Options</Text>
+                </TouchableOpacity>
+              )}
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
                 <View style={{ alignItems: 'center' }}>
@@ -8915,6 +9049,20 @@ GENERATED QUESTIONS PREVIEW MODAL
                 <Ionicons name="add" size={16} color="#4B6BFB" />
                 <Text style={styles.secondaryButtonText}>Add Manually</Text>
               </TouchableOpacity>
+
+              {supportsShuffle && (
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                  ]}
+                  onPress={shuffleAllGenerated}
+                  disabled={generatedQuestions.length === 0}
+                >
+                  <Ionicons name="shuffle" size={16} color="#4B6BFB" />
+                  <Text style={styles.secondaryButtonText}>Shuffle All Options</Text>
+                </TouchableOpacity>
+              )}
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
                 <View style={{ alignItems: 'center' }}>

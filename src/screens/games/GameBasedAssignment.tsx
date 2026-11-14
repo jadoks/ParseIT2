@@ -136,6 +136,49 @@ function getGameProgressStorageKey(assignmentId?: string, studentId?: string) {
   return `gameProgress_${studentId || 'anonymous'}_${assignmentId || 'unknown'}`;
 }
 
+// Random permutation of 0..n-1 (Fisher-Yates). order[displayPosition] = originalIndex.
+function makeShuffledOrder(n: number): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Builds a shuffled option order for every question, with the CORRECT answer's
+// letter spread evenly over A–D (e.g. 8 questions → two each of A, B, C, D) and
+// never the same letter 3 times in a row. The remaining options are shuffled
+// randomly into the other slots. order[displayPosition] = originalIndex.
+function makeBalancedOrders(questions: GameQuestion[]): number[][] {
+  const count = questions.length;
+  const maxSlots = Math.max(2, ...questions.map((q) => q.options?.length ?? 0));
+
+  // Targets for where each question's correct answer lands: A,B,C,D,A,B,... then shuffled.
+  const base = Array.from({ length: count }, (_, i) => i % maxSlots);
+  const hasRunOf3 = (arr: number[]) => arr.some((v, i) => i >= 2 && arr[i - 1] === v && arr[i - 2] === v);
+  let targets = base;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const arr = [...base];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    targets = arr;
+    if (!hasRunOf3(arr)) break;
+  }
+
+  return questions.map((q, qi) => {
+    const n = q.options?.length ?? 0;
+    if (n < 2 || typeof q.correctIndex !== 'number' || q.correctIndex < 0 || q.correctIndex >= n) {
+      return makeShuffledOrder(n);
+    }
+    const slot = targets[qi] % n; // questions with fewer options just wrap
+    const others = makeShuffledOrder(n).filter((i) => i !== q.correctIndex);
+    return Array.from({ length: n }, (_, pos) => (pos === slot ? q.correctIndex! : others.pop()!));
+  });
+}
+
 const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   assignmentTitle,
   questions,
@@ -190,6 +233,14 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // (and stretches to fill spare height on tall screens).
   const fixedQuestionCardStyle = styles.fixedQuestionCard;
   const [answerFeedback, setAnswerFeedback] = useState<string | null>(null);
+
+  // Multiple choice: the system shuffles each question's options once per
+  // attempt (the A/B/C/D letters stay fixed to the slots; only the text moves),
+  // with the correct answer's letter spread evenly across the quiz.
+  // Saved with the in-progress attempt so a resume shows the same layout.
+  const [optionOrders, setOptionOrders] = useState<number[][]>(() =>
+    makeBalancedOrders(questions)
+  );
 
   // Memory match specific (Two-column matching)
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
@@ -369,6 +420,24 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             if (typeof saved.globalTimeLeft === 'number') {
               setGlobalTimeLeft(saved.globalTimeLeft);
             }
+            // multiple choice — restore the same shuffled option order. Saves made
+            // before shuffling existed fall back to the original order so a
+            // half-answered question's selection still lines up.
+            const savedOrders = saved.optionOrders;
+            const ordersValid =
+              Array.isArray(savedOrders) &&
+              savedOrders.length === questions.length &&
+              savedOrders.every(
+                (o: any, i: number) =>
+                  Array.isArray(o) && o.length === (questions[i].options?.length ?? 0)
+              );
+            setOptionOrders(
+              ordersValid
+                ? savedOrders
+                : questions.map((q) =>
+                    Array.from({ length: q.options?.length ?? 0 }, (_, i) => i)
+                  )
+            );
             // quiz_master / fill_in_blanks — resume a half-answered question
             setHasAnswered(!!saved.hasAnswered);
             setSelectedOption(saved.selectedOption ?? null);
@@ -430,6 +499,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       matchingResults,
       matchingSubmitted,
       memoryCards,
+      optionOrders,
       savedAt: Date.now(),
     };
     AsyncStorage.setItem(key, JSON.stringify(snapshot)).catch((err) => {
@@ -457,6 +527,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     matchingResults,
     matchingSubmitted,
     memoryCards,
+    optionOrders,
   ]);
 
   // ✅ NEW: Wipes the saved attempt once it's actually been submitted as a
@@ -470,7 +541,23 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     }
   };
 
-  const currentQuestion = questions[currentIndex];
+  // Questions as the student sees them: options in their shuffled order, with
+  // correctIndex remapped so it still points at the right answer.
+  const displayQuestions = useMemo(
+    () =>
+      questions.map((q, i) => {
+        const order = optionOrders[i];
+        if (!q.options || !order || order.length !== q.options.length) return q;
+        return {
+          ...q,
+          options: order.map((o) => q.options![o]),
+          correctIndex:
+            typeof q.correctIndex === 'number' ? order.indexOf(q.correctIndex) : q.correctIndex,
+        };
+      }),
+    [questions, optionOrders]
+  );
+  const currentQuestion = displayQuestions[currentIndex];
 
   const handleFinishGame = () => {
     setGameFinished(true);
@@ -879,6 +966,12 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
             }
           }
 
+          const letter = String.fromCharCode(65 + idx);
+          const badgeBg =
+            hasAnswered && idx === currentQuestion.correctIndex ? '#4CAF50'
+            : hasAnswered && idx === selectedOption ? '#F44336'
+            : '#8B0000';
+
           return (
             <TouchableOpacity
               key={idx}
@@ -886,6 +979,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
               onPress={() => handleSelectOption(idx)}
               disabled={hasAnswered}
             >
+              <View style={[styles.optionLetterBadge, { backgroundColor: badgeBg }]}>
+                <AppText style={styles.optionLetterText}>{letter}</AppText>
+              </View>
               <AppText style={[styles.optionText, { color: textColor }]}>{opt}</AppText>
               {hasAnswered && idx === currentQuestion.correctIndex && (
                 <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
@@ -1477,6 +1573,20 @@ const createStyles = (r: ResponsiveInfo) => {
       flexShrink: 1,
       flexWrap: 'wrap',
       marginRight: r.spacing.sm,
+    },
+    optionLetterBadge: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: r.spacing.sm,
+    },
+    optionLetterText: {
+      fontFamily: FONT_BODY,
+      fontWeight: WEIGHT_EMPHASIS,
+      color: '#FFF',
+      fontSize: r.font.caption,
     },
     feedbackCard: {
       marginTop: r.spacing.lg,

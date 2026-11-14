@@ -295,6 +295,70 @@ function seededShuffle<T>(items: T[], seed: number): T[] {
   return out;
 }
 
+// Re-places each multiple-choice question's options so the CORRECT answer's
+// letter is spread evenly over A–D (8 questions → two each of A, B, C, D) and
+// never the same letter 3 times in a row. Wrong options fill the other slots in
+// random order. Seeded, so the same seed always gives the same layout (keeps a
+// resumed attempt identical); a new seed ("Play Again") gives a new layout.
+function balanceTriviaOptions<T extends { options: string[]; answer: string }>(
+  items: T[],
+  seed: number
+): T[] {
+  let s = seed >>> 0;
+  const rand = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let x = s;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const shuffle = <U,>(arr: U[]): U[] => {
+    const out = [...arr];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  };
+
+  const maxSlots = Math.max(2, ...items.map((it) => it.options.length));
+  const base = Array.from({ length: items.length }, (_, i) => i % maxSlots);
+  const hasRunOf3 = (arr: number[]) =>
+    arr.some((v, i) => i >= 2 && arr[i - 1] === v && arr[i - 2] === v);
+  let targets = base;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    targets = shuffle(base);
+    if (!hasRunOf3(targets)) break;
+  }
+
+  return items.map((item, i) => {
+    const n = item.options.length;
+    let ci = item.options.indexOf(item.answer);
+    if (ci < 0) {
+      const lower = item.answer.trim().toLowerCase();
+      ci = item.options.findIndex((o) => o.trim().toLowerCase() === lower);
+    }
+    if (n < 2 || ci < 0) return item;
+    const slot = targets[i] % n; // questions with fewer options just wrap
+    const others = shuffle(item.options.filter((_, k) => k !== ci));
+    const options = Array.from({ length: n }, (_, pos) =>
+      pos === slot ? item.options[ci] : others.pop() as string
+    );
+    return { ...item, options };
+  });
+}
+
+// Small stable hash so the first play of a quiz gets a layout that is the same
+// every time it is opened (resume-safe) but differs from quiz to quiz.
+function hashSeed(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+
 function createBlankPrompt(question: string, answer: string) {
   const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const answerRegex = new RegExp(escaped, 'i');
@@ -439,17 +503,19 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
 
     if (replaySeed !== 0) {
       return {
-        trivia: seededShuffle(trivia, replaySeed).map((q, i) => ({
-          ...q,
-          options: seededShuffle(q.options, replaySeed + i + 1),
-        })),
+        trivia: balanceTriviaOptions(seededShuffle(trivia, replaySeed), replaySeed + 101),
         matching: seededShuffle(matching, replaySeed + 7),
         fillBlank: seededShuffle(fillBlank, replaySeed + 13),
         flashcards: seededShuffle(flashcards, replaySeed + 29),
       };
     }
 
-    return { trivia, matching, fillBlank, flashcards };
+    return {
+      trivia: balanceTriviaOptions(trivia, hashSeed(trivia.map((t) => t.question).join('|'))),
+      matching,
+      fillBlank,
+      flashcards,
+    };
   }, [generatedQuestions, replaySeed]);
 
   const questions = parsedData.trivia;
@@ -1452,7 +1518,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
         </View>
 
         <View style={[styles.optionsContainer, optionsInRow && { flexDirection: 'row', gap: 14 }]}>
-          {currentTrivia.options.map((opt) => {
+          {currentTrivia.options.map((opt, optIdx) => {
             let bgColor = '#FFF';
             let borderColor = '#DDD';
             let textColor = '#333';
@@ -1476,6 +1542,12 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               }
             }
 
+            const letter = String.fromCharCode(65 + optIdx);
+            const badgeBg = !triviaSelected ? '#8B0000'
+              : opt === currentTrivia.answer ? '#4CAF50'
+              : opt === triviaSelected ? '#F44336'
+              : '#BDBDBD';
+
             return (
               <Pressable
                 key={opt}
@@ -1483,6 +1555,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                 onPress={() => handleTriviaSelect(opt)}
                 disabled={!!triviaSelected}
               >
+                <View style={[styles.optionLetterBadge, { backgroundColor: badgeBg }]}>
+                  <AppText style={styles.optionLetterText}>{letter}</AppText>
+                </View>
                 <AppText style={[styles.optionText, { color: textColor, flex: 1 }]}>{opt}</AppText>
                 {icon}
               </Pressable>
@@ -1707,6 +1782,8 @@ const createStyles = (fs: (n: number) => number, wide: boolean, r: ResponsiveInf
     justifyContent: 'space-between',
   },
   optionText: { fontFamily: FONT_BODY, fontSize: r.font.body, fontWeight: WEIGHT_EMPHASIS },
+  optionLetterBadge: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  optionLetterText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#FFF', fontSize: fs(14) },
   feedbackCard: { marginTop: 24, padding: 20, borderRadius: 16, alignItems: 'center' },
   feedbackCorrect: { backgroundColor: '#E8F5E9' },
   feedbackWrong: { backgroundColor: '#FFEBEE' },
