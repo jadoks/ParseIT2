@@ -779,7 +779,7 @@ const Game = ({
       {/* Shared toast, rendered in its own transparent Modal so it shows above the full-screen "Start a New Quiz" modal too. */}
       <Modal visible={toast.visible} transparent animationType="fade" onRequestClose={hideToast} statusBarTranslucent>
         <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast visible={toast.visible} message={toast.message} type={toast.type} onHide={hideToast} />
+          <Toast dismissOnOutsideTouch visible={toast.visible} message={toast.message} type={toast.type} onHide={hideToast} />
         </View>
       </Modal>
     </ScrollView>

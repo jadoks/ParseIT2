@@ -313,7 +313,7 @@ const ClassesScreen = ({
         statusBarTranslucent
       >
         <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
+          <Toast dismissOnOutsideTouch
             visible={toast.visible}
             message={toast.message}
             type={toast.type}

@@ -1878,6 +1878,93 @@ function SASTemplatePreview({
   );
 }
 
+// ─── Auto-growing multiline input ────────────────────────────────────────────
+// Grows with its text so long questions/options are fully visible without an
+// inner scrollbar. The border + padding live on a wrapper View and the inner
+// TextInput has zero padding, so measured content height == input height on
+// web and native alike.
+function AutoGrowInput({
+  value,
+  minHeight = 20,
+  borderColor = '#DDD',
+  containerStyle,
+  inputStyle,
+  singleLine = false,
+  ...rest
+}: any) {
+  const ref = useRef<any>(null);
+  const { width: winWidth } = useWindowDimensions();
+  const [nativeHeight, setNativeHeight] = useState<number>(minHeight);
+
+  // Web: textareas don't auto-size, so measure scrollHeight ourselves.
+  const fitWeb = () => {
+    if (Platform.OS !== 'web') return;
+    const node = ref.current as any;
+    if (!node || !node.style) return;
+    node.style.height = 'auto';
+    node.style.overflow = 'hidden';
+    node.style.resize = 'none';
+    node.style.height = `${Math.max(node.scrollHeight, minHeight)}px`;
+  };
+  useEffect(() => {
+    fitWeb();
+    // Re-measure once more after layout settles (fonts / container width).
+    const t = setTimeout(fitWeb, 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, winWidth]);
+
+  return (
+    <View
+      style={[
+        {
+          borderWidth: 1,
+          borderColor,
+          borderRadius: 16,
+          paddingHorizontal: 12,
+          paddingVertical: 12,
+          backgroundColor: '#FFF',
+        },
+        containerStyle,
+      ]}
+    >
+      <TextInput
+        ref={ref}
+        value={value}
+        multiline
+        scrollEnabled={false}
+        placeholderTextColor="#999"
+        onLayout={fitWeb}
+        onContentSizeChange={(e: any) => {
+          if (Platform.OS === 'web') return;
+          setNativeHeight(Math.max(minHeight, Math.ceil(e.nativeEvent.contentSize.height)));
+        }}
+        onKeyPress={
+          singleLine
+            ? (e: any) => {
+                // Options are single-paragraph: block Enter so it can't add a newline.
+                if (e?.nativeEvent?.key === 'Enter') e.preventDefault?.();
+              }
+            : undefined
+        }
+        {...rest}
+        style={[
+          {
+            fontFamily: FONT_BODY,
+            fontSize: 14,
+            color: '#111',
+            padding: 0,
+            margin: 0,
+            textAlignVertical: 'top',
+          },
+          Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : { height: nativeHeight },
+          inputStyle,
+        ]}
+      />
+    </View>
+  );
+}
+
 // ─── Inline Viewer ───────────────────────────────────────────────────────────
 // Mirrors the student-side viewer in CourseDetail.tsx: signed Firebase/GCS URLs
 // expire, so the preview can come back blank/404. When the caller passes a
@@ -7424,7 +7511,15 @@ useEffect(() => {
       return (
         <View
           key={oIndex}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}
+          style={{
+            flexDirection: 'row',
+            // Phones: the Correct/Wrong toggle wraps under the text instead of
+            // squeezing the option field.
+            flexWrap: isMobile ? 'wrap' : 'nowrap',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 8,
+          }}
         >
           {/* Fixed letter label — belongs to the slot, never moves with the text */}
           <View
@@ -7439,18 +7534,19 @@ useEffect(() => {
           >
             <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>{letter}</Text>
           </View>
-          <TextInput placeholderTextColor="#999"
-            style={[
-              styles.inputBox,
-              { flex: 1, marginBottom: 0, borderColor: isCorrect ? '#2E7D32' : '#DDD' },
-            ]}
+          <AutoGrowInput
+            singleLine
+            minHeight={20}
+            borderColor={isCorrect ? '#2E7D32' : '#DDD'}
+            containerStyle={{ flex: 1, minWidth: 0 }}
             value={opt}
-            onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)}
+            onChangeText={(val: string) => updateGeneratedOption(qIndex, oIndex, val.replace(/\r?\n/g, ' '))}
             placeholder={isCorrect ? `${placeholderPrefix} (Correct)` : placeholderPrefix}
           />
           <TouchableOpacity
             style={[
               styles.correctnessDropdown,
+              isMobile ? { marginLeft: 38 } : null,
               {
                 borderColor: isCorrect ? '#2E7D32' : '#DDD',
                 backgroundColor: isCorrect ? '#E8F5E9' : '#FFF',
@@ -7483,12 +7579,12 @@ useEffect(() => {
               placeholder="HTML"
             />
             <Text style={styles.sectionLabel}>Definition</Text>
-            <TextInput placeholderTextColor="#999"
-              style={styles.inputBox}
+            <AutoGrowInput
+              minHeight={20}
+              containerStyle={{ marginBottom: 8 }}
               value={q.answer}
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)}
+              onChangeText={(val: string) => updateGeneratedQuestion(qIndex, 'answer', val)}
               placeholder="HyperText Markup Language"
-              multiline
             />
           </View>
         );
@@ -7497,12 +7593,12 @@ useEffect(() => {
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Item ${qIndex + 1}`)}
             <Text style={styles.sectionLabel}>Sentence (Use '___' for the blank)</Text>
-            <TextInput placeholderTextColor="#999"
-              style={styles.inputBox}
+            <AutoGrowInput
+              minHeight={44}
+              containerStyle={{ marginBottom: 8 }}
               value={q.sentence || q.question || ''}
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'sentence', val)}
+              onChangeText={(val: string) => updateGeneratedQuestion(qIndex, 'sentence', val)}
               placeholder="The process of ___ is defined as..."
-              multiline
             />
             <Text style={styles.sectionLabel}>Missing Word / Correct Answer</Text>
             <TextInput placeholderTextColor="#999"
@@ -7518,12 +7614,12 @@ useEffect(() => {
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Flashcard ${qIndex + 1}`)}
             <Text style={styles.sectionLabel}>Front of Card (Question / Prompt)</Text>
-            <TextInput placeholderTextColor="#999"
-              style={styles.inputBox}
+            <AutoGrowInput
+              minHeight={44}
+              containerStyle={{ marginBottom: 8 }}
               value={q.question}
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)}
+              onChangeText={(val: string) => updateGeneratedQuestion(qIndex, 'question', val)}
               placeholder="What is the capital of France?"
-              multiline
             />
             <Text style={styles.sectionLabel}>Back of Card (Answer)</Text>
             <TextInput placeholderTextColor="#999"
@@ -7542,12 +7638,12 @@ useEffect(() => {
             {renderHeader(
               `${gameType === 'boss_battle' ? 'Boss Battle Question' : 'Question'} ${qIndex + 1}`
             )}
-            <TextInput placeholderTextColor="#999"
-              style={styles.inputBox}
+            <AutoGrowInput
+              minHeight={44}
+              containerStyle={{ marginBottom: 8 }}
               value={q.question}
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)}
+              onChangeText={(val: string) => updateGeneratedQuestion(qIndex, 'question', val)}
               placeholder="Enter question"
-              multiline
             />
             <Text style={styles.sectionLabel}>Options (Select Correct or Wrong)</Text>
             {q.options.map((opt: string, oIndex: number) =>
@@ -7696,7 +7792,7 @@ useEffect(() => {
         statusBarTranslucent
       >
         <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
+          <Toast dismissOnOutsideTouch
             visible={toastState.visible}
             message={toastState.message}
             type={toastState.type}

@@ -22,7 +22,6 @@ import { API_BASE_URL, apiFetch } from './services/api'; // adjust path if your 
 
 import { useLiveEvents } from './hooks/useLiveEvents';
 import Grades from './teacher_components/Grades';
-import Honors from './teacher_components/Honors';
 import TeacherAnalytics from './teacher_components/TeacherAnalytics';
 import { Announcement } from './teacher_components/TeacherAnnouncementModal';
 import Community2, { CommunityPost } from './teacher_components/TeacherCommunity';
@@ -65,7 +64,6 @@ interface Props {
 
 type AppScreenType =
   | 'home'
-  | 'honors'
   | 'grades'
   | 'announcement'
   | 'profile'
@@ -111,7 +109,6 @@ const ANNOUNCEMENT_BANNERS: Record<number, any> = {
 const isAppScreen = (screen: string): screen is AppScreenType => {
   return [
     'home',
-    'honors',
     'grades',
     'announcement',
     'profile',
@@ -1438,8 +1435,6 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
               isLoading={isLoadingClasses || isLoadingAnnouncements}
               showVerticalIndicator={true}
             />
-          ) : activeScreen === 'honors' ? (
-            <Honors apiBaseUrl={API_BASE_URL} />
           ) : activeScreen === 'grades' ? (
             <Grades apiBaseUrl={API_BASE_URL} />
           ) : activeScreen === 'announcement' ? (
@@ -1581,7 +1576,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
         statusBarTranslucent
       >
         <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
+          <Toast dismissOnOutsideTouch
             visible={toast.visible}
             message={toast.message}
             type={toast.type}
