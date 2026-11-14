@@ -202,6 +202,67 @@ type FormErrors = {
   customTimeLimit?: string;
 };
 
+// ─── Pending generated game questions (banner + exit dialog) ────────────────
+const pendingDraftStyles = StyleSheet.create({
+  wrap: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF8E1',
+    borderWidth: 1,
+    borderColor: '#FFE082',
+  },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  headerText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#5D4037' },
+  hint: { fontSize: 12, color: '#795548', marginBottom: 8 },
+  list: { maxHeight: 220 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#FFE9A8',
+  },
+  rowTitle: { fontSize: 13, fontWeight: '700', color: '#222' },
+  rowSub: { fontSize: 12, color: '#6D6D6D', marginTop: 2 },
+  resumeBtn: { backgroundColor: '#8B0000', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 16 },
+  resumeBtnText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
+  trashBtn: { padding: 7, backgroundColor: '#FFEBEE', borderRadius: 16 },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  dialog: { width: '100%', maxWidth: 420, backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
+  dialogTitle: { fontSize: 17, fontWeight: '800', color: '#111', marginBottom: 8 },
+  dialogBody: { fontSize: 14, color: '#444', lineHeight: 20, marginBottom: 16 },
+  btnPrimary: { backgroundColor: '#8B0000', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
+  btnPrimaryText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  btnDanger: {
+    borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginBottom: 8,
+    borderWidth: 1, borderColor: '#D32F2F', backgroundColor: '#FFF',
+  },
+  btnDangerText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
+  btnGhost: { paddingVertical: 10, alignItems: 'center' },
+  btnGhostText: { color: '#5F6368', fontWeight: '600', fontSize: 14 },
+});
+
+const formatPendingAge = (ms?: number | null) => {
+  if (!ms) return '';
+  const mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
 // ─── Toast Context & Types ───────────────────────────────────────────────────
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -2762,6 +2823,225 @@ const TeacherCourseDetail2 = ({
     setShowLessonPreviewModal(true);
   };
 
+  // ─── Pending (unpublished) generated game questions ────────────────────────
+  // Questions generated for a Game-Based Assignment cost AI tokens, so they are
+  // saved on the server as soon as they are generated and autosaved while the
+  // teacher edits them. Closing the app/tab, or tapping X and choosing
+  // "Save as Pending", leaves them "Pending" — they are resumed from the
+  // Assignments tab, so nothing is regenerated and no tokens are wasted.
+  // Publishing the assignment, or choosing "Discard", deletes the draft.
+  const [gameDrafts, setGameDrafts] = useState<any[]>([]);
+  const [showGameDraftExitModal, setShowGameDraftExitModal] = useState(false);
+  const [isSavingGameDraft, setIsSavingGameDraft] = useState(false);
+  const gameDraftIdRef = useRef<string | null>(null);        // server draft behind the open form
+  const gameDraftBaselineRef = useRef<string>('');           // JSON last known to be on the server
+  const gameDraftLatestRef = useRef<any>(null);              // payload for the current form (null = nothing to save)
+  const gameDraftPausedRef = useRef(false);                  // true while discarding / after publishing
+  const gameDraftChainRef = useRef<Promise<any>>(Promise.resolve()); // serialises saves
+
+  const loadGameDrafts = async () => {
+    if (!course?.id) { setGameDrafts([]); return; }
+    try {
+      const res = await fetch(`${API_BASE_URL}/game-question-drafts/${course.id}`, { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data?.drafts)) setGameDrafts(data.drafts);
+    } catch (e) {
+      console.warn('Failed to load pending game questions', e);
+    }
+  };
+
+  useEffect(() => {
+    loadGameDrafts();
+  }, [course?.id]);
+
+  // Creates (POST) or updates (PUT) the draft for the open form. Resolves true
+  // when the server has the latest version (or there is nothing to save).
+  const syncGameDraft = (): Promise<boolean> => {
+    const run = async (): Promise<boolean> => {
+      if (gameDraftPausedRef.current) return true;
+      const payload = gameDraftLatestRef.current;
+      if (!payload) return true;
+      const snapshot = JSON.stringify(payload);
+      const existingId = gameDraftIdRef.current;
+      if (existingId && snapshot === gameDraftBaselineRef.current) return true;
+      try {
+        const res = await fetch(
+          existingId ? `${API_BASE_URL}/game-question-drafts/${existingId}` : `${API_BASE_URL}/game-question-drafts`,
+          {
+            method: existingId ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            keepalive: true,
+            body: snapshot,
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Failed to save pending questions.');
+        if (!existingId && data?.draft?.id) gameDraftIdRef.current = data.draft.id;
+        gameDraftBaselineRef.current = snapshot;
+        return true;
+      } catch (e) {
+        console.warn('Pending questions autosave failed', e);
+        return false; // baseline untouched → retried on the next change / flush
+      }
+    };
+    const next = gameDraftChainRef.current.then(run, run);
+    gameDraftChainRef.current = next;
+    return next;
+  };
+
+  // Deletes the server draft behind the open form (waits for any save in flight
+  // first, so a just-created draft can't be left behind).
+  const deleteGameDraft = async (keepAutosavePaused = true) => {
+    gameDraftPausedRef.current = true;
+    try {
+      await gameDraftChainRef.current;
+      const id = gameDraftIdRef.current;
+      if (id) {
+        await fetch(`${API_BASE_URL}/game-question-drafts/${id}`, { method: 'DELETE', credentials: 'include' });
+      }
+    } catch (e) {
+      console.warn('Failed to delete pending questions', e);
+    } finally {
+      gameDraftIdRef.current = null;
+      gameDraftBaselineRef.current = '';
+      if (!keepAutosavePaused) gameDraftPausedRef.current = false;
+    }
+  };
+
+  // Keep the draft in step with the form. The first save is immediate (so
+  // nothing is lost if the tab is closed right after generating); later edits
+  // are debounced.
+  useEffect(() => {
+    const eligible =
+      showCreateModal &&
+      !showUpdateModal &&
+      activeTab !== 'materials' &&
+      assignmentType === 'game_based' &&
+      !!gameType &&
+      generatedQuestions.length > 0;
+    gameDraftLatestRef.current = eligible
+      ? {
+          classId: course?.id,
+          gameType,
+          materialIds: selectedMaterialIds,
+          numberOfQuestions: parseInt(numberOfQuestions, 10) || generatedQuestions.length,
+          questions: generatedQuestions,
+          form: {
+            title: formTitle,
+            description: formDesc,
+            dueDate: formDue,
+            numberOfAttempts,
+            customAttempts,
+            timeLimit,
+            customTimeLimit,
+            disableRepositoryAfterDue: assignmentDisableRepositoryAfterDue,
+          },
+        }
+      : null;
+    if (!eligible) return;
+    const timer = setTimeout(() => { void syncGameDraft(); }, gameDraftIdRef.current ? 800 : 0);
+    return () => clearTimeout(timer);
+  }, [
+    showCreateModal, showUpdateModal, activeTab, assignmentType, gameType, generatedQuestions,
+    selectedMaterialIds, numberOfQuestions, formTitle, formDesc, formDue, numberOfAttempts,
+    customAttempts, timeLimit, customTimeLimit, assignmentDisableRepositoryAfterDue, course?.id,
+  ]);
+
+  // Web: flush when the tab is hidden/closed.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const flush = () => { if (document.visibilityState === 'hidden') void syncGameDraft(); };
+    document.addEventListener('visibilitychange', flush);
+    window.addEventListener('pagehide', flush as any);
+    return () => {
+      document.removeEventListener('visibilitychange', flush);
+      window.removeEventListener('pagehide', flush as any);
+    };
+  }, []);
+
+  // The X / back button on the Create form. With generated game questions we
+  // ask first; otherwise it just closes.
+  const requestCloseCreateModal = () => {
+    if (isSaving || isSavingGameDraft) return;
+    const hasGeneratedGame =
+      activeTab !== 'materials' && assignmentType === 'game_based' && generatedQuestions.length > 0;
+    if (hasGeneratedGame) {
+      setShowGameDraftExitModal(true);
+      return;
+    }
+    setShowCreateModal(false);
+    resetCreateForm();
+  };
+
+  const handleSaveGameDraftAndClose = async () => {
+    setIsSavingGameDraft(true);
+    const ok = await syncGameDraft();
+    setIsSavingGameDraft(false);
+    if (!ok) {
+      toast.show('error', 'Not Saved', "Couldn't save the pending questions. Check your connection and try again.");
+      return;
+    }
+    setShowGameDraftExitModal(false);
+    setShowCreateModal(false);
+    resetCreateForm();
+    void loadGameDrafts();
+    toast.show('success', 'Saved as Pending', 'Resume it anytime from the Assignments tab.');
+  };
+
+  const handleDiscardGameDraftAndClose = async () => {
+    setIsSavingGameDraft(true);
+    await deleteGameDraft();
+    setIsSavingGameDraft(false);
+    setShowGameDraftExitModal(false);
+    setShowCreateModal(false);
+    resetCreateForm();
+    void loadGameDrafts();
+  };
+
+  // Re-opens a pending set in the Create form — no AI call.
+  const resumeGameDraft = (draft: any) => {
+    resetCreateForm();
+    const f = draft.form || {};
+    setAssignmentType('game_based');
+    setGameType(draft.gameType || '');
+    setSelectedMaterialIds(Array.isArray(draft.materialIds) ? draft.materialIds : []);
+    setNumberOfQuestions(String(draft.numberOfQuestions || draft.questions?.length || 10));
+    setFormTitle(f.title || '');
+    setFormDesc(f.description || '');
+    setFormDue(f.dueDate || '');
+    if (f.dueDate) {
+      const parsed = parseDueDateTime(f.dueDate);
+      setDraftDueDateTime(parsed);
+      setVisibleCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+    }
+    setNumberOfAttempts(f.numberOfAttempts || '1');
+    setCustomAttempts(f.customAttempts || '');
+    setTimeLimit(f.timeLimit || '');
+    setCustomTimeLimit(f.customTimeLimit || '');
+    setAssignmentDisableRepositoryAfterDue(!!f.disableRepositoryAfterDue);
+    setGeneratedQuestions(Array.isArray(draft.questions) ? draft.questions : []);
+    gameDraftIdRef.current = draft.id;
+    gameDraftBaselineRef.current = '';
+    setShowCreateModal(true);
+    setShowGeneratedPreview(true);
+  };
+
+  const confirmDiscardPendingGameDraft = (draft: any) => {
+    toast.confirm(
+      'Discard Pending Questions?',
+      'These generated questions will be permanently deleted and you will need to generate again.',
+      async () => {
+        try {
+          await fetch(`${API_BASE_URL}/game-question-drafts/${draft.id}`, { method: 'DELETE', credentials: 'include' });
+        } catch (e) {
+          console.warn('Failed to discard pending questions', e);
+        }
+        setGameDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+      }
+    );
+  };
+
   // Course template is global/school-wide, so it only needs to be fetched
   // once — it isn't tied to this particular course.
   const loadCourseTemplate = async () => {
@@ -4258,6 +4538,11 @@ useEffect(() => {
   };
 
   const resetCreateForm = () => {
+    // A fresh form never inherits the previous form's pending draft.
+    gameDraftIdRef.current = null;
+    gameDraftBaselineRef.current = '';
+    gameDraftLatestRef.current = null;
+    gameDraftPausedRef.current = false;
     setFormTitle('');
     setFormDesc('');
     setFormPoints('');
@@ -5489,6 +5774,10 @@ useEffect(() => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to create assignment');
+      if (assignmentType === 'game_based') {
+        await deleteGameDraft(); // published → no longer pending
+        void loadGameDrafts();
+      }
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
@@ -6001,6 +6290,9 @@ useEffect(() => {
       () => {
         setGeneratedQuestions([]);
         setShowGeneratedPreview(false);
+        // The old set is gone for good, so drop its pending draft; the form
+        // stays open and the next generation starts a new draft.
+        void deleteGameDraft(false).then(() => loadGameDrafts());
       }
     );
   };
@@ -7982,6 +8274,48 @@ the button looked completely dead.
           )}
         </View>
         <View style={activeTab === 'assignments' ? styles.flexOne : styles.hiddenTabPanel}>
+          {!!mountedTabs.assignments && gameDrafts.length > 0 && (
+            <View style={pendingDraftStyles.wrap}>
+              <View style={pendingDraftStyles.headerRow}>
+                <Ionicons name="time-outline" size={18} color="#8D6E63" />
+                <Text style={pendingDraftStyles.headerText}>
+                  Pending Generated Questions ({gameDrafts.length})
+                </Text>
+              </View>
+              <Text style={pendingDraftStyles.hint}>
+                Saved so you don't have to generate again. Resume to review and publish.
+              </Text>
+              <ScrollView style={pendingDraftStyles.list} nestedScrollEnabled>
+                {gameDrafts.map((d: any) => {
+                  const label = gameOptions.find((g) => g.value === d.gameType)?.label || 'Boss Battle';
+                  const count = d.questions?.length || 0;
+                  const age = formatPendingAge(d.updatedAtMs);
+                  return (
+                    <View key={d.id} style={pendingDraftStyles.row}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={pendingDraftStyles.rowTitle} numberOfLines={1}>
+                          {d.form?.title?.trim() || label}
+                        </Text>
+                        <Text style={pendingDraftStyles.rowSub} numberOfLines={1}>
+                          {label} · {count} question{count === 1 ? '' : 's'}{age ? ` · ${age}` : ''}
+                        </Text>
+                      </View>
+                      <TouchableOpacity style={pendingDraftStyles.resumeBtn} onPress={() => resumeGameDraft(d)}>
+                        <Text style={pendingDraftStyles.resumeBtnText}>Resume</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={pendingDraftStyles.trashBtn}
+                        onPress={() => confirmDiscardPendingGameDraft(d)}
+                        accessibilityLabel="Discard pending questions"
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#D32F2F" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
           {!!mountedTabs.assignments && (
             <TeacherAssignmentSection
               assignments={assignments}
@@ -8580,20 +8914,12 @@ CREATE MODAL
         animationType="slide"
         transparent={false}
         statusBarTranslucent
-        onRequestClose={() => {
-                if (isSaving) return;
-                setShowCreateModal(false);
-                resetCreateForm();
-              }}
+        onRequestClose={requestCloseCreateModal}
       >
         <SafeAreaView style={styles.fsScreen} edges={['top', 'bottom']}>
           <View style={styles.fsTopBar}>
             <TouchableOpacity
-              onPress={() => {
-                if (isSaving) return;
-                setShowCreateModal(false);
-                resetCreateForm();
-              }}
+              onPress={requestCloseCreateModal}
               disabled={isSaving}
               style={styles.fsCloseBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -8808,6 +9134,46 @@ DATE TIME MODAL
                 <Text style={styles.primaryButtonText}>Apply</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Closing the Create form with generated game questions: keep them as Pending or discard */}
+      <Modal
+        visible={showGameDraftExitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!isSavingGameDraft) setShowGameDraftExitModal(false); }}
+      >
+        <View style={pendingDraftStyles.overlay}>
+          <View style={pendingDraftStyles.dialog}>
+            <Text style={pendingDraftStyles.dialogTitle}>Discard generated questions?</Text>
+            <Text style={pendingDraftStyles.dialogBody}>
+              You can keep these {generatedQuestions.length} question{generatedQuestions.length === 1 ? '' : 's'} as
+              Pending and finish later, so you don't have to generate them again. Discarding deletes them for good.
+            </Text>
+            <TouchableOpacity
+              style={[pendingDraftStyles.btnPrimary, isSavingGameDraft && { opacity: 0.6 }]}
+              onPress={handleSaveGameDraftAndClose}
+              disabled={isSavingGameDraft}
+            >
+              <Text style={pendingDraftStyles.btnPrimaryText}>
+                {isSavingGameDraft ? 'Saving…' : 'Save as Pending'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[pendingDraftStyles.btnDanger, isSavingGameDraft && { opacity: 0.6 }]}
+              onPress={handleDiscardGameDraftAndClose}
+              disabled={isSavingGameDraft}
+            >
+              <Text style={pendingDraftStyles.btnDangerText}>Discard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={pendingDraftStyles.btnGhost}
+              onPress={() => setShowGameDraftExitModal(false)}
+              disabled={isSavingGameDraft}
+            >
+              <Text style={pendingDraftStyles.btnGhostText}>Keep Editing</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

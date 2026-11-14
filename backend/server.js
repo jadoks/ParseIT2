@@ -23011,6 +23011,153 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
+  // ==========================================
+  // PENDING GAME-BASED QUESTION DRAFTS
+  // ==========================================
+  // Questions generated for a Game-Based Assignment cost AI tokens, so they are
+  // stored on the server the moment they are generated (and autosaved while the
+  // teacher edits them). If the teacher closes the app/tab, or taps X and picks
+  // "Save as Pending", the set stays "pending" and can be resumed from the
+  // Assignments tab without calling the AI again. A draft is deleted when the
+  // assignment is published or the teacher discards it.
+  const GAME_QUESTION_DRAFTS_COLLECTION = "gameQuestionDrafts";
+  const MAX_GAME_DRAFT_BYTES = 900 * 1024; // Firestore doc limit is 1 MiB
+  const MAX_GAME_DRAFTS_PER_CLASS = 20;
+  const MAX_GAME_DRAFT_QUESTIONS = 100;
+  const GAME_DRAFT_TYPES = ["quiz_master", "memory_match", "fill_in_blanks", "flashcard", "boss_battle"];
+  const GAME_DRAFT_FORM_TEXT_KEYS = [
+    "title", "description", "dueDate", "numberOfAttempts", "customAttempts", "timeLimit", "customTimeLimit",
+  ];
+
+  const serializeGameDraft = (doc) => {
+    const d = doc.data() || {};
+    return {
+      id: doc.id,
+      classId: d.classId || null,
+      gameType: d.gameType || "",
+      materialIds: Array.isArray(d.materialIds) ? d.materialIds : [],
+      numberOfQuestions: d.numberOfQuestions ?? (Array.isArray(d.questions) ? d.questions.length : 0),
+      questions: Array.isArray(d.questions) ? d.questions : [],
+      form: d.form || {},
+      status: d.status || "pending",
+      createdAtMs: d.createdAt?.toMillis?.() ?? null,
+      updatedAtMs: d.updatedAt?.toMillis?.() ?? null,
+    };
+  };
+
+  const loadOwnedGameDraft = async (draftId, uid) => {
+    const ref = db.collection(GAME_QUESTION_DRAFTS_COLLECTION).doc(String(draftId));
+    const snap = await ref.get();
+    if (!snap.exists) return { error: { status: 404, message: "Draft not found." } };
+    if (snap.data()?.createdBy !== uid) return { error: { status: 403, message: "Not your draft." } };
+    return { ref, snap };
+  };
+
+  // Validates + trims the request body into what is actually stored.
+  const buildGameDraftData = (body) => {
+    const { classId, gameType, materialIds, numberOfQuestions, questions, form } = body || {};
+    if (!classId || typeof classId !== "string") return { error: "Missing classId." };
+    if (!GAME_DRAFT_TYPES.includes(gameType)) return { error: "Invalid game type." };
+    if (!Array.isArray(questions) || questions.length === 0) return { error: "Missing questions." };
+    if (questions.length > MAX_GAME_DRAFT_QUESTIONS) return { error: "Too many questions in this draft." };
+
+    const safeForm = {};
+    GAME_DRAFT_FORM_TEXT_KEYS.forEach((key) => {
+      safeForm[key] = String(form?.[key] ?? "").slice(0, 5000);
+    });
+    safeForm.disableRepositoryAfterDue = !!form?.disableRepositoryAfterDue;
+
+    const data = {
+      classId,
+      gameType,
+      materialIds: Array.isArray(materialIds)
+        ? materialIds.filter((id) => typeof id === "string").slice(0, 50)
+        : [],
+      numberOfQuestions: Number(numberOfQuestions) || questions.length,
+      questions,
+      form: safeForm,
+    };
+    if (Buffer.byteLength(JSON.stringify(data), "utf8") > MAX_GAME_DRAFT_BYTES) {
+      return { error: "This question set is too large to save as pending." };
+    }
+    return { data };
+  };
+
+  app.get("/game-question-drafts/:classId", requireAuth, async (req, res) => {
+    try {
+      const snap = await db.collection(GAME_QUESTION_DRAFTS_COLLECTION)
+        .where("classId", "==", req.params.classId)
+        .where("createdBy", "==", req.user.uid)
+        .get();
+      const drafts = snap.docs
+        .map(serializeGameDraft)
+        .filter((d) => d.status === "pending")
+        .sort((a, b) => (b.updatedAtMs ?? 0) - (a.updatedAtMs ?? 0));
+      res.json({ success: true, drafts });
+    } catch (error) {
+      console.error("List game question drafts error:", error);
+      res.status(500).json({ error: error.message || "Failed to load pending questions." });
+    }
+  });
+
+  app.post("/game-question-drafts", requireAuth, async (req, res) => {
+    try {
+      const built = buildGameDraftData(req.body);
+      if (built.error) return res.status(400).json({ error: built.error });
+
+      const existing = await db.collection(GAME_QUESTION_DRAFTS_COLLECTION)
+        .where("classId", "==", built.data.classId)
+        .where("createdBy", "==", req.user.uid)
+        .get();
+      if (existing.size >= MAX_GAME_DRAFTS_PER_CLASS) {
+        return res.status(409).json({
+          error: `You already have ${MAX_GAME_DRAFTS_PER_CLASS} pending question sets for this class. Discard some first.`,
+        });
+      }
+
+      const ref = await db.collection(GAME_QUESTION_DRAFTS_COLLECTION).add({
+        ...built.data,
+        status: "pending",
+        createdBy: req.user.uid,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      res.json({ success: true, draft: { id: ref.id } });
+    } catch (error) {
+      console.error("Create game question draft error:", error);
+      res.status(500).json({ error: error.message || "Failed to save pending questions." });
+    }
+  });
+
+  // Autosave of the teacher's edits while the draft is open.
+  app.put("/game-question-drafts/:draftId", requireAuth, async (req, res) => {
+    try {
+      const built = buildGameDraftData(req.body);
+      if (built.error) return res.status(400).json({ error: built.error });
+      const owned = await loadOwnedGameDraft(req.params.draftId, req.user.uid);
+      if (owned.error) return res.status(owned.error.status).json({ error: owned.error.message });
+
+      const { classId: _ignoredClassId, ...toUpdate } = built.data; // a draft never moves classes
+      await owned.ref.update({ ...toUpdate, updatedAt: FieldValue.serverTimestamp() });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Update game question draft error:", error);
+      res.status(500).json({ error: error.message || "Failed to save pending questions." });
+    }
+  });
+
+  app.delete("/game-question-drafts/:draftId", requireAuth, async (req, res) => {
+    try {
+      const owned = await loadOwnedGameDraft(req.params.draftId, req.user.uid);
+      if (owned.error) return res.status(owned.error.status).json({ error: owned.error.message });
+      await owned.ref.delete();
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete game question draft error:", error);
+      res.status(500).json({ error: error.message || "Failed to discard pending questions." });
+    }
+  });
+
   app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res) => {
     try {
       const { classId, moduleNumber, topicTitles, fields, customSections } = req.body;
