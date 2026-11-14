@@ -238,13 +238,25 @@ export default function App() {
   // login only) and whether another device has since replaced it.
   const [sessionReplaced, setSessionReplaced] = useState(false);
   const isLoggingOutRef = useRef(false);
+  // True from the moment a fresh login starts until its new session id has
+  // been claimed AND stored. A "session replaced" signal that arrives in that
+  // window is about the OLD id (or a stale one left on this device), not about
+  // the login that is happening right now, so it must never open the modal.
+  const loginInProgressRef = useRef(false);
+  const isLoggedInRef = useRef(false);
+  isLoggedInRef.current = isLoggedIn;
+  // Only a device that is actually signed in (or restored from cache) can be
+  // "replaced". The login / landing screens can't, so a stale id or a racing
+  // background check can no longer flash the modal there.
+  const canBeReplaced = () =>
+    !loginInProgressRef.current && (isLoggedInRef.current || hasCachedSessionRef.current);
 
   // Any backend request answering 409 SESSION_REPLACED lands here. Ignored if
   // this device has claimed a newer session since that request was sent (a
   // fresh login racing an older in-flight request).
   useEffect(() => {
     onSessionReplacedByServer = (sentSessionId) => {
-      if (isLoggingOutRef.current) return;
+      if (isLoggingOutRef.current || !canBeReplaced()) return;
       if ((sessionIdRef.current || 'none') !== (sentSessionId || 'none')) return;
       setSessionReplaced(true);
     };
@@ -307,7 +319,7 @@ export default function App() {
         // Another device signed in after this one. Ignore the answer if this
         // device has since claimed a newer session itself (a fresh login
         // racing this background check).
-        if (sessionIdRef.current === sessionId) setSessionReplaced(true);
+        if (sessionIdRef.current === sessionId && canBeReplaced()) setSessionReplaced(true);
         return;
       }
 
@@ -400,7 +412,7 @@ export default function App() {
     };
   }, [refreshAuthToken, verifySessionInBackground]);
 
-  const handleLogin = async (user: SignedInUser, freshIdToken?: string) => {
+  const performLogin = async (user: SignedInUser, freshIdToken?: string) => {
     // SignIn already had to force-refresh the token to open the backend
     // session, and now hands it to us here — reuse it instead of paying for
     // a second forced round-trip to Firebase right before the dashboard
@@ -422,6 +434,10 @@ export default function App() {
       // device's own early requests would be rejected as "not the active
       // session". Retried, because a missed claim means the older browser
       // would never be kicked.
+      // Forget any id left over from an earlier session on this device so no
+      // request made while logging in carries it (the server would answer 409
+      // because it is no longer the account's active id).
+      sessionIdRef.current = null;
       let claimed = false;
       for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
         try {
@@ -465,6 +481,17 @@ export default function App() {
       setShowLanding(false);
       setShowRegister(false);
       await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+    }
+  };
+
+  // Marks the whole login (claim + state updates) as "in progress" so nothing
+  // can raise the "signed in on another device" modal in the middle of it.
+  const handleLogin = async (user: SignedInUser, freshIdToken?: string) => {
+    loginInProgressRef.current = true;
+    try {
+      await performLogin(user, freshIdToken);
+    } finally {
+      loginInProgressRef.current = false;
     }
   };
 
@@ -536,7 +563,7 @@ export default function App() {
           'X-Session-Id': sessionId,
         },
       });
-      if (response.status === 409 && (sessionIdRef.current || 'none') === sessionId) {
+      if (response.status === 409 && canBeReplaced() && (sessionIdRef.current || 'none') === sessionId) {
         setSessionReplaced(true);
       }
     } catch {
@@ -579,7 +606,7 @@ export default function App() {
         // (logged in before this feature) is replaced too.
         const mine = sessionIdRef.current;
         console.log('[session] live event', payload?.sessionId?.slice?.(0, 8), 'mine', mine?.slice?.(0, 8));
-        if (payload?.sessionId && payload.sessionId !== mine) setSessionReplaced(true);
+        if (payload?.sessionId && payload.sessionId !== mine && canBeReplaced()) setSessionReplaced(true);
       },
     },
     onSync: () => void checkSessionNow(),
