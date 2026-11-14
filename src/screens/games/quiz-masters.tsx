@@ -295,11 +295,53 @@ function seededShuffle<T>(items: T[], seed: number): T[] {
   return out;
 }
 
+// Picks which letter (slot) each question's correct answer lands on: random,
+// but kept roughly even. A letter can't be used more than ceil(N / slots) + 1
+// times, less-used letters are favoured, every letter shows up at least once
+// (when there are enough questions), and obvious patterns are rejected (same
+// letter 3 times in a row, or A-B-C / D-C-B style runs). Repeats like
+// "B, B, D, A, C, B, A, A" are fine.
+function pickCorrectSlots(count: number, slots: number, rand: () => number): number[] {
+  const cap = Math.ceil(count / slots) + 1;
+  const looksPatterned = (seq: number[]) =>
+    seq.some((v, i) => {
+      if (i < 2) return false;
+      const d1 = v - seq[i - 1];
+      const d2 = seq[i - 1] - seq[i - 2];
+      return (d1 === 0 && d2 === 0) || (d1 === 1 && d2 === 1) || (d1 === -1 && d2 === -1);
+    });
+  let best: number[] = [];
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const counts: number[] = Array(slots).fill(0);
+    const seq: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const weights = counts.map((c) => (c >= cap ? 0 : (cap - c) * (cap - c)));
+      const total = weights.reduce((a, b) => a + b, 0);
+      let k = 0;
+      if (total > 0) {
+        let roll = rand() * total;
+        while (k < slots - 1 && roll >= weights[k]) {
+          roll -= weights[k];
+          k++;
+        }
+      } else {
+        k = Math.floor(rand() * slots);
+      }
+      seq.push(k);
+      counts[k]++;
+    }
+    best = seq;
+    const allUsed = count < slots || counts.every((c) => c > 0);
+    if (allUsed && !looksPatterned(seq)) return seq;
+  }
+  return best;
+}
+
 // Re-places each multiple-choice question's options so the CORRECT answer's
-// letter is spread evenly over A–D (8 questions → two each of A, B, C, D) and
-// never the same letter 3 times in a row. Wrong options fill the other slots in
-// random order. Seeded, so the same seed always gives the same layout (keeps a
-// resumed attempt identical); a new seed ("Play Again") gives a new layout.
+// letter is random but roughly even (see pickCorrectSlots). Wrong options fill
+// the other slots in random order. Seeded, so the same seed always gives the
+// same layout (keeps a resumed attempt identical); a new seed ("Play Again")
+// gives a new layout.
 function balanceTriviaOptions<T extends { options: string[]; answer: string }>(
   items: T[],
   seed: number
@@ -322,14 +364,7 @@ function balanceTriviaOptions<T extends { options: string[]; answer: string }>(
   };
 
   const maxSlots = Math.max(2, ...items.map((it) => it.options.length));
-  const base = Array.from({ length: items.length }, (_, i) => i % maxSlots);
-  const hasRunOf3 = (arr: number[]) =>
-    arr.some((v, i) => i >= 2 && arr[i - 1] === v && arr[i - 2] === v);
-  let targets = base;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    targets = shuffle(base);
-    if (!hasRunOf3(targets)) break;
-  }
+  const targets = pickCorrectSlots(items.length, maxSlots, rand);
 
   return items.map((item, i) => {
     const n = item.options.length;
@@ -380,6 +415,31 @@ function createFillBlankItems(questions: QuizQuestion[]): FillBlankItem[] {
 }
 
 // Updated to handle both legacy QuizQuestion shape and new backend memory_match shape
+// Shuffles both matching columns independently, then re-shuffles Column B until
+// no definition sits in the same row as its own term (so a pair never lines up
+// side by side). With a single pair there is nothing to avoid.
+function shuffleColumnsNoAlignment<
+  A extends { pairId: string | number },
+  B extends { pairId: string | number }
+>(terms: A[], defs: B[]): { terms: A[]; defs: B[] } {
+  const shuffle = <U,>(arr: U[]): U[] => {
+    const out = [...arr];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  };
+  const t = shuffle(terms);
+  let d = shuffle(defs);
+  if (t.length > 1) {
+    for (let attempt = 0; attempt < 200 && d.some((c, i) => c.pairId === t[i].pairId); attempt++) {
+      d = shuffle(defs);
+    }
+  }
+  return { terms: t, defs: d };
+}
+
 function createMatchingCards(questions: any[]): MatchingCard[] {
   const cards = questions.flatMap((item, index) => {
     const pairId = `pair-${index}`;
@@ -404,7 +464,13 @@ function createMatchingCards(questions: any[]): MatchingCard[] {
     ];
   });
 
-  return shuffleArray(cards);
+  // Terms and definitions are shuffled per column (and never share a row with
+  // their own pair). Callers split the result by type, which keeps this order.
+  const { terms, defs } = shuffleColumnsNoAlignment(
+    cards.filter((c) => c.type === 'term'),
+    cards.filter((c) => c.type === 'definition')
+  );
+  return [...terms, ...defs];
 }
 
 // One distinct color per term (cycled if there are more than 12). The term, its

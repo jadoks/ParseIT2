@@ -136,6 +136,31 @@ function getGameProgressStorageKey(assignmentId?: string, studentId?: string) {
   return `gameProgress_${studentId || 'anonymous'}_${assignmentId || 'unknown'}`;
 }
 
+// Shuffles both matching columns independently, then re-shuffles Column B until
+// no definition sits in the same row as its own term (so a pair never lines up
+// side by side). With a single pair there is nothing to avoid.
+function shuffleColumnsNoAlignment<
+  A extends { pairId: string | number },
+  B extends { pairId: string | number }
+>(terms: A[], defs: B[]): { terms: A[]; defs: B[] } {
+  const shuffle = <U,>(arr: U[]): U[] => {
+    const out = [...arr];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  };
+  const t = shuffle(terms);
+  let d = shuffle(defs);
+  if (t.length > 1) {
+    for (let attempt = 0; attempt < 200 && d.some((c, i) => c.pairId === t[i].pairId); attempt++) {
+      d = shuffle(defs);
+    }
+  }
+  return { terms: t, defs: d };
+}
+
 // Random permutation of 0..n-1 (Fisher-Yates). order[displayPosition] = originalIndex.
 function makeShuffledOrder(n: number): number[] {
   const arr = Array.from({ length: n }, (_, i) => i);
@@ -146,27 +171,54 @@ function makeShuffledOrder(n: number): number[] {
   return arr;
 }
 
-// Builds a shuffled option order for every question, with the CORRECT answer's
-// letter spread evenly over A–D (e.g. 8 questions → two each of A, B, C, D) and
-// never the same letter 3 times in a row. The remaining options are shuffled
-// randomly into the other slots. order[displayPosition] = originalIndex.
-function makeBalancedOrders(questions: GameQuestion[]): number[][] {
-  const count = questions.length;
-  const maxSlots = Math.max(2, ...questions.map((q) => q.options?.length ?? 0));
-
-  // Targets for where each question's correct answer lands: A,B,C,D,A,B,... then shuffled.
-  const base = Array.from({ length: count }, (_, i) => i % maxSlots);
-  const hasRunOf3 = (arr: number[]) => arr.some((v, i) => i >= 2 && arr[i - 1] === v && arr[i - 2] === v);
-  let targets = base;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const arr = [...base];
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+// Picks which letter (slot) each question's correct answer lands on: random,
+// but kept roughly even. A letter can't be used more than ceil(N / slots) + 1
+// times, less-used letters are favoured, every letter shows up at least once
+// (when there are enough questions), and obvious patterns are rejected (same
+// letter 3 times in a row, or A-B-C / D-C-B style runs). Repeats like
+// "B, B, D, A, C, B, A, A" are fine.
+function pickCorrectSlots(count: number, slots: number, rand: () => number): number[] {
+  const cap = Math.ceil(count / slots) + 1;
+  const looksPatterned = (seq: number[]) =>
+    seq.some((v, i) => {
+      if (i < 2) return false;
+      const d1 = v - seq[i - 1];
+      const d2 = seq[i - 1] - seq[i - 2];
+      return (d1 === 0 && d2 === 0) || (d1 === 1 && d2 === 1) || (d1 === -1 && d2 === -1);
+    });
+  let best: number[] = [];
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const counts: number[] = Array(slots).fill(0);
+    const seq: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const weights = counts.map((c) => (c >= cap ? 0 : (cap - c) * (cap - c)));
+      const total = weights.reduce((a, b) => a + b, 0);
+      let k = 0;
+      if (total > 0) {
+        let roll = rand() * total;
+        while (k < slots - 1 && roll >= weights[k]) {
+          roll -= weights[k];
+          k++;
+        }
+      } else {
+        k = Math.floor(rand() * slots);
+      }
+      seq.push(k);
+      counts[k]++;
     }
-    targets = arr;
-    if (!hasRunOf3(arr)) break;
+    best = seq;
+    const allUsed = count < slots || counts.every((c) => c > 0);
+    if (allUsed && !looksPatterned(seq)) return seq;
   }
+  return best;
+}
+
+// Builds a shuffled option order for every question. The CORRECT answer's letter
+// comes from pickCorrectSlots (random but roughly even); the remaining options
+// are shuffled randomly into the other slots. order[displayPosition] = originalIndex.
+function makeBalancedOrders(questions: GameQuestion[]): number[][] {
+  const maxSlots = Math.max(2, ...questions.map((q) => q.options?.length ?? 0));
+  const targets = pickCorrectSlots(questions.length, maxSlots, Math.random);
 
   return questions.map((q, qi) => {
     const n = q.options?.length ?? 0;
@@ -350,9 +402,12 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         cards.push({ id: `term-${idx}`, text: q.question, pairId: idx, type: 'term', column: 'A' });
         cards.push({ id: `def-${idx}`, text: q.answer, pairId: idx, type: 'def', column: 'B' });
       });
-      // Shuffle cards within each column independently
-      const terms = cards.filter(c => c.type === 'term').sort(() => Math.random() - 0.5);
-      const defs = cards.filter(c => c.type === 'def').sort(() => Math.random() - 0.5);
+      // Shuffle each column independently, but never let a term sit in the
+      // same row as its own definition
+      const { terms, defs } = shuffleColumnsNoAlignment(
+        cards.filter(c => c.type === 'term'),
+        cards.filter(c => c.type === 'def')
+      );
       setTermAnswers({});
       setMatchingResults({});
       setMatchingSubmitted(false);
