@@ -1205,10 +1205,16 @@ async function createReadSignedUrl(storagePath) {
   const cached = getCachedEntry(storagePath);
   if (cached) return cached.url;
  
+  // PDFs are served inline with the right content type so browsers display them.
+  const isPdf = String(storagePath).toLowerCase().endsWith(".pdf");
   const [url] = await bucket.file(storagePath).getSignedUrl({
     version: "v4",
     action: "read",
     expires: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
+    ...(isPdf && {
+      responseType: "application/pdf",
+      responseDisposition: "inline",
+    }),
   });
  
   setCachedEntry(storagePath, url);
@@ -4648,10 +4654,17 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
         });
       }
       
-      // Generate signed URL with longer expiry
+      // Generate signed URL with longer expiry. PDFs are served inline with the
+      // right content type so the browser displays them instead of downloading.
+      const isPdf = storagePath.toLowerCase().endsWith(".pdf");
       const [url] = await file.getSignedUrl({
+        version: "v4",
         action: 'read',
         expires: Date.now() + (60 * 60 * 1000), // 1 hour
+        ...(isPdf && {
+          responseType: "application/pdf",
+          responseDisposition: "inline",
+        }),
       });
       
       return res.json({

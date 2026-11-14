@@ -47,6 +47,7 @@ import {
 // Dashboard, ClassesScreen) instead of native Alert.alert, so feedback here
 // looks and behaves consistently everywhere.
 import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import PdfJsViewer from '../components/PdfJsViewer'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -327,11 +328,22 @@ function isImageFile(fileName?: string, fileType?: string): boolean {
     mime.startsWith('image/');
 }
 
+// ✅ HELPER: Check if file is a PDF
+function isPdfFile(fileName?: string, fileType?: string): boolean {
+  const ext = fileName?.split('.').pop()?.toLowerCase() || '';
+  return ext === 'pdf' || (fileType || '').toLowerCase() === 'application/pdf';
+}
+
 // ✅ HELPER: Get Viewer URL for Documents
 function getViewerUrl(fileUrl: string, fileName?: string, fileType?: string,  pdfUrl?: string | null): string {
   // For images, return direct URL
   if (isImageFile(fileName, fileType)) return fileUrl;
-  // For documents, use Google Docs Viewer
+  // PDFs: skip the Google Docs viewer. gview fetches the file from Google's
+  // servers and fails at random with "File wasn't available on site".
+  // Web/iOS render the raw URL natively; Android renders it with <PdfJsViewer>
+  // (see InlineMaterialViewer), which needs the raw URL too.
+  if (isPdfFile(fileName, fileType)) return fileUrl;
+  // Other documents (docx, pptx, ...) still need a viewer.
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
 
@@ -452,7 +464,9 @@ function InlineMaterialViewer({
   };
 
   useEffect(() => {
-    if (canRefresh && !hasAutoRefreshed) {
+    // Skipped for PDFs: they load straight from the signed URL (valid for an
+    // hour), so an extra re-sign would only remount the iframe and reload it.
+    if (canRefresh && !hasAutoRefreshed && !isPdfFile(fileName, fileType)) {
       setHasAutoRefreshed(true);
       void tryRefreshUrl(true);
     }
@@ -556,6 +570,16 @@ function InlineMaterialViewer({
           allow="autoplay"
           title="Document Viewer"
         />
+      </View>
+    );
+  }
+
+  // Android can't show PDFs in a WebView: render them with PDF.js instead.
+  if (Platform.OS === "android" && isPdfFile(fileName, fileType) && !viewerUrl) {
+    return (
+      <View style={{ flex: 1, width: "100%", height }}>
+        <RefreshBar />
+        <PdfJsViewer url={resolvedUrl} fileName={fileName} height={canRefresh ? height - 34 : height} />
       </View>
     );
   }

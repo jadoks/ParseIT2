@@ -25,6 +25,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as XLSX from 'xlsx';
+import PdfJsViewer from '../components/PdfJsViewer'; // adjust path if your folder layout differs
 import Toast from '../Final_Admin_Components/Toast';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import TeacherAssignmentSection from './TeacherAssignmentSection';
@@ -931,12 +932,33 @@ function getMicrosoftOfficeFullViewerUrl(fileUrl: string) {
   return `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
 
+function isPdfFile(fileName?: string | null, fileType?: string | null): boolean {
+  const ext = (fileName || '').split('.').pop()?.toLowerCase() || '';
+  return ext === 'pdf' || (fileType || '').toLowerCase() === 'application/pdf';
+}
+
+function isImageFile(fileName?: string | null, fileType?: string | null): boolean {
+  const ext = (fileName || '').split('.').pop()?.toLowerCase() || '';
+  return (
+    (fileType || '').toLowerCase().startsWith('image/') ||
+    ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)
+  );
+}
+
 function getViewerUrl(
   fileUrl: string,
   fileName?: string | null,
   fileType?: string | null,
   pdfUrl?: string | null
 ): string {
+  // Browsers render images and PDFs natively, so skip the Google Docs viewer for
+  // them. gview fetches the file from Google's servers and fails at random with
+  // "File wasn't available on site".
+  if (isImageFile(fileName, fileType)) return fileUrl;
+  // Web/iOS render the raw URL natively; Android renders it with <PdfJsViewer>
+  // (see InlineMaterialViewer), which needs the raw URL too.
+  if (isPdfFile(fileName, fileType)) return fileUrl;
+  // docx / pptx / xlsx etc. still need a viewer.
   return getGoogleDocsViewerUrl(fileUrl);
 }
 
@@ -1928,7 +1950,9 @@ function InlineMaterialViewer({
   // One silent re-sign on open so an already-expired link is fixed before the
   // teacher ever sees a broken preview.
   useEffect(() => {
-    if (canRefresh && !hasAutoRefreshed) {
+    // Skipped for PDFs/images: they load straight from the signed URL (valid for
+    // an hour), so an extra re-sign would only remount the iframe and reload it.
+    if (canRefresh && !hasAutoRefreshed && !isPdfFile(fileName, fileType) && !isImageFile(fileName, fileType)) {
       setHasAutoRefreshed(true);
       void tryRefreshUrl(true);
     }
@@ -1978,6 +2002,16 @@ function InlineMaterialViewer({
       </View>
     );
   }
+  // Android can't show PDFs in a WebView: render them with PDF.js instead.
+  if (Platform.OS === 'android' && isPdfFile(fileName, fileType)) {
+    return (
+      <View style={{ flex: 1, width: '100%', height }}>
+        <RefreshBar />
+        <PdfJsViewer url={resolvedViewerUrl} fileName={fileName} height={canRefresh ? height - 34 : height} />
+      </View>
+    );
+  }
+
   if (WebView) {
     return (
       <View style={{ flex: 1, width: '100%', height }}>
