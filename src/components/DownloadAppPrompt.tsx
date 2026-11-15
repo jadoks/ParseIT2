@@ -15,17 +15,11 @@ import QRCode from 'react-native-qrcode-svg';
 import { FONT_BODY, WEIGHT_EMPHASIS } from '../theme/typography';
 import {
     APK_DOWNLOAD_URL,
-    DISMISS_COOLDOWN_MS,
-    IGNORED_COOLDOWN_MS,
     PROMPT_AUTO_HIDE_MS,
-    PROMPT_DELAY_MS,
     canOfferApk,
     isPromptSuppressed,
     markAppDownloaded,
-    markShownThisSession,
-    snoozePrompt,
     useCanHover,
-    wasShownThisSession,
 } from './downloadAppShared';
 
 /**
@@ -35,11 +29,12 @@ import {
  * Dashboard / Profile / Community screens), not in the header:
  *   <DownloadAppPrompt enabled={...} />
  *
- * - Opens by itself once per session after PROMPT_DELAY_MS, folds into a
- *   small semi-transparent tab after PROMPT_AUTO_HIDE_MS (paused on hover).
+ * - Opens on EVERY page load (after a short OPEN_DELAY_MS), once per load.
+ * - Folds into a small semi-transparent tab when the user taps/clicks outside
+ *   the card, scrolls the page, swipes, or presses Esc. It also folds itself
+ *   after PROMPT_AUTO_HIDE_MS (paused while the mouse is over the card).
  * - The tab is always available (unless native app / iOS) to reopen it.
- * - Hide (chevron / Esc) → DISMISS_COOLDOWN_MS; ignored → IGNORED_COOLDOWN_MS;
- *   Download → never auto-opens again. Cooldowns only stop the AUTO-open.
+ * - Only a completed Download stops the auto-open on later loads.
  * - Mouse devices: QR card. Touch devices: DOWNLOAD pill.
  */
 
@@ -51,12 +46,15 @@ type Props = {
 };
 
 const BRAND = '#8B0000';
+const OPEN_DELAY_MS = 1200; // let the page paint first
+const GRACE_MS = 700; // ignore scroll/touch noise right after opening
+const SWIPE_THRESHOLD_PX = 12;
 const CARD_MAX_WIDTH = 320;
 const EDGE_GAP = 12;
 
 const DownloadAppPrompt: React.FC<Props> = ({
   enabled,
-  delayMs = PROMPT_DELAY_MS,
+  delayMs = OPEN_DELAY_MS,
   autoHideMs = PROMPT_AUTO_HIDE_MS,
 }) => {
   const { width } = useWindowDimensions();
@@ -64,16 +62,16 @@ const DownloadAppPrompt: React.FC<Props> = ({
   const [open, setOpen] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [tabHover, setTabHover] = useState(false);
-  const autoOpened = useRef(false);
+  const autoOpenedOnce = useRef(false);
   const progress = useRef(new Animated.Value(0)).current;
 
   // Native app / iOS: never render anything.
   const available = useRef(canOfferApk()).current;
-  // Auto-open eligibility (downloaded / cooldown / already shown this session).
-  const autoEligible = useRef(
-    available && !isPromptSuppressed() && !wasShownThisSession()
-  ).current;
+  // Auto-open every load, unless they already downloaded the app.
+  const autoEligible = useRef(available && !isPromptSuppressed()).current;
   const [delayDone, setDelayDone] = useState(false);
+  const openedAt = useRef(0);
+  const cardRef = useRef<any>(null);
 
   const cardWidth = Math.min(CARD_MAX_WIDTH, Math.max(200, width - EDGE_GAP * 2));
   const small = width < 600;
@@ -96,14 +94,13 @@ const DownloadAppPrompt: React.FC<Props> = ({
     return () => clearTimeout(t);
   }, [autoEligible, delayMs]);
 
-  // 2) auto-open once, only when the current screen allows it
+  // 2) auto-open once per load, as soon as the current screen allows it
   useEffect(() => {
-    if (autoEligible && delayDone && enabled && !open && !wasShownThisSession()) {
-      markShownThisSession();
-      autoOpened.current = true;
+    if (autoEligible && delayDone && enabled && !autoOpenedOnce.current) {
+      autoOpenedOnce.current = true;
       setOpen(true);
     }
-  }, [autoEligible, delayDone, enabled, open]);
+  }, [autoEligible, delayDone, enabled]);
 
   // 3) screen no longer allowed → fold quietly (no cooldown)
   useEffect(() => {
@@ -113,33 +110,68 @@ const DownloadAppPrompt: React.FC<Props> = ({
     }
   }, [open, enabled]);
 
-  const hide = useCallback((reason: 'user' | 'auto') => {
+  const hide = useCallback(() => {
     setOpen(false);
     setHovering(false);
-    if (reason === 'user') snoozePrompt(DISMISS_COOLDOWN_MS);
-    else if (autoOpened.current) snoozePrompt(IGNORED_COOLDOWN_MS);
-    autoOpened.current = false;
   }, []);
 
   // 4) auto-hide (paused while the mouse is over the card)
   useEffect(() => {
     if (!open || hovering) return;
-    const t = setTimeout(() => hide('auto'), autoHideMs);
+    const t = setTimeout(hide, autoHideMs);
     return () => clearTimeout(t);
   }, [open, hovering, autoHideMs, hide]);
 
-  // Esc hides
+  // Esc, tap/click outside, scroll/wheel, or swipe → fold into the tab
   useEffect(() => {
     if (!open || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && hide('user');
+    openedAt.current = Date.now();
+    const inside = (t: any) => !!(cardRef.current && t && cardRef.current.contains?.(t));
+    const grace = () => Date.now() - openedAt.current < GRACE_MS;
+    let startX = 0;
+    let startY = 0;
+
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && hide();
+    const onPointerDown = (e: any) => {
+      if (!grace() && !inside(e.target)) hide();
+    };
+    const onScroll = (e: any) => {
+      if (!grace() && !inside(e.target)) hide();
+    };
+    const onWheel = (e: any) => {
+      if (!grace() && !inside(e.target)) hide();
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0]?.clientX ?? 0;
+      startY = e.touches[0]?.clientY ?? 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (grace() || inside(e.target)) return;
+      const t = e.touches[0];
+      if (!t) return;
+      if (Math.abs(t.clientX - startX) > SWIPE_THRESHOLD_PX || Math.abs(t.clientY - startY) > SWIPE_THRESHOLD_PX) {
+        hide();
+      }
+    };
+
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('scroll', onScroll, true); // capture: catches inner scroll views too
+    document.addEventListener('wheel', onWheel, { capture: true, passive: true });
+    document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('wheel', onWheel, true);
+      document.removeEventListener('touchstart', onTouchStart, true);
+      document.removeEventListener('touchmove', onTouchMove, true);
+    };
   }, [open, hide]);
 
   const handleDownload = () => {
     markAppDownloaded(); // never auto-opens again
-    markShownThisSession();
-    autoOpened.current = false;
     setOpen(false);
     Linking.openURL(APK_DOWNLOAD_URL).catch(() => {});
   };
@@ -153,6 +185,7 @@ const DownloadAppPrompt: React.FC<Props> = ({
     <>
       {/* ───────── Expanded card ───────── */}
       <Animated.View
+        ref={cardRef}
         pointerEvents={open ? 'auto' : 'none'}
         style={[
           styles.cardWrap,
@@ -185,7 +218,7 @@ const DownloadAppPrompt: React.FC<Props> = ({
               <Text style={styles.sub} numberOfLines={1}>ParseIT Hub for Android</Text>
             </View>
             <Pressable
-              onPress={() => hide('user')}
+              onPress={hide}
               hitSlop={8}
               accessibilityLabel="Hide download prompt"
               style={styles.hideBtn}
@@ -241,7 +274,6 @@ const DownloadAppPrompt: React.FC<Props> = ({
         )}
         <Pressable
           onPress={() => {
-            autoOpened.current = false;
             setOpen(true);
           }}
           accessibilityRole="button"
