@@ -20,6 +20,7 @@ type ToastType = 'success' | 'error' | 'info';
 // 🔥 UPDATED: use the shared, auto-refreshing apiFetch instead of a local createSecureFetch
 import { API_BASE_URL, apiFetch } from './services/api'; // adjust path if your folder layout differs
 
+import DownloadAppPrompt from './components/DownloadAppPrompt';
 import { useLiveEvents } from './hooks/useLiveEvents';
 import Grades from './teacher_components/Grades';
 import TeacherAnalytics from './teacher_components/TeacherAnalytics';
@@ -1584,6 +1585,10 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
           />
         </View>
       </Modal>
+      {/* 📲 Download-app nudge: web only, once per session, after ~45s */}
+      <DownloadAppPrompt
+        enabled={['home', 'grades', 'announcement', 'community', 'analytics'].includes(activeScreen)}
+      />
     </SafeAreaView>
   );
 }

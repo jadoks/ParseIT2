@@ -25,6 +25,7 @@ import { Announcement } from './components/AnnouncementModal';
 // flicker/reload every few seconds. Reusing the cached URL keeps the string
 // stable between polls, so the banner only actually reloads when it expires.
 import { getCachedBannerUrl, setCachedBannerUrl } from '../src/components/Bannerurlcache'; // adjust path if your folder layout differs
+import DownloadAppPrompt from './components/DownloadAppPrompt';
 import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
@@ -3651,6 +3652,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             </View>
           </View>
         </Modal>
+        {/* 📲 Download-app nudge: web only, once per session, after ~45s, never in games/quizzes */}
+        <DownloadAppPrompt
+          enabled={['home', 'classes', 'videos', 'community', 'analytics'].includes(activeScreen)}
+        />
       </SafeAreaView>
     </>
   );

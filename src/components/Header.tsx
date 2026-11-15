@@ -19,6 +19,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FONT_BODY, WEIGHT_EMPHASIS } from '../theme/typography';
+import DownloadAppButton from './DownloadAppButton';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -780,6 +781,15 @@ const renderSearchResults = () => {
               </View>
             )}
 
+            {/* 📲 Download app (tap to download APK) */}
+            <DownloadAppButton
+              buttonStyle={styles.navBtn}
+              hoverStyle={styles.navBtnHover}
+              onBeforePress={() => toggleSearch(false)}
+            >
+              <MaterialCommunityIcons name="download" size={navIconSize} color="#65676B" />
+            </DownloadAppButton>
+
             {/* 👇 Mobile Messenger Icon with Badge */}
             <TouchableOpacity
               style={styles.navBtn}
@@ -916,7 +926,16 @@ const renderSearchResults = () => {
         {navScreens.map((screen) => renderNavButton(screen, navIconSize))}
       </View>
 
-      <View style={[styles.navItemWrapper, { marginLeft: 'auto' }]}>
+      <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      {/* 📲 Download app — hover shows QR on PC/laptop, tap downloads on touch devices */}
+      <DownloadAppButton
+        buttonStyle={styles.navBtn}
+        hoverStyle={styles.navBtnHover}
+      >
+        <MaterialCommunityIcons name="download" size={navIconSize} color="#65676B" />
+      </DownloadAppButton>
+
+      <View style={[styles.navItemWrapper]}>
         <Pressable
           style={(state: any) => [
             styles.navBtn,
@@ -957,6 +976,7 @@ const renderSearchResults = () => {
             <Text style={styles.tooltipText}>{getNavLabel('notification')}</Text>
           </View>
         )}
+      </View>
       </View>
     </View>
   );
