@@ -675,7 +675,7 @@ const desktopNavScreens: (
               hoverStyle={styles.navBtnHover}
               onBeforePress={() => toggleSearch(false)}
             >
-              <MaterialCommunityIcons name="download" size={navIconSize} color="#65676B" />
+              <Ionicons name="download" size={navIconSize} color="#65676B" />
             </DownloadAppButton>
 
             {/* ✅ MESSENGER ICON WITH BADGE (MOBILE) */}
@@ -822,7 +822,7 @@ const desktopNavScreens: (
         buttonStyle={styles.navBtn}
         hoverStyle={styles.navBtnHover}
       >
-        <MaterialCommunityIcons name="download" size={navIconSize} color="#65676B" />
+        <Ionicons name="download" size={navIconSize} color="#65676B" />
       </DownloadAppButton>
 
       <View style={[styles.navItemWrapper]}>
