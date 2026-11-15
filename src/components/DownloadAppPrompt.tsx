@@ -59,6 +59,9 @@ const DownloadAppPrompt: React.FC<Props> = ({
   const { width } = useWindowDimensions();
   const canHover = useCanHover(); // true = PC/laptop → QR card, false = touch → pill
   const [open, setOpen] = useState(false);
+  // The card is only in the DOM while open/animating. A hidden card parked
+  // off-screen to the right widens the page and shifts fixed overlays (modals).
+  const [cardMounted, setCardMounted] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [tabHover, setTabHover] = useState(false);
   const autoOpenedOnce = useRef(false);
@@ -79,12 +82,17 @@ const DownloadAppPrompt: React.FC<Props> = ({
   const top = small ? 8 : EDGE_GAP;
 
   useEffect(() => {
+    if (open) setCardMounted(true);
     Animated.timing(progress, {
       toValue: open ? 1 : 0,
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
+      // Soft ease: quick start then a long gentle landing when opening,
+      // slow-in / slow-out when folding away.
+      duration: open ? 380 : 480,
+      easing: open ? Easing.out(Easing.cubic) : Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: false,
-    }).start();
+    }).start(({ finished }) => {
+      if (finished && !open) setCardMounted(false);
+    });
   }, [open, progress]);
 
   // 1) wait for the delay
@@ -184,8 +192,9 @@ const DownloadAppPrompt: React.FC<Props> = ({
     ({ onHoverIn: on, onHoverOut: off } as any);
 
   return (
-    <>
+    <View pointerEvents="box-none" style={styles.layer}>
       {/* ───────── Expanded card ───────── */}
+      {cardMounted && (
       <Animated.View
         ref={cardRef}
         pointerEvents={open ? 'auto' : 'none'}
@@ -195,12 +204,22 @@ const DownloadAppPrompt: React.FC<Props> = ({
             top,
             right: EDGE_GAP,
             width: cardWidth,
-            opacity: progress,
+            // fades out a little ahead of the slide so it dissolves as it glides away
+            opacity: progress.interpolate({
+              inputRange: [0, 0.6, 1],
+              outputRange: [0, 0.85, 1],
+            }),
             transform: [
               {
                 translateX: progress.interpolate({
                   inputRange: [0, 1],
                   outputRange: [cardWidth + EDGE_GAP * 2, 0],
+                }),
+              },
+              {
+                scale: progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.94, 1],
                 }),
               },
             ],
@@ -257,6 +276,7 @@ const DownloadAppPrompt: React.FC<Props> = ({
           )}
         </Pressable>
       </Animated.View>
+      )}
 
       {/* ───────── Hidden state: small see-through tab ───────── */}
       <Animated.View
@@ -265,7 +285,20 @@ const DownloadAppPrompt: React.FC<Props> = ({
           styles.tabWrap,
           {
             top,
-            opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+            // the tab fades/slides in during the last part of the fold-away
+            opacity: progress.interpolate({
+              inputRange: [0, 0.35, 1],
+              outputRange: [1, 0, 0],
+            }),
+            transform: [
+              {
+                translateX: progress.interpolate({
+                  inputRange: [0, 0.35],
+                  outputRange: [0, 14],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ],
           },
         ]}
       >
@@ -286,7 +319,7 @@ const DownloadAppPrompt: React.FC<Props> = ({
           <MaterialCommunityIcons name="download" size={20} color="#FFF" />
         </Pressable>
       </Animated.View>
-    </>
+    </View>
   );
 };
 
@@ -299,6 +332,9 @@ const shadow = {
 };
 
 const styles = StyleSheet.create({
+  // Clips everything (incl. the slide-in animation) to the content area so
+  // nothing can ever stick out and make the page wider than the screen.
+  layer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden', zIndex: 60, elevation: 60 },
   cardWrap: { position: 'absolute', zIndex: 60, elevation: 60 },
   card: {
     backgroundColor: '#FFF',
