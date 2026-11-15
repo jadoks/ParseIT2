@@ -2,15 +2,14 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
 // ─────────────────────────────────────────────────────────────
-// 👇 PUT YOUR APK FILE ID HERE (the ONLY place you need to edit)
-// Open the APK in Google Drive → ⋮ → Share → "Anyone with the link" →
-// Copy link. It looks like:
-//   https://drive.google.com/file/d/<FILE_ID>/view?usp=sharing
-// Paste only the <FILE_ID> part below.
-// (The FOLDER link can't be downloaded directly — it must be the FILE id.)
+// 👇 APK location: Firebase Storage (public-read folder `apk/`).
+// Upload the file as  apk/ParseClass.apk  in the Firebase console.
+// Re-uploading a new build with the SAME name keeps this link (and the QR
+// code) working. Change APK_PATH only if you use a different file name.
 // ─────────────────────────────────────────────────────────────
-const APK_FILE_ID = '1VYpY7psTjRYZgb5pxhuK995JblXGoSIC';
-export const APK_DOWNLOAD_URL = `https://drive.google.com/uc?export=download&id=${APK_FILE_ID}`;
+const STORAGE_BUCKET = 'parseit2-4b26d.firebasestorage.app';
+const APK_PATH = 'apk/ParseClass.apk';
+export const APK_DOWNLOAD_URL = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(APK_PATH)}?alt=media`;
 
 // ── Prompt timing / cooldown settings ────────────────────────
 export const PROMPT_DELAY_MS = 45 * 1000; // show after ~45s of use
