@@ -3,12 +3,12 @@ import { Platform } from 'react-native';
 
 // ─────────────────────────────────────────────────────────────
 // 👇 APK location: Firebase Storage (public-read folder `apk/`).
-// Upload the file as  apk/ParseClass.apk  in the Firebase console.
+// Upload the file as  apk/ParseITHub.apk  in the Firebase console.
 // Re-uploading a new build with the SAME name keeps this link (and the QR
 // code) working. Change APK_PATH only if you use a different file name.
 // ─────────────────────────────────────────────────────────────
 const STORAGE_BUCKET = 'parseit2-4b26d.firebasestorage.app';
-const APK_PATH = 'apk/ParseClass.apk';
+const APK_PATH = 'apk/ParseITHub.apk';
 export const APK_DOWNLOAD_URL = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(APK_PATH)}?alt=media`;
 
 // ── Prompt timing / cooldown settings ────────────────────────
