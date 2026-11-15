@@ -3361,6 +3361,16 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             />
           )}
           <View style={{ flex: 1 }}>{renderScreen()}</View>
+          {/* 📲 Download-app overlay: top-right of the content area (Dashboard, Profile, Community…),
+              same layer as the floating chat. Hidden on games/quizzes and full-page screens. */}
+          <DownloadAppPrompt
+            enabled={
+              !isFullscreenScreen &&
+              !isMobileFullscreenScreen &&
+              activeScreen !== 'messenger' &&
+              activeScreen !== 'notification'
+            }
+          />
         </View>
         {!isFullscreenScreen &&
           !isMobileFullscreenScreen &&
@@ -3652,10 +3662,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             </View>
           </View>
         </Modal>
-        {/* 📲 Download-app nudge: web only, once per session, after ~45s, never in games/quizzes */}
-        <DownloadAppPrompt
-          enabled={['home', 'classes', 'videos', 'community', 'analytics'].includes(activeScreen)}
-        />
       </SafeAreaView>
     </>
   );

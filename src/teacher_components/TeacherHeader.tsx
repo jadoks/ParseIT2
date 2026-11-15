@@ -17,7 +17,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import DownloadAppButton from '../components/DownloadAppButton';
 import { FONT_BODY, WEIGHT_EMPHASIS } from '../theme/typography';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -669,15 +668,6 @@ const desktopNavScreens: (
               </View>
             )}
 
-            {/* 📲 Download app (tap to download APK) */}
-            <DownloadAppButton
-              buttonStyle={styles.navBtn}
-              hoverStyle={styles.navBtnHover}
-              onBeforePress={() => toggleSearch(false)}
-            >
-              <Ionicons name="download" size={navIconSize} color="#65676B" />
-            </DownloadAppButton>
-
             {/* ✅ MESSENGER ICON WITH BADGE (MOBILE) */}
             <TouchableOpacity
               style={styles.navBtn}
@@ -817,14 +807,6 @@ const desktopNavScreens: (
       </View>
 
       <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      {/* 📲 Download app — hover shows QR on PC/laptop, tap downloads on touch devices */}
-      <DownloadAppButton
-        buttonStyle={styles.navBtn}
-        hoverStyle={styles.navBtnHover}
-      >
-        <Ionicons name="download" size={navIconSize} color="#65676B" />
-      </DownloadAppButton>
-
       <View style={[styles.navItemWrapper]}>
         <Pressable
           style={({ pressed }) => [

@@ -1525,6 +1525,14 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             </View>
           )}
         </View>
+        {/* 📲 Download-app overlay: top-right of the content area (Dashboard, Profile, Community…) */}
+        <DownloadAppPrompt
+          enabled={
+            !shouldHideMobileHeader &&
+            activeScreen !== 'messenger' &&
+            activeScreen !== 'notification'
+          }
+        />
       </View>
 
       {!isLargeScreen && isMobileDrawerOpen && (
@@ -1585,10 +1593,6 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
           />
         </View>
       </Modal>
-      {/* 📲 Download-app nudge: web only, once per session, after ~45s */}
-      <DownloadAppPrompt
-        enabled={['home', 'grades', 'announcement', 'community', 'analytics'].includes(activeScreen)}
-      />
     </SafeAreaView>
   );
 }
