@@ -66,9 +66,32 @@ function SessionReplacedModal({ visible, onConfirm }: { visible: boolean; onConf
   }, [visible, onConfirm]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onConfirm}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <View style={{ width: '100%', maxWidth: 380, backgroundColor: '#FFF', borderRadius: 16, padding: 24, alignItems: 'center' }}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onConfirm}
+      statusBarTranslucent // Android: stop the status-bar height from pushing the card off-center
+      supportedOrientations={['portrait', 'landscape']}
+    >
+      {/* Full-viewport overlay that centers the card on phones, tablets and desktop.
+          On web it is pinned to the viewport (fixed), so browser bars/scroll can't shift it. */}
+      <View
+        style={[
+          {
+            position: (Platform.OS === 'web' ? 'fixed' : 'absolute') as any,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 16,
+          },
+        ]}
+      >
+        <View style={{ width: '100%', maxWidth: 380, alignSelf: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 24, alignItems: 'center' }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: '#222', marginBottom: 8, textAlign: 'center' }}>
             Signed in on another device
           </Text>

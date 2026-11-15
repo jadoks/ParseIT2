@@ -17,7 +17,6 @@ import {
     APK_DOWNLOAD_URL,
     PROMPT_AUTO_HIDE_MS,
     canOfferApk,
-    isPromptSuppressed,
     markAppDownloaded,
     useCanHover,
 } from './downloadAppShared';
@@ -34,7 +33,7 @@ import {
  *   the card, scrolls the page, swipes, or presses Esc. It also folds itself
  *   after PROMPT_AUTO_HIDE_MS (paused while the mouse is over the card).
  * - The tab is always available (unless native app / iOS) to reopen it.
- * - Only a completed Download stops the auto-open on later loads.
+ * - It always opens on load, even after a download or an old snooze.
  * - Mouse devices: QR card. Touch devices: DOWNLOAD pill.
  */
 
@@ -67,8 +66,9 @@ const DownloadAppPrompt: React.FC<Props> = ({
 
   // Native app / iOS: never render anything.
   const available = useRef(canOfferApk()).current;
-  // Auto-open every load, unless they already downloaded the app.
-  const autoEligible = useRef(available && !isPromptSuppressed()).current;
+  // Auto-open on EVERY load. (Old snooze/"downloaded" flags in localStorage
+  // are deliberately ignored, so they can't block the card anymore.)
+  const autoEligible = available;
   const [delayDone, setDelayDone] = useState(false);
   const openedAt = useRef(0);
   const cardRef = useRef<any>(null);
@@ -135,8 +135,10 @@ const DownloadAppPrompt: React.FC<Props> = ({
     const onPointerDown = (e: any) => {
       if (!grace() && !inside(e.target)) hide();
     };
-    const onScroll = (e: any) => {
-      if (!grace() && !inside(e.target)) hide();
+    // Keyboard scrolling (Space / arrows / Page Up/Down / Home / End)
+    const onScrollKey = (e: KeyboardEvent) => {
+      if (grace() || inside(e.target)) return;
+      if ([' ', 'PageDown', 'PageUp', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) hide();
     };
     const onWheel = (e: any) => {
       if (!grace() && !inside(e.target)) hide();
@@ -156,14 +158,14 @@ const DownloadAppPrompt: React.FC<Props> = ({
 
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('scroll', onScroll, true); // capture: catches inner scroll views too
+    document.addEventListener('keydown', onScrollKey);
     document.addEventListener('wheel', onWheel, { capture: true, passive: true });
     document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
     document.addEventListener('touchmove', onTouchMove, { capture: true, passive: true });
     return () => {
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('pointerdown', onPointerDown, true);
-      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('keydown', onScrollKey);
       document.removeEventListener('wheel', onWheel, true);
       document.removeEventListener('touchstart', onTouchStart, true);
       document.removeEventListener('touchmove', onTouchMove, true);
@@ -171,7 +173,7 @@ const DownloadAppPrompt: React.FC<Props> = ({
   }, [open, hide]);
 
   const handleDownload = () => {
-    markAppDownloaded(); // never auto-opens again
+    markAppDownloaded(); // recorded for your other code; no longer blocks the auto-open
     setOpen(false);
     Linking.openURL(APK_DOWNLOAD_URL).catch(() => {});
   };
