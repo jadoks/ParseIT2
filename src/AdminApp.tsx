@@ -1,4 +1,3 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
 import Constants from "expo-constants";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -9,9 +8,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
-  View,
+  View
 } from "react-native";
 import {
   SafeAreaView,
@@ -31,6 +29,7 @@ import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
 import StudentAtRisk from "./Final_Admin_Components/StudentAtRisk";
 import Honors from "./teacher_components/Honors";
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from "./theme/typography";
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
@@ -469,62 +468,29 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
         </SafeAreaView>
       </Modal>
 
+      {/* Logout confirmation — same design as TeacherDrawerMenu's logout modal */}
       <Modal
         visible={isLogoutModalVisible}
         animationType="fade"
         transparent
         onRequestClose={() => setIsLogoutModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setIsLogoutModalVisible(false)}
-          />
-
-          <View style={[styles.modalCard, isMobile && styles.modalCardMobile]}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View style={styles.modalIconBox}>
-                  <Ionicons name="log-out-outline" size={22} color="#8B0000" />
-                </View>
-
-                <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.modalTitle}>Confirm Logout</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={styles.modalCloseButton}
+        <View style={styles.logoutModalOverlay}>
+          <View style={styles.logoutModalContainer}>
+            <Text style={styles.logoutModalTitle}>Are you sure you want to logout?</Text>
+            <Text style={styles.logoutModalSubtitle}>
+              You will need to sign in again to continue using your account.
+            </Text>
+            <View style={styles.logoutButtonsRow}>
+              <Pressable
+                style={styles.logoutCancelBtn}
                 onPress={() => setIsLogoutModalVisible(false)}
-                activeOpacity={0.85}
               >
-                <Ionicons name="close" size={20} color="#7A4A4A" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalContent}>
-              <Text style={styles.simpleMessage}>
-                Are you sure you want to logout?
-              </Text>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.modalSecondaryButton}
-                onPress={() => setIsLogoutModalVisible(false)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalDangerButton}
-                onPress={confirmLogout}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.modalDangerButtonText}>Logout</Text>
-              </TouchableOpacity>
+                <Text style={styles.logoutCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.logoutConfirmBtn} onPress={confirmLogout}>
+                <Text style={styles.logoutConfirmText}>Logout</Text>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -733,5 +699,62 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
+  },
+
+  // ─── Logout confirmation — matches TeacherDrawerMenu ─────────────────────
+  logoutModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  logoutModalContainer: {
+    backgroundColor: "#FFF",
+    borderRadius: 18,
+    padding: 20,
+    width: "88%",
+    maxWidth: 360,
+  },
+  logoutModalTitle: {
+    fontFamily: FONT_TITLE,
+    fontSize: 20,
+    fontWeight: WEIGHT_TITLE,
+    color: "#222",
+    textAlign: "center",
+  },
+  logoutModalSubtitle: {
+    fontFamily: FONT_BODY,
+    fontSize: 14,
+    color: "#777",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  logoutButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 20,
+  },
+  logoutCancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginRight: 10,
+    borderRadius: 10,
+    backgroundColor: "#F3F4F6",
+  },
+  logoutCancelText: {
+    color: "#444",
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
+  },
+  logoutConfirmBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: "#8B0000",
+  },
+  logoutConfirmText: {
+    color: "#FFF",
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
   },
 });
