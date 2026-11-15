@@ -168,6 +168,14 @@ const normalizeImageSource = (img: any) => {
   return DEFAULT_AVATAR;
 };
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const Community: React.FC<CommunityProps> = ({
   userName = 'Jade Lisondra',
   userEmail = 'jadelisondra101@gmail.com',
@@ -710,7 +718,7 @@ const Community: React.FC<CommunityProps> = ({
   //  - On YOUR OWN post (post owner) -> hidden for everyone except the
   //    answer's author, who still sees it normally (like Facebook).
   // Either way the hider sees a collapsed "Answer hidden" stub with Unhide.
-  const isSelectedPostOwner = !!selectedPost && (selectedPost.userName === userName || selectedPost.userEmail === userEmail);
+  const isSelectedPostOwner = !!selectedPost && (toTitleCase(selectedPost.userName) === toTitleCase(userName) || selectedPost.userEmail === userEmail);
   const answersForSelectedPost = selectedPost?.answers ?? [];
 
   const handleToggleAnswerHidden = (answerId: string, hidden: boolean) => {
@@ -745,7 +753,7 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   const renderAnswerItem = (answer: CommunityAnswer) => {
-    const isOwnAnswer = answer.userName === userName;
+    const isOwnAnswer = toTitleCase(answer.userName) === toTitleCase(userName);
     const canHideAnswer = !isOwnAnswer;
 
     // Collapsed placeholder — shown only to the person who hid the answer.
@@ -759,7 +767,7 @@ const Community: React.FC<CommunityProps> = ({
             <Text style={styles.hiddenAnswerTitle}>Answer hidden</Text>
             <Text style={styles.hiddenAnswerSubtitle} numberOfLines={2}>
               {isSelectedPostOwner
-                ? `Only you and ${answer.userName} can see this answer.`
+                ? `Only you and ${toTitleCase(answer.userName)} can see this answer.`
                 : 'Hidden for you only. Others can still see it.'}
             </Text>
           </View>
@@ -784,7 +792,7 @@ const Community: React.FC<CommunityProps> = ({
               style={styles.answerAvatar}
             />
             <View style={{ marginLeft: 8, flex: 1 }}>
-              <Text style={styles.answerUserName}>{answer.userName}</Text>
+              <Text style={styles.answerUserName}>{toTitleCase(answer.userName)}</Text>
               <Text style={styles.answerDate}>{answer.answeredAt}</Text>
             </View>
 
@@ -836,7 +844,7 @@ const Community: React.FC<CommunityProps> = ({
               style={styles.postAvatar}
             />
             <View style={{ marginLeft: 8, flex: 1 }}>
-              <Text style={styles.postUserName}>{item.userName}</Text>
+              <Text style={styles.postUserName}>{toTitleCase(item.userName)}</Text>
               <Text style={styles.postDateTime}>{item.dateTime}</Text>
             </View>
           </View>
@@ -867,7 +875,7 @@ const Community: React.FC<CommunityProps> = ({
 
     const post = postDropdownState.post;
     const isCurrentUserPost =
-      post.userName === userName || post.userEmail === userEmail;
+      toTitleCase(post.userName) === toTitleCase(userName) || post.userEmail === userEmail;
 
     return (
       <View
@@ -967,7 +975,7 @@ const Community: React.FC<CommunityProps> = ({
                 onPress={() => setModalVisible(true)}
               >
                 <Text style={styles.inputPlaceholder}>
-                  What's on your mind, {userName}?
+                  What's on your mind, {toTitleCase(userName)}?
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1250,7 +1258,7 @@ const Community: React.FC<CommunityProps> = ({
                       },
                     ]}
                   >
-                    {answerDropdownState.answer.userName === userName ? (
+                    {toTitleCase(answerDropdownState.answer.userName) === toTitleCase(userName) ? (
                       <>
                         <TouchableOpacity
                           style={styles.menuItem}

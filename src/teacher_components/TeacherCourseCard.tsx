@@ -19,6 +19,14 @@ import {
 // came back 401.
 import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 // Mirrors ClassScheduleEntry from CourseDetail.tsx / TeacherCourseDetail2.tsx —
 // kept as a local type here to avoid a cross-screen import for a small shape.
 export type TeacherCourseScheduleEntry = {
@@ -225,7 +233,7 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
 
       <View style={styles.cardContent}>
         <Text style={styles.instructorLabel}>INSTRUCTOR</Text>
-        <Text style={styles.instructorName}>{item.instructor}</Text>
+        <Text style={styles.instructorName}>{toTitleCase(item.instructor)}</Text>
 
         <View style={styles.classMetaWrap}>
           <View style={styles.classMetaPill}>

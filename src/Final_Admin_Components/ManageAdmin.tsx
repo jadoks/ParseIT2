@@ -18,6 +18,15 @@ import AddAdminModal, { AddAdminModalInitialData } from "./AddAdminModal";
 import type { AdminFormPayload } from "./adminTypes";
 import Toast from "./Toast";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type ManageAdminProps = {
   width: number;
 };
@@ -730,7 +739,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
                             </Text>
                           </View>
                           <Text style={styles.tablePrimaryText} numberOfLines={1}>
-                            {item.firstName} {item.lastName}
+                            {toTitleCase(`${item.firstName} ${item.lastName}`)}
                           </Text>
                         </View>
 
@@ -925,7 +934,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
               Are you sure you want to delete{" "}
               <Text style={styles.confirmHighlight}>
                 {adminToDelete
-                  ? `${adminToDelete.firstName} ${adminToDelete.lastName}`
+                  ? toTitleCase(`${adminToDelete.firstName} ${adminToDelete.lastName}`)
                   : "this admin"}
               </Text>
               ?

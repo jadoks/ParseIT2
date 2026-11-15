@@ -22,6 +22,15 @@ import * as XLSX from 'xlsx';
 import { apiFetch } from '../services/api'; // path-only fetch that adds the Bearer token
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
 // bespoke ToastProvider/context that used to live here, so feedback looks
@@ -542,7 +551,7 @@ function HonorRollPreviewModal({
                               style={[styles.previewRowCell, { flex: 1 }]}
                               numberOfLines={isMobile ? 2 : 1}
                             >
-                              {student.name}
+                              {toTitleCase(student.name)}
                             </Text>
                             <Text style={[styles.previewRowCell, { width: 70 }]}>
                               {student.gpa}
@@ -1354,7 +1363,7 @@ export default function HonorsScreen({
   const pickAdviser = (section: SectionRef, adviser: Adviser) => {
     // Keep a title the admin already typed ("Dr. Mel" -> "Dr. Melanie R. Albarracin").
     const prefix = getSectionInput(section).adviser.match(TITLE_PREFIX)?.[0] ?? '';
-    updateSectionInput(section, { adviser: `${prefix}${adviser.name}` });
+    updateSectionInput(section, { adviser: `${prefix}${toTitleCase(adviser.name)}` });
     setActiveAdviserKey(null);
   };
 
@@ -1991,7 +2000,7 @@ export default function HonorsScreen({
           // Student header — name, ID, and final GWA up front
           const nameRowIndex = detailRows.length;
           detailRows.push([
-            `${rank}.  ${student.name}`,
+            `${rank}.  ${toTitleCase(student.name)}`,
             '',
             `Student ID: ${student.id}`,
             '',
@@ -2366,7 +2375,7 @@ export default function HonorsScreen({
                             style={[styles.honorNameCell, styles.honorStudentNameColumn]}
                             numberOfLines={isMobile ? 2 : 1}
                           >
-                            {student.name}
+                            {toTitleCase(student.name)}
                           </Text>
                           <Text
                             style={[styles.highestGwaSectionCell, { width: isMobile ? 150 : 200 }]}
@@ -2432,7 +2441,7 @@ export default function HonorsScreen({
                             style={[styles.honorNameCell, styles.honorStudentNameColumn]}
                             numberOfLines={isMobile ? 2 : 1}
                           >
-                            {student.name}
+                            {toTitleCase(student.name)}
                           </Text>
                           <Text style={[styles.honorGwaCell, { width: isMobile ? 90 : 110 }]}>
                             {student.gpa}
@@ -2599,7 +2608,7 @@ export default function HonorsScreen({
                               >
                                 <Ionicons name="person-outline" size={15} color="#8B0000" />
                                 <Text style={styles.suggestionText} numberOfLines={1}>
-                                  {adviser.name}
+                                  {toTitleCase(adviser.name)}
                                 </Text>
                               </TouchableOpacity>
                             ))}

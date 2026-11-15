@@ -631,6 +631,14 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
   })),
 });
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -638,8 +646,8 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
   const isSmallScreen = width < 768;
   const [searchResetKey, setSearchResetKey] = useState(0);
   const [remoteStudentProfile, setRemoteStudentProfile] = useState<RemoteStudentProfile | null>(null);
-  const currentUserFirstName = remoteStudentProfile?.firstName || currentStudent.firstName || '';
-  const currentUserLastName = remoteStudentProfile?.lastName || currentStudent.lastName || '';
+  const currentUserFirstName = toTitleCase(remoteStudentProfile?.firstName || currentStudent.firstName || '');
+  const currentUserLastName = toTitleCase(remoteStudentProfile?.lastName || currentStudent.lastName || '');
   const currentUserName = `${currentUserFirstName} ${currentUserLastName}`.trim() || 'Student';
   const currentUserEmail = remoteStudentProfile?.email || currentStudent.email || '';
   const initialAvatar = remoteStudentProfile?.profileImage || currentStudent.profileImage ? { uri: remoteStudentProfile?.profileImage || currentStudent.profileImage || '' } : null;
@@ -1232,11 +1240,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   };
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => communityPosts.map((post) => {
-    const isCurrentUsersPost = post.userEmail ? post.userEmail === currentUserEmail : post.userName === currentUserName;
+    const isCurrentUsersPost = post.userEmail ? post.userEmail === currentUserEmail : toTitleCase(post.userName) === currentUserName;
     return {
       ...post,
       avatar: isCurrentUsersPost ? currentUserAvatar : post.avatar,
-      answers: post.answers.map((answer) => ({ ...answer, avatar: answer.userName === currentUserName ? currentUserAvatar : answer.avatar }))
+      answers: post.answers.map((answer) => ({ ...answer, avatar: toTitleCase(answer.userName) === currentUserName ? currentUserAvatar : answer.avatar }))
     };
   }), [communityPosts, currentUserAvatar, currentUserEmail, currentUserName]);
 
@@ -1429,7 +1437,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     void writeStoredAssignmentState(currentStudent.studentId, { files: sharedAssignmentFiles, statuses: sharedAssignmentStatuses, scores: sharedAssignmentScores });
   }, [currentStudent?.studentId, hasLoadedAssignmentState, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
 
-  const currentUserPosts = useMemo(() => hydratedCommunityPosts.filter((post) => post.userName === currentUserName || post.userEmail === currentUserEmail), [hydratedCommunityPosts, currentUserEmail, currentUserName]);
+  const currentUserPosts = useMemo(() => hydratedCommunityPosts.filter((post) => toTitleCase(post.userName) === currentUserName || post.userEmail === currentUserEmail), [hydratedCommunityPosts, currentUserEmail, currentUserName]);
 
   const handleAddAssignmentComment = async (assignmentId: string, content: string, studentId?: string) => {
     if (!content.trim()) return;
@@ -3055,7 +3063,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
                   assignmentId: gameAssignmentData?.assignmentId, 
                   score, 
                   totalQuestions, 
-                  studentName: `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim() 
+                  studentName: currentUserName 
                 }) 
               }); 
               const data = await response.json();

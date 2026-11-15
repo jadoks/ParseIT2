@@ -10,6 +10,15 @@ import {
   View,
 } from "react-native";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type RiskNotification = {
   id: string;
   type: string;
@@ -251,7 +260,7 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
                 <View style={styles.cardBody}>
                   <View style={styles.cardTopRow}>
                     <Text style={styles.cardName} numberOfLines={1}>
-                      {item.actorName || "A student"}
+                      {toTitleCase(item.actorName) || "A student"}
                     </Text>
                     {percent !== null && (
                       <View
@@ -282,7 +291,7 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
                         <View style={styles.cardMetaChip}>
                           <Ionicons name="person-outline" size={12} color="#7A4A4A" />
                           <Text style={styles.cardMetaText} numberOfLines={1}>
-                            {item.instructorName}
+                            {toTitleCase(item.instructorName)}
                           </Text>
                         </View>
                       )}

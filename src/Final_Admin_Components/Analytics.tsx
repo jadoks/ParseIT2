@@ -14,6 +14,15 @@ import {
 } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: 'include',
@@ -364,7 +373,7 @@ function StudentRiskItem({
     >
       <View style={[styles.riskTopRow, isMobile && styles.riskTopRowMobile]}>
         <View style={[styles.riskTextWrap, isMobile && styles.riskTextWrapMobile]}>
-          <Text style={styles.riskName}>{name}</Text>
+          <Text style={styles.riskName}>{toTitleCase(name)}</Text>
           <View style={styles.riskTagContainer}>
             {section
               .split(",")

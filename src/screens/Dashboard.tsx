@@ -122,6 +122,14 @@ const formatScheduleBlock = (entry: DashboardScheduleEntry) => {
   return { days, time, room: entry.room || '' };
 };
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const Dashboard = ({
   announcements = [],
   initialAnnouncementId = null,
@@ -936,7 +944,7 @@ const Dashboard = ({
                   >
                     <Text style={styles.courseCardTitle}>{item.course.name}</Text>
                     <Text style={styles.courseInstructor}>
-                      {item.course.instructor}
+                      {toTitleCase(item.course.instructor)}
                     </Text>
                     <Text style={styles.courseSubMeta}>
                       {item.course.semester} ({item.course.schoolYear})

@@ -31,6 +31,15 @@ import StudentAtRisk from "./Final_Admin_Components/StudentAtRisk";
 import Honors from "./teacher_components/Honors";
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from "./theme/typography";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
   // Expo Go — since EXPO_PUBLIC_ vars are inlined for native builds too, not
@@ -96,7 +105,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const isTablet = width >= 768 && width < 1100;
 
   const adminName =
-    `${currentAdmin.firstName || ""} ${currentAdmin.lastName || ""}`.trim() || "Admin";
+    toTitleCase(`${currentAdmin.firstName || ""} ${currentAdmin.lastName || ""}`) || "Admin";
 
   const [activeTopNav, setActiveTopNav] = useState("Dashboard");
   const [activeSideNav, setActiveSideNav] = useState<string | null>(null);

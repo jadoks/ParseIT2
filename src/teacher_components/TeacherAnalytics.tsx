@@ -18,6 +18,15 @@ import { getScorePercent, normalizeAssignmentStatus } from "../analytics/metrics
 import { AssignmentCourse } from "../screens/Assignments";
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type TeacherStudentInput = {
   studentId: string;
   studentName: string;
@@ -1092,7 +1101,7 @@ export default function TeacherAnalytics({
     if (mostCritical) {
       insights.push({
         title: "Priority student for assignment follow-up",
-        body: `${mostCritical.studentName} is ranked as ${mostCritical.riskLevel.toLowerCase()} priority with ${mostCritical.totalPendingAssignments} pending assignment(s) and ${mostCritical.overallAverage}% assignment average.`,
+        body: `${toTitleCase(mostCritical.studentName)} is ranked as ${mostCritical.riskLevel.toLowerCase()} priority with ${mostCritical.totalPendingAssignments} pending assignment(s) and ${mostCritical.overallAverage}% assignment average.`,
         tone: mostCritical.riskLevel === "High" ? "danger" : "warning",
         icon: "account-heart-outline",
       });
@@ -1912,7 +1921,7 @@ export default function TeacherAnalytics({
             {mostPendingStudents.map((student) => (
               <HorizontalBar
                 key={student.studentId}
-                label={student.studentName}
+                label={toTitleCase(student.studentName)}
                 value={student.totalPendingAssignments}
                 maxValue={maxPending}
                 color={palette.purple}
@@ -1963,7 +1972,7 @@ export default function TeacherAnalytics({
               topStudents.map((student) => (
                 <HorizontalBar
                   key={student.studentId}
-                  label={`#${student.rank} ${student.studentName}`}
+                  label={`#${student.rank} ${toTitleCase(student.studentName)}`}
                   value={student.overallAverage}
                   maxValue={maxAverage}
                   color={palette.blue}
@@ -2008,7 +2017,7 @@ export default function TeacherAnalytics({
                     </View>
                     <View style={styles.rankingInfo}>
                       <Text style={styles.rankingName}>
-                        {student.studentName}
+                        {toTitleCase(student.studentName)}
                       </Text>
                       <Text style={styles.rankingMeta}>
                         {student.classLabel} • Assignment Average{" "}
@@ -2112,7 +2121,7 @@ export default function TeacherAnalytics({
                       <View style={styles.interventionTextWrapEnhanced}>
                         <View style={styles.nameAndTrendRow}>
                           <Text style={styles.interventionName}>
-                            {student.studentName}
+                            {toTitleCase(student.studentName)}
                           </Text>
                           <View
                             style={[

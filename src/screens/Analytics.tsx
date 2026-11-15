@@ -287,6 +287,13 @@ const FloatingLineLabels = ({
   );
 };
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
 const Analytics: React.FC<AnalyticsProps> = ({
   searchQuery = '',
   courses,
@@ -683,7 +690,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           <Text style={styles.heroEyebrow}>Student Analytics Dashboard</Text>
           <Text style={styles.heroTitle}>Academic Performance Overview</Text>
           <Text style={styles.heroSubtitle}>
-            Welcome, {studentName}. Track performance trends, assignment status, and subject predictions in one dashboard.
+            Welcome, {toTitleCase(studentName)}. Track performance trends, assignment status, and subject predictions in one dashboard.
           </Text>
         </View>
         <View style={styles.riskPillWrap}>
@@ -997,7 +1004,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
                 <View style={styles.subjectTopRow}>
                   <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={styles.subjectTitle}>{subject.courseName}</Text>
-                    <Text style={styles.subjectCode}>{subject.courseCode} • {subject.instructor}</Text>
+                    <Text style={styles.subjectCode}>{subject.courseCode} • {toTitleCase(subject.instructor)}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={[styles.subjectRiskBadge, { backgroundColor: `${riskColor}18` }]}>

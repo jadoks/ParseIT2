@@ -20,6 +20,15 @@ import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS } from '../theme/typography';
 // ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
 import Toast from '../Final_Admin_Components/Toast';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type ToastType = 'success' | 'error' | 'info';
 
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
@@ -434,7 +443,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
 
     return {
       studentId: fallbackId,
-      fullName: fallbackName || fallbackId,
+      fullName: toTitleCase(fallbackName) || fallbackId,
       schoolYear: buildSchoolYear(normalizedStartYear),
       semester: selectedSemester,
       grades: gradeItems,

@@ -19,6 +19,15 @@ import AddStudentModal, {
 } from "./AddStudentModal";
 import Toast from "./Toast";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type ManageStudentProps = {
   width: number;
 };
@@ -739,7 +748,7 @@ useEffect(() => {
                             </Text>
                           </View>
                           <Text style={styles.tablePrimaryText} numberOfLines={1}>
-                            {`${item.firstName} ${item.lastName}`.toUpperCase()}
+                            {toTitleCase(`${item.firstName} ${item.lastName}`)}
                           </Text>
                         </View>
 
@@ -934,7 +943,7 @@ useEffect(() => {
               Are you sure you want to delete{" "}
               <Text style={styles.confirmHighlight}>
                 {studentToDelete
-                  ? `${studentToDelete.firstName} ${studentToDelete.lastName}`
+                  ? toTitleCase(`${studentToDelete.firstName} ${studentToDelete.lastName}`)
                   : "this student"}
               </Text>
               ? This permanently removes their account and everything tied to it:

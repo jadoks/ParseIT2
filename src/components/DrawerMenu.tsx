@@ -554,6 +554,14 @@ const GRADE_YEAR_OPTIONS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 const gradeSectionsForYear = (config: SectionConfig, yearLevel: number | null) =>
   yearLevel ? config[YEAR_IDS[yearLevel - 1]] || [] : [];
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const DrawerMenu = ({
   isFixed,
   onClose,
@@ -1313,7 +1321,7 @@ const DrawerMenu = ({
           }}
         />
         <View style={{ flex: 1 }}>
-          <Text style={styles.userName}>{userName}</Text>
+          <Text style={styles.userName}>{toTitleCase(userName)}</Text>
           {!!userEmail && <Text style={styles.userEmail}>{userEmail}</Text>}
         </View>
       </Pressable>

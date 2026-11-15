@@ -13,6 +13,15 @@ import {
   View,
 } from "react-native";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type HeaderProps = {
   activeItem: string;
   onChange: (item: string) => void;
@@ -273,7 +282,7 @@ function NotificationList({
                           <View style={styles.notificationItemMetaChip}>
                             <Ionicons name="person-outline" size={12} color="#7A4A4A" />
                             <Text style={styles.notificationItemMetaText} numberOfLines={1}>
-                              {item.instructorName}
+                              {toTitleCase(item.instructorName)}
                             </Text>
                           </View>
                         )}

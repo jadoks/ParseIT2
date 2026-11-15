@@ -418,6 +418,14 @@ interface AssignmentsProps {
 type FilterType = 'all' | 'pending' | 'submitted' | 'late' | 'graded' | 'missing';
 
 // ✅ HELPER: Check if file is an image
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 function isImageFile(fileName?: string, fileType?: string): boolean {
   if (!fileName && !fileType) return false;
   const ext = fileName?.split('.').pop()?.toLowerCase() || '';
@@ -1870,7 +1878,7 @@ const Assignments = ({
                               >
                                 <View style={styles.commentHeader}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-between' }}>
-                                    <Text style={styles.commentAuthor}>{comment.author}</Text>
+                                    <Text style={styles.commentAuthor}>{toTitleCase(comment.author)}</Text>
                                     {comment.isInstructor && (
                                       <Text style={styles.teacherBadge}>Instructor</Text>
                                     )}

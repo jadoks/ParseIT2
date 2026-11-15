@@ -34,6 +34,15 @@ import ProgramClassPicker, { useProgramPicker } from '../Final_Admin_Components/
 import { toFormBlocks, useSectionConfig } from '../Final_Admin_Components/programHelpers';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 // One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
 // A class can have several of these (e.g. a lecture block + a separate lab block).
 export type ClassScheduleEntry = {
@@ -588,7 +597,7 @@ const Dashboard2 = ({
     const first = currentTeacher?.firstName?.trim() || '';
     const last = currentTeacher?.lastName?.trim() || '';
     const full = `${first} ${last}`.trim();
-    return full || 'Teacher';
+    return toTitleCase(full) || 'Teacher';
   }, [currentTeacher]);
 
   const teacherEmail = useMemo(() => currentTeacher?.email?.trim() || '', [currentTeacher]);

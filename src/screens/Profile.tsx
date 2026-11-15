@@ -154,6 +154,14 @@ const isAllowedImageAsset = (
 const POST_DROPDOWN_WIDTH = 165;
 const ANSWER_DROPDOWN_WIDTH = 170;
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const normalizeText = (value?: string | null) => {
   if (typeof value !== 'string') return '';
   return value.trim();
@@ -197,7 +205,7 @@ const Profile: React.FC<ProfileProps> = ({
   liveRefreshToken = 0,
 }) => {
   const { width, height } = useWindowDimensions();
-  const safeUserName = useMemo(() => normalizeText(userName), [userName]);
+  const safeUserName = useMemo(() => toTitleCase(normalizeText(userName)), [userName]);
   const safeUserEmail = useMemo(() => normalizeText(userEmail), [userEmail]);
   const isSmallPhone = width < 380;
   const isPhone = width < 768;
@@ -934,7 +942,7 @@ useEffect(() => {
   };
 
   const renderAnswerItem = (answer: CommunityAnswer) => {
-    const isOwnAnswer = answer.userName === safeUserName;
+    const isOwnAnswer = toTitleCase(answer.userName) === safeUserName;
     const canHideAnswer = !isOwnAnswer;
 
     // Collapsed placeholder — shown only to the person who hid the answer.
@@ -948,7 +956,7 @@ useEffect(() => {
             <Text style={styles.hiddenAnswerTitle}>Answer hidden</Text>
             <Text style={styles.hiddenAnswerSubtitle} numberOfLines={2}>
               {isSelectedPostOwner
-                ? `Only you and ${answer.userName} can see this answer.`
+                ? `Only you and ${toTitleCase(answer.userName)} can see this answer.`
                 : 'Hidden for you only. Others can still see it.'}
             </Text>
           </View>
@@ -973,7 +981,7 @@ useEffect(() => {
               thumbCacheKey(answer.avatarStoragePath)
             )}
             <View style={{ marginLeft: 8, flex: 1 }}>
-              <Text style={styles.answerUserName}>{answer.userName}</Text>
+              <Text style={styles.answerUserName}>{toTitleCase(answer.userName)}</Text>
               <Text style={styles.answerDate}>{answer.answeredAt}</Text>
             </View>
 
@@ -1240,7 +1248,7 @@ useEffect(() => {
                       ]}
                       numberOfLines={1}
                     >
-                      {post.userName}
+                      {toTitleCase(post.userName)}
                     </Text>
                     <Text
                       style={[
@@ -1887,7 +1895,7 @@ useEffect(() => {
                         },
                       ]}
                     >
-                      {answerDropdownState.answer.userName === safeUserName ? (
+                      {toTitleCase(answerDropdownState.answer.userName) === safeUserName ? (
                         <>
                           <TouchableOpacity
                             style={styles.menuItem}

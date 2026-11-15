@@ -31,6 +31,15 @@ import {
 import Toast from '../Final_Admin_Components/Toast';
 import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 export interface CommunityAnswer {
   id: string;
   userName: string;
@@ -708,7 +717,7 @@ useEffect(() => {
   //  - On YOUR OWN post (post owner) -> hidden for everyone except the
   //    answer's author, who still sees it normally (like Facebook).
   // Either way the hider sees a collapsed "Answer hidden" stub with Unhide.
-  const isSelectedPostOwner = !!selectedPost && (selectedPost.userName === userName || selectedPost.userEmail === userEmail);
+  const isSelectedPostOwner = !!selectedPost && (toTitleCase(selectedPost.userName) === toTitleCase(userName) || selectedPost.userEmail === userEmail);
   const answersForSelectedPost = selectedPost?.answers ?? [];
 
   const handleToggleAnswerHidden = (answerId: string, hidden: boolean) => {
@@ -743,7 +752,7 @@ useEffect(() => {
   };
 
   const renderAnswerItem = (answer: CommunityAnswer) => {
-    const isOwnAnswer = answer.userName === userName;
+    const isOwnAnswer = toTitleCase(answer.userName) === toTitleCase(userName);
     const canHideAnswer = !isOwnAnswer;
 
     // Collapsed placeholder — shown only to the person who hid the answer.
@@ -757,7 +766,7 @@ useEffect(() => {
             <Text style={styles.hiddenAnswerTitle}>Answer hidden</Text>
             <Text style={styles.hiddenAnswerSubtitle} numberOfLines={2}>
               {isSelectedPostOwner
-                ? `Only you and ${answer.userName} can see this answer.`
+                ? `Only you and ${toTitleCase(answer.userName)} can see this answer.`
                 : 'Hidden for you only. Others can still see it.'}
             </Text>
           </View>
@@ -782,7 +791,7 @@ useEffect(() => {
               style={styles.answerAvatar}
             />
             <View style={{ marginLeft: 8, flex: 1 }}>
-              <Text style={styles.answerUserName}>{answer.userName}</Text>
+              <Text style={styles.answerUserName}>{toTitleCase(answer.userName)}</Text>
               <Text style={styles.answerDate}>{answer.answeredAt}</Text>
             </View>
 
@@ -834,7 +843,7 @@ useEffect(() => {
               style={styles.postAvatar}
             />
             <View style={{ marginLeft: 8, flex: 1 }}>
-              <Text style={styles.postUserName}>{item.userName}</Text>
+              <Text style={styles.postUserName}>{toTitleCase(item.userName)}</Text>
               <Text style={styles.postDateTime}>{item.dateTime}</Text>
             </View>
           </View>
@@ -865,7 +874,7 @@ useEffect(() => {
 
     const post = postDropdownState.post;
     const isCurrentUserPost =
-      post.userName === userName || post.userEmail === userEmail;
+      toTitleCase(post.userName) === toTitleCase(userName) || post.userEmail === userEmail;
 
     return (
       <View
@@ -965,7 +974,7 @@ useEffect(() => {
                 onPress={() => setModalVisible(true)}
               >
                 <Text style={styles.inputPlaceholder}>
-                  What's on your mind, {userName}?
+                  What's on your mind, {toTitleCase(userName)}?
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1248,7 +1257,7 @@ useEffect(() => {
                       },
                     ]}
                   >
-                    {answerDropdownState.answer.userName === userName ? (
+                    {toTitleCase(answerDropdownState.answer.userName) === toTitleCase(userName) ? (
                       <>
                         <TouchableOpacity
                           style={styles.menuItem}

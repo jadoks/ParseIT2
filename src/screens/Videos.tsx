@@ -71,6 +71,14 @@ const normalizeImageSource = (img: any) => {
   return DEFAULT_USER_AVATAR;
 };
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const Videos = ({
   onVideoActiveChange,
   currentUserName = 'Student',
@@ -541,7 +549,7 @@ const Videos = ({
                     <View style={styles.commentBody}>
                       <View style={styles.commentHeaderRow}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.commentUser}>{comment.userName}</Text>
+                          <Text style={styles.commentUser}>{toTitleCase(comment.userName)}</Text>
                           <Text style={styles.commentDate}>
                             {comment.createdAt}{wasEdited ? ' (edited)' : ''}
                           </Text>

@@ -15,6 +15,15 @@ import {
 import { apiFetch } from '../services/api'; // path-only fetch that adds the Bearer token
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type HonorKey = 'summa' | 'magna' | 'cumLaude';
 
 type SemesterGwa = {
@@ -285,7 +294,7 @@ export default function LatinHonors({ apiBaseUrl }: Props) {
           <Text style={styles.rank}>{rankOf(student)}</Text>
           <View style={styles.studentInfo}>
             <Text style={styles.studentName} numberOfLines={2}>
-              {student.name}
+              {toTitleCase(student.name)}
             </Text>
             <Text style={styles.studentMeta}>{student.section}</Text>
           </View>
@@ -662,4 +671,3 @@ const styles = StyleSheet.create({
   breakdownLabel: { fontFamily: FONT_BODY, flex: 1, fontSize: 12, color: '#475467', paddingRight: 10 },
   breakdownValue: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: '#111827' },
 });
-

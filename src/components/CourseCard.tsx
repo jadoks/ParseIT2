@@ -120,6 +120,14 @@ type DropdownState =
 
 const DROPDOWN_WIDTH = 170;
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
@@ -440,7 +448,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             <Text style={styles.bannerMeta}>
               {course.semester} ({course.schoolYear})
             </Text>
-            <Text style={styles.bannerInstructor}>{course.instructor}</Text>
+            <Text style={styles.bannerInstructor}>{toTitleCase(course.instructor)}</Text>
           </View>
         </View>
 

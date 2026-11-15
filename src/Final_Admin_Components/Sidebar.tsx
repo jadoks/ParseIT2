@@ -12,6 +12,15 @@ import {
   View,
 } from "react-native";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type SidebarProps = {
   activeItem: string | null;
   onChange: (item: string) => void;
@@ -85,7 +94,7 @@ function MenuContent({
           </View>
 
           <View style={styles.workspaceTextWrap}>
-            <Text style={styles.workspaceTitle}>{adminName}</Text>
+            <Text style={styles.workspaceTitle}>{toTitleCase(adminName)}</Text>
             <Text style={styles.workspaceSubtitle}>Admin Workspace</Text>
           </View>
         </View>

@@ -39,6 +39,15 @@ import TeacherNotification, {
 import Profile2 from './teacher_components/TeacherProfile';
 import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 interface SignedInTeacher {
   teacherId?: string;
   authUid?: string | null;
@@ -261,7 +270,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
   const teacherFullName = useMemo(() => {
     const first = normalizeText(activeProfile?.firstName);
     const last = normalizeText(activeProfile?.lastName);
-    return `${first} ${last}`.trim() || 'Teacher';
+    return toTitleCase(`${first} ${last}`) || 'Teacher';
   }, [activeProfile]);
 
   const teacherEmail = useMemo(() => {
@@ -573,13 +582,13 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     return communityPosts.map((post) => ({
       ...post,
       avatar:
-        post.userEmail === teacherEmail || post.userName === teacherFullName
+        post.userEmail === teacherEmail || toTitleCase(post.userName) === teacherFullName
           ? currentUserAvatar
           : post.avatar,
       answers: post.answers.map((answer) => ({
         ...answer,
         avatar:
-          answer.userName === teacherFullName
+          toTitleCase(answer.userName) === teacherFullName
             ? currentUserAvatar
             : answer.avatar,
       })),
@@ -589,7 +598,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
   const currentUserPosts = useMemo(() => {
     return hydratedCommunityPosts.filter(
       (post) =>
-        post.userName === teacherFullName ||
+        toTitleCase(post.userName) === teacherFullName ||
         post.userEmail === teacherEmail
     );
   }, [hydratedCommunityPosts, teacherEmail, teacherFullName]);

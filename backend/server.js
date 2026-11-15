@@ -2931,16 +2931,26 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
 
     const [firstNameMaybe, ...rest] = trimmed.split(" ");
     if (firstNameMaybe && rest.length > 0) {
-      const byName = await db
-        .collection("teachers")
-        .where("firstName", "==", firstNameMaybe)
-        .where("lastName", "==", rest.join(" "))
-        .limit(1)
-        .get();
+      const lastNameMaybe = rest.join(" ");
+      // Names are saved capitalized, so also try the capitalized spelling
+      // (lets "jade lisondra" find "Jade Lisondra").
+      const nameCandidates = [
+        [firstNameMaybe, lastNameMaybe],
+        [toTitleCase(firstNameMaybe), toTitleCase(lastNameMaybe)],
+      ];
 
-      if (!byName.empty) {
-        const doc = byName.docs[0];
-        return { id: doc.id, ...doc.data() };
+      for (const [f, l] of nameCandidates) {
+        const byName = await db
+          .collection("teachers")
+          .where("firstName", "==", f)
+          .where("lastName", "==", l)
+          .limit(1)
+          .get();
+
+        if (!byName.empty) {
+          const doc = byName.docs[0];
+          return { id: doc.id, ...doc.data() };
+        }
       }
     }
 
@@ -3217,6 +3227,15 @@ Respond with ONLY a JSON object in this exact shape, nothing else, no markdown:
 
     return null;
   }
+
+// Display helper: "jade lisondra" -> "Jade Lisondra" (used in notification text)
+function toTitleCase(value) {
+  return String(value == null ? "" : value)
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+}
 
 async function sendFirstLoginCodeEmail({ firstName, email, pin }) {
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -3541,7 +3560,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       role: "teacher",
       type: "submitted-assignment",
       title: "Assignment Submitted",
-      message: `${studentName || "A student"} submitted ${
+      message: `${toTitleCase(studentName) || "A student"} submitted ${
         assignmentData.header || "an assignment"
       } in ${classData.name || "your class"}.`,
       relatedId: submissionId,
@@ -3585,7 +3604,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       role: "teacher",
       type: "student-at-risk",
       title: "Low Assignment Score",
-      message: `${studentName || "A student"} may need support in ${
+      message: `${toTitleCase(studentName) || "A student"} may need support in ${
         classData.name || "your class"
       }. ${reason || ""}`.trim(),
       relatedId: studentId,
@@ -4155,7 +4174,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
 
   app.post("/auth/register", async (req, res) => {
     try {
-      const {
+      let {
         role,
         id,
         email,
@@ -4164,6 +4183,9 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
         lastName,
         birthday,
       } = req.body;
+      // Save names capitalized: "jade lisondra" -> "Jade Lisondra"
+      firstName = firstName ? toTitleCase(firstName) : firstName;
+      lastName = lastName ? toTitleCase(lastName) : lastName;
 
       if (
         !role ||
@@ -4315,7 +4337,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       await notifyAdmins({
         type: "new-user",
         title: `New ${normalizedRole.charAt(0).toUpperCase() + normalizedRole.slice(1)} Registered`,
-        message: `${firstName} ${lastName} has registered as a new ${normalizedRole}.`,
+        message: `${toTitleCase(`${firstName} ${lastName}`)} has registered as a new ${normalizedRole}.`,
         relatedId: normalizedId,
         relatedType: "user",
         actorId: normalizedId,
@@ -5732,7 +5754,7 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         role: "teacher",
         type: "submitted-assignment",
         title: "Game Assignment Submitted",
-        message: `${submissionData.studentName} completed ${assignmentData.header || "a game assignment"} with score ${percent}%.`,
+        message: `${toTitleCase(submissionData.studentName)} completed ${assignmentData.header || "a game assignment"} with score ${percent}%.`,
         relatedId: submissionId,
         relatedType: "class-submission",
         classId,
@@ -6890,13 +6912,16 @@ async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQ
 
 app.post("/create-student", async (req, res) => {
   try {
-    const {
+    let {
       studentId,
       firstName,
       lastName,
       email,
       birthday,
     } = req.body;
+    // Save names capitalized: "jade lisondra" -> "Jade Lisondra"
+    firstName = firstName ? toTitleCase(firstName) : firstName;
+    lastName = lastName ? toTitleCase(lastName) : lastName;
 
     if (
       !studentId ||
@@ -7000,7 +7025,7 @@ app.post("/create-student", async (req, res) => {
     await notifyAdmins({
       type: "new-user",
       title: `New Student Created`,
-      message: `${firstName} ${lastName} has been added as a new student.`,
+      message: `${toTitleCase(`${firstName} ${lastName}`)} has been added as a new student.`,
       relatedId: normalizedStudentId,
       relatedType: "user",
       actorId: normalizedStudentId,
@@ -7027,7 +7052,9 @@ app.post("/create-student", async (req, res) => {
 
 app.post("/create-teacher", async (req, res) => {
   try {
-    const { teacherId, firstName, lastName, email, birthday } = req.body;
+    let { teacherId, firstName, lastName, email, birthday } = req.body;
+    firstName = firstName ? toTitleCase(firstName) : firstName;
+    lastName = lastName ? toTitleCase(lastName) : lastName;
 
     if (!teacherId || !firstName || !lastName || !email || !birthday) {
       return res.status(400).json({ error: "Missing required fields." });
@@ -7125,7 +7152,7 @@ app.post("/create-teacher", async (req, res) => {
     await notifyAdmins({
       type: "new-user",
       title: `New Teacher Created`,
-      message: `${firstName} ${lastName} has been added as a new teacher.`,
+      message: `${toTitleCase(`${firstName} ${lastName}`)} has been added as a new teacher.`,
       relatedId: normalizedTeacherId,
       relatedType: "user",
       actorId: normalizedTeacherId,
@@ -7152,7 +7179,9 @@ app.post("/create-teacher", async (req, res) => {
 
 app.post("/create-admin", async (req, res) => {
   try {
-    const { adminId, firstName, lastName, email, birthday } = req.body;
+    let { adminId, firstName, lastName, email, birthday } = req.body;
+    firstName = firstName ? toTitleCase(firstName) : firstName;
+    lastName = lastName ? toTitleCase(lastName) : lastName;
 
     if (!adminId || !firstName || !lastName || !email || !birthday) {
       return res.status(400).json({ error: "Missing required fields." });
@@ -7244,7 +7273,7 @@ app.post("/create-admin", async (req, res) => {
     await notifyAdmins({
       type: "new-user",
       title: `New Admin Created`,
-      message: `${firstName} ${lastName} has been added as a new admin.`,
+      message: `${toTitleCase(`${firstName} ${lastName}`)} has been added as a new admin.`,
       relatedId: normalizedAdminId,
       relatedType: "user",
       actorId: normalizedAdminId,
@@ -8367,7 +8396,9 @@ app.post("/create-admin", async (req, res) => {
   app.put("/update-admin/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { adminId, firstName, lastName, birthday, email } = req.body;
+      let { adminId, firstName, lastName, birthday, email } = req.body;
+      firstName = firstName ? toTitleCase(firstName) : firstName;
+      lastName = lastName ? toTitleCase(lastName) : lastName;
 
       if (adminId && adminId !== id) {
         const matches = await findUsersByIdAcrossAllRoles(adminId);
@@ -8463,7 +8494,9 @@ app.post("/create-admin", async (req, res) => {
   app.put("/update-teacher/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { teacherId, firstName, lastName, birthday, email } = req.body;
+      let { teacherId, firstName, lastName, birthday, email } = req.body;
+      firstName = firstName ? toTitleCase(firstName) : firstName;
+      lastName = lastName ? toTitleCase(lastName) : lastName;
 
       if (teacherId && teacherId !== id) {
         const matches = await findUsersByIdAcrossAllRoles(teacherId);
@@ -8541,8 +8574,10 @@ app.post("/create-admin", async (req, res) => {
   app.put("/update-student/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { studentId, firstName, lastName, birthday, email } =
+      let { studentId, firstName, lastName, birthday, email } =
         req.body;
+      firstName = firstName ? toTitleCase(firstName) : firstName;
+      lastName = lastName ? toTitleCase(lastName) : lastName;
 
       if (studentId && studentId !== id) {
         const matches = await findUsersByIdAcrossAllRoles(studentId);
@@ -10967,7 +11002,7 @@ app.post("/create-admin", async (req, res) => {
             role: "student",
             type: "assignment-comment",
             title: "New Comment on Your Assignment",
-            message: `${authorName || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
+            message: `${toTitleCase(authorName) || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
             relatedId: assignmentId,
             relatedType: "class-assignment-comment",
             classId,
@@ -10995,7 +11030,7 @@ app.post("/create-admin", async (req, res) => {
               role: "teacher",
               type: "assignment-comment",
               title: "New Assignment Comment",
-              message: `${authorName || "A student"} commented on ${assignmentDataForNotif.header || "an assignment"} in ${classDataForNotif.name || "your class"}.`,
+              message: `${toTitleCase(authorName) || "A student"} commented on ${assignmentDataForNotif.header || "an assignment"} in ${classDataForNotif.name || "your class"}.`,
               relatedId: assignmentId,
               relatedType: "class-assignment-comment",
               classId,
@@ -13690,7 +13725,7 @@ app.get(
           await notifyAdmins({
             type: "student-at-risk",
             title: "Low Assignment Score Detected",
-            message: `${submissionData.studentName} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"} (${classData.name || "Untitled Class"}).`,
+            message: `${toTitleCase(submissionData.studentName)} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"} (${classData.name || "Untitled Class"}).`,
             relatedId: submissionData.studentId,
             relatedType: "student-risk",
             classId: submissionData.classId,

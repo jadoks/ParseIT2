@@ -262,12 +262,20 @@ const isSystemMessage = (item: any) => {
   );
 };
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
 const resolveSenderName = (item: any) => {
   if (isSystemMessage(item)) return 'System';
   if (item?.senderName && String(item.senderName).trim())
-    return String(item.senderName).trim();
+    return toTitleCase(item.senderName);
   if (item?.displayName && String(item.displayName).trim())
-    return String(item.displayName).trim();
+    return toTitleCase(item.displayName);
   return 'User';
 };
 
@@ -1015,7 +1023,7 @@ const Messenger = ({
       return myIds.some((id) => id === selected.ownerId || id === selected.ownerUid);
     }
     // Older rooms without stored owner ids: fall back to the admin's name.
-    return !!currentUserName && selected.admin === currentUserName;
+    return !!currentUserName && toTitleCase(selected.admin) === currentUserName;
   }, [
     selected?.id,
     selected?.isRoom,
@@ -1727,7 +1735,7 @@ const Messenger = ({
   // ---------------------------------------------------------------------------
   const toggleMember = useCallback(
     (member: string) => {
-      if (member === currentUserName) return;
+      if (toTitleCase(member) === currentUserName) return;
       setCheckedMembers((prev) =>
         prev.includes(member)
           ? prev.filter((m) => m !== member)
@@ -3127,7 +3135,7 @@ const Messenger = ({
                 <View style={styles.professionalMemberList}>
                   {availableRoomMembers.map((member, index) => {
                     const checked = checkedMembers.includes(member);
-                    const isCurrentUser = member === currentUserName;
+                    const isCurrentUser = toTitleCase(member) === currentUserName;
                     return (
                       <TouchableOpacity
                         key={`${member}-${index}`}
@@ -3150,7 +3158,7 @@ const Messenger = ({
                           </View>
                           <View style={styles.professionalMemberTextWrap}>
                             <Text style={styles.professionalMemberName}>
-                              {member}
+                              {toTitleCase(member)}
                             </Text>
                             <Text style={styles.professionalMemberMeta}>
                               {isCurrentUser
@@ -3300,7 +3308,7 @@ const Messenger = ({
               <View style={styles.professionalMemberList}>
                 {selectedConversationMembers.map((member, index) => {
                   const isAdmin = member === selected?.admin;
-                  const isCurrentUser = member === currentUserName;
+                  const isCurrentUser = toTitleCase(member) === currentUserName;
                   const memberDetail =
                     selected?.memberDetails?.[index]?.name === member
                       ? selected.memberDetails[index]
@@ -3330,7 +3338,7 @@ const Messenger = ({
                         </View>
                         <View style={styles.professionalMemberTextWrap}>
                           <Text style={styles.professionalMemberName}>
-                            {member}
+                            {toTitleCase(member)}
                           </Text>
                           <Text style={styles.professionalMemberMeta}>
                             {isAdmin

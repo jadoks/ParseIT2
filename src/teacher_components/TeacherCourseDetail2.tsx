@@ -32,6 +32,15 @@ import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 // Same school letterhead assets used in Grades.tsx — shown as the default
 // header/footer until an admin uploads a custom pair via "Manage Template".
 const DefaultTemplateHeader = require('../../assets/images/myjourney-header-template-1.png');
@@ -2321,7 +2330,7 @@ const TeacherCourseDetail2 = ({
   const teacherFullName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
     const last = currentTeacher?.lastName?.trim() || '';
-    return `${first} ${last}`.trim() || course?.instructor || 'Teacher';
+    return toTitleCase(`${first} ${last}`) || toTitleCase(course?.instructor) || 'Teacher';
   }, [currentTeacher, course?.instructor]);
 
 
@@ -5361,7 +5370,7 @@ useEffect(() => {
         ['Rank', 'Student Name', 'Student ID', 'Score', 'Last Played'],
         ...leaderboardRows.map((entry, index: number) => [
           medalFor(index + 1),
-          entry.studentId !== '—' ? toLastCommaFirst(entry.studentName) : entry.studentName,
+          entry.studentId !== '—' ? toTitleCase(toLastCommaFirst(entry.studentName)) : entry.studentName,
           entry.studentId,
           entry.totalScore,
           formatDateTime(entry.lastPlayed),
@@ -8292,7 +8301,7 @@ the button looked completely dead.
                 {courseName}
               </Text>
               <Text style={styles.courseInstructorOnBanner} numberOfLines={1}>
-                {courseInstructor}
+                {toTitleCase(courseInstructor)}
               </Text>
             </View>
           </View>

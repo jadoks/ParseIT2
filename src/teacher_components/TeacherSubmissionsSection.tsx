@@ -27,6 +27,15 @@ import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 // instead of native Alert dialogs.
 import Toast from '../Final_Admin_Components/Toast';
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type ToastType = 'success' | 'error' | 'info';
 
 // ✅ NEW: Optional WebView import (mirrors CourseDetail.tsx pattern)
@@ -1426,14 +1435,14 @@ const handleDownloadPreview = async () => {
           onPress={() => setSelectedStudentId(student.id)}
           style={[styles.listItem, isSelected && styles.listItemActive]}
           accessibilityRole="button"
-          accessibilityLabel={`${student.name}, ${getStatusText(status)}`}
+          accessibilityLabel={`${toTitleCase(student.name)}, ${getStatusText(status)}`}
         >
           <View style={styles.listItemAvatar}>
             <MaterialCommunityIcons name="account" size={18} color={isSelected ? "#8B0000" : "#9CA3AF"} />
           </View>
           <View style={styles.listItemTextWrap}>
             <Text style={[styles.listItemName, isSelected && styles.listItemNameActive]}>
-              {student.name}
+              {toTitleCase(student.name)}
             </Text>
             <Text style={styles.listItemHandle}>
               {student.handle}
@@ -1512,7 +1521,7 @@ const handleDownloadPreview = async () => {
           isSelected && styles.studentCardSelected,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={`View ${student.name}'s submission`}
+        accessibilityLabel={`View ${toTitleCase(student.name)}'s submission`}
       >
         <View style={styles.studentCardTopRow}>
           <View style={styles.studentCardIdentity}>
@@ -1521,7 +1530,7 @@ const handleDownloadPreview = async () => {
             </View>
             <View style={styles.studentCardNameWrap}>
               <Text style={styles.studentCardName}>
-                {student.name}
+                {toTitleCase(student.name)}
               </Text>
               <Text style={styles.studentCardId}>
                 {student.id}
@@ -1687,7 +1696,7 @@ const handleDownloadPreview = async () => {
                         <View style={styles.bubbleHeaderRow}>
                           <View style={styles.bubbleMetaWrap}>
                             <Text style={styles.bubbleAuthor}>
-                              {comment.authorName || (comment.isInstructor ? "Instructor" : "Student")}
+                              {toTitleCase(comment.authorName) || (comment.isInstructor ? "Instructor" : "Student")}
                             </Text>
                             <Text style={styles.bubbleTime}>{comment.timestamp}</Text>
                           </View>
@@ -1790,7 +1799,7 @@ const handleDownloadPreview = async () => {
           <MaterialCommunityIcons name="account" size={26} color="#8B0000" />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.detailName}>{student.name}</Text>
+          <Text style={styles.detailName}>{toTitleCase(student.name)}</Text>
           <Text style={styles.detailHandle}>{student.handle} · {student.id}</Text>
         </View>
         {renderStatusChip(getStudentSubmissionStatus(student.id))}

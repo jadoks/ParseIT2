@@ -24,6 +24,15 @@ import ManageSectionsModal from "./ManageSectionsModal";
 import { useSectionConfig } from "./programHelpers";
 import Toast from "./Toast";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 type ManageClassProps = {
   width: number;
   currentAdmin?: {
@@ -990,7 +999,7 @@ export default function ManageClass({
 
                         <View style={styles.instructorColumn}>
                           <Text style={styles.tableSecondaryText} numberOfLines={1}>
-                            {item.instructor || "—"}
+                            {toTitleCase(item.instructor) || "—"}
                           </Text>
                         </View>
 
@@ -1283,7 +1292,7 @@ export default function ManageClass({
                 </View>
               ) : (
                 classMembers.map((member) => {
-                  const nameStr = member.name || "Unknown";
+                  const nameStr = toTitleCase(member.name) || "Unknown";
                   const initials = nameStr.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
                   const isTeacher = member.role === 'teacher';
                   const avatarBg = isTeacher ? "#DBEAFE" : "#F1E0E0";
@@ -1438,7 +1447,7 @@ export default function ManageClass({
             </View>
             <Text style={styles.confirmTitle}>Remove Member</Text>
             <Text style={styles.confirmSubtitle}>
-              Are you sure you want to remove <Text style={styles.confirmHighlight}>{memberToRemove?.name || "this member"}</Text> from the class?
+              Are you sure you want to remove <Text style={styles.confirmHighlight}>{toTitleCase(memberToRemove?.name) || "this member"}</Text> from the class?
             </Text>
             <View style={styles.confirmActions}>
               <TouchableOpacity 

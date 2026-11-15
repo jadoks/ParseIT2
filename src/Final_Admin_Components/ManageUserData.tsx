@@ -15,6 +15,15 @@ import {
 } from "react-native";
 import Toast from "./Toast";
 
+// Display helper: "jade lisondra" -> "Jade Lisondra"
+const toTitleCase = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type RosterType = "students" | "teachers";
@@ -313,7 +322,7 @@ function RosterCard({
             <View key={record.userId} style={styles.recordRow}>
               <View style={styles.recordBody}>
                 <Text style={styles.recordName} numberOfLines={1}>
-                  {record.lastName}, {record.firstName}
+                  {toTitleCase(record.lastName)}, {toTitleCase(record.firstName)}
                 </Text>
                 <View style={styles.recordMetaRow}>
                   <Text style={styles.recordMeta}>ID {record.userId}</Text>
@@ -345,7 +354,7 @@ function RosterCard({
                 onPress={() => onDelete(record)}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={`Remove ${record.firstName} ${record.lastName} from the list`}
+                accessibilityLabel={`Remove ${toTitleCase(`${record.firstName} ${record.lastName}`)} from the list`}
               >
                 <Ionicons name="trash-outline" size={18} color="#8B0000" />
               </TouchableOpacity>
@@ -465,7 +474,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
             }, HIGHLIGHT_MS)
           );
 
-          const first = `${newly[0].firstName} ${newly[0].lastName}`.trim();
+          const first = toTitleCase(`${newly[0].firstName} ${newly[0].lastName}`);
           showToast(
             newly.length === 1
               ? `${first} just registered.`
@@ -710,7 +719,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
         recordsRef.current[type].filter((r) => r.userId !== record.userId),
         false
       );
-      showToast(`Removed ${record.firstName} ${record.lastName} from the list.`);
+      showToast(`Removed ${toTitleCase(`${record.firstName} ${record.lastName}`)} from the list.`);
       setDeleteTarget(null);
     } catch (error: any) {
       showToast(error?.message || "Could not remove that record.", "error");
@@ -828,7 +837,7 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
             </View>
             <View style={styles.modalContent}>
               <Text style={styles.modalMessage}>
-                Remove {deleteTarget?.record.firstName} {deleteTarget?.record.lastName} (ID{" "}
+                Remove {toTitleCase(`${deleteTarget?.record.firstName ?? ""} ${deleteTarget?.record.lastName ?? ""}`)} (ID{" "}
                 {deleteTarget?.record.userId}) from the {deleteTarget?.type === "teachers" ? "teacher" : "student"}{" "}
                 list?{" "}
                 {deleteTarget?.type === "teachers"
