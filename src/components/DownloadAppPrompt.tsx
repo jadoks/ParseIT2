@@ -1,24 +1,24 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Easing,
-    Linking,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-    useWindowDimensions,
+  Animated,
+  Easing,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { FONT_BODY, WEIGHT_EMPHASIS } from '../theme/typography';
 import {
-    APK_DOWNLOAD_URL,
-    PROMPT_AUTO_HIDE_MS,
-    canOfferApk,
-    markAppDownloaded,
-    useCanHover,
+  APK_DOWNLOAD_URL,
+  PROMPT_AUTO_HIDE_MS,
+  canOfferApk,
+  markAppDownloaded,
+  useCanHover,
 } from './downloadAppShared';
 
 /**
@@ -254,9 +254,7 @@ const DownloadAppPrompt: React.FC<Props> = ({
                 <QRCode value={APK_DOWNLOAD_URL} size={qrSize} color="#000" backgroundColor="#FFF" />
               </View>
               <Text style={styles.hint}>Scan with your Android phone</Text>
-              <Pressable onPress={handleDownload} accessibilityRole="link">
-                <Text style={styles.link}>or download the .apk here</Text>
-              </Pressable>
+             
             </View>
           ) : (
             <Pressable
