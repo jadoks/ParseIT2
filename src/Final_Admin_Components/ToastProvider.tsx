@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-import { Modal, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Toast from "./Toast";
 
 export type ToastType = "success" | "error" | "info";
@@ -7,33 +7,36 @@ export type ToastType = "success" | "error" | "info";
 type ShowToast = (message: string, type?: ToastType, onHide?: () => void) => void;
 
 type ToastContextValue = {
-  // Show a toast. It stays until the user swipes it up or taps the X.
-  // If `onHide` is given, it runs when the toast closes AND the toast uses
-  // the timed auto-dismiss instead, so flows that advance on close
-  // (navigate after "Account created", reset a form, ...) never get stuck.
+  // Show a toast. It does NOT block the app: the user can keep tapping and
+  // typing underneath. It closes by itself after a few seconds, or when the
+  // user taps the X / swipes it up. Showing another toast replaces the
+  // current one (and restarts the timer). If `onHide` is given, it runs when
+  // the toast closes (navigate after "Account created", reset a form, ...).
   showToast: ShowToast;
   hideToast: () => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-type ToastState = { visible: boolean; message: string; type: ToastType; persistent: boolean };
+type ToastState = { visible: boolean; message: string; type: ToastType; id: number };
 
 // ONE toast for the whole app. Mounted once in App.tsx, above every screen,
 // so it survives switching screens, signing in/out, scrolling and focusing
-// fields. Rendered in a transparent Modal so it also sits above other modals.
+// fields. It is drawn as a plain overlay (NOT inside a <Modal>), because a
+// Modal captures every touch and would freeze the screen behind the toast.
+// Trade-off: a toast can't draw above a native <Modal> that is already open.
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
     type: "success",
-    persistent: true,
+    id: 0,
   });
   const onHideRef = useRef<(() => void) | null>(null);
 
   const showToast = useCallback<ShowToast>((message, type = "success", onHide) => {
     onHideRef.current = onHide ?? null;
-    setToast({ visible: true, message, type, persistent: !onHide });
+    setToast((prev) => ({ visible: true, message, type, id: prev.id + 1 }));
   }, []);
 
   const hideToast = useCallback(() => {
@@ -47,24 +50,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={value}>
-      {children}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.portal} pointerEvents="box-none">
+      <View style={styles.root}>
+        {children}
+        {/* Touch-through overlay: only the toast itself receives touches. */}
+        <View style={styles.overlay} pointerEvents="box-none">
           <Toast
-            persistent={toast.persistent}
             visible={toast.visible}
             message={toast.message}
             type={toast.type}
+            toastId={toast.id}
             onHide={hideToast}
           />
         </View>
-      </Modal>
+      </View>
     </ToastContext.Provider>
   );
 }
@@ -76,8 +74,10 @@ export function useToast(): ToastContextValue {
 }
 
 const styles = StyleSheet.create({
-  // Lets touches pass through to whatever's behind, except the toast itself.
-  portal: {
+  root: { flex: 1 },
+  overlay: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 20,
   },
 });

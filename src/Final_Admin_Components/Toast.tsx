@@ -20,11 +20,12 @@ export type ToastConfig = {
   // ms; if omitted, defaults by type — errors stay up longer (5500ms) so
   // there's time to actually read them, success/info dismiss sooner (4000ms).
   duration?: number;
-  // When true (the default) the toast NEVER auto-closes. It stays on screen
-  // while the user scrolls, focuses fields or navigates, and only closes when
-  // they swipe it up or tap the X. Pass `persistent={false}` to get the old
-  // timed auto-dismiss (see `duration`).
+  // Default false: the toast auto-closes after `duration`. Set true to keep it
+  // on screen until the user swipes it up or taps the X.
   persistent?: boolean;
+  // Bump this number on every new toast. It restarts the timer and animation
+  // even when the new message is identical to the one already showing.
+  toastId?: number;
   // Close when the user taps/clicks anywhere outside the toast. Default false.
   // Turn this on ONLY where <Toast> is rendered inside a full-screen transparent
   // <Modal> portal (the `toastPortal` pattern): a Modal captures every touch
@@ -68,7 +69,8 @@ export default function Toast({
   message,
   type = "success",
   duration,
-  persistent = true,
+  persistent = false,
+  toastId,
   dismissOnOutsideTouch,
   onHide,
 }: ToastConfig) {
@@ -141,7 +143,7 @@ export default function Toast({
     }
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, message, type]);
+  }, [visible, message, type, toastId]);
 
   // Swipe up to dismiss (touch on phone/tablet, mouse drag on web).
   // Only claims the gesture for a mostly-vertical drag, so a plain tap on
