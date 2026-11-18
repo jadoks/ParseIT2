@@ -17,8 +17,8 @@ import {
 } from 'react-native';
 import * as XLSX from 'xlsx';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS } from '../theme/typography';
-// ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
 const toTitleCase = (value?: string | null): string =>
@@ -327,18 +327,12 @@ type GradesProps = {
 };
 
 const Grades = ({ apiBaseUrl }: GradesProps) => {
-  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const { width } = useWindowDimensions();
 
@@ -1620,23 +1614,6 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
         </View>
       </Modal>
 
-      {/* Toast — portal-based so it renders above all other Modals */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -2646,10 +2623,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.25,
     textTransform: 'uppercase',
     fontFamily,
-  },
-  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
   },
 });
 

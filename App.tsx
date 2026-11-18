@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { auth } from './firebaseConfig';
 import AdminApp from './src/AdminApp';
+import { ToastProvider } from './src/Final_Admin_Components/ToastProvider';
 import { useLiveEvents } from './src/hooks/useLiveEvents';
 import LandingPage from './src/screens/LandingPage';
 import Register from './src/screens/Register';
@@ -756,10 +757,12 @@ export default function App() {
     return null;
   };
 
+  // ToastProvider sits above every screen so a toast survives switching
+  // screens, signing in/out, scrolling and focusing fields.
   return (
-    <>
+    <ToastProvider>
       {renderScreen()}
       <SessionReplacedModal visible={sessionReplaced} onConfirm={handleSessionReplacedConfirm} />
-    </>
+    </ToastProvider>
   );
 }

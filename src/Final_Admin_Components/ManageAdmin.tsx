@@ -16,7 +16,7 @@ import {
 
 import AddAdminModal, { AddAdminModalInitialData } from "./AddAdminModal";
 import type { AdminFormPayload } from "./adminTypes";
-import Toast from "./Toast";
+import { useToast } from "./ToastProvider";
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
 const toTitleCase = (value?: string | null): string =>
@@ -249,17 +249,9 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
     isOverlayOpenRef.current = isAddModalVisible || isDeleteModalVisible || !!rowMenu;
   });
 
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: "success" | "error" | "info";
-  }>({ visible: false, message: "", type: "success" });
-
-  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => showSharedToast(message, type);
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
@@ -962,12 +954,6 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
         </View>
       </Modal>
 
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
-      />
     </View>
   );
 }

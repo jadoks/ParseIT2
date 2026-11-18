@@ -26,8 +26,8 @@ import AnnouncementBanner from './TeacherAnnouncementBanner';
 import { Announcement } from './TeacherAnnouncementModal';
 import TeacherCourseCard from './TeacherCourseCard';
 
-// ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 // Program-based Create Class + admin-configurable sections.
 import { CreateMode, CreateModeToggle, SelectionSummary } from '../Final_Admin_Components/ClassCreateModeParts';
 import ProgramClassPicker, { useProgramPicker } from '../Final_Admin_Components/ProgramClassPicker';
@@ -543,12 +543,8 @@ const Dashboard2 = ({
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isDeletingClass, setIsDeletingClass] = useState(false);
 
-  // ✅ Toast state
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'error' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [isSemesterDropdownVisible, setSemesterDropdownVisible] = useState(false);
@@ -605,10 +601,8 @@ const Dashboard2 = ({
   const teacherId = useMemo(() => currentTeacher?.teacherId?.trim() || '', [currentTeacher]);
 
   const showToast = (message: string, type: ToastType = 'error') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const loadTeacherClasses = async (pinFrontId?: string) => {
   try {
@@ -1696,23 +1690,6 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
         </View>
       </ScrollView>
 
-      {/* Toast — now portal-based so it renders above other Modals (Create/Edit/Delete) */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -1965,10 +1942,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     fontWeight: '600',
-  },
-  // ✅ Added toastPortal style
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-    // let touches pass through to whatever's behind, except the toast itself
   },
 });

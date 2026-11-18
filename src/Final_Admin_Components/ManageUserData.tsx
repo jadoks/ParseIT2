@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Toast from "./Toast";
+import { useToast } from "./ToastProvider";
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
 const toTitleCase = (value?: string | null): string =>
@@ -401,16 +401,11 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
     record: RosterRecord;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [toast, setToast] = useState<{ visible: boolean; message: string; type: ToastType }>({
-    visible: false,
-    message: "",
-    type: "success",
-  });
-
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
   const showToast = useCallback(
-    (message: string, type: ToastType = "success") =>
-      setToast({ visible: true, message, type }),
-    []
+    (message: string, type: ToastType = "success") => showSharedToast(message, type),
+    [showSharedToast]
   );
 
   // Live-polling bookkeeping (refs so the interval never sees stale values).
@@ -868,21 +863,9 @@ export default function ManageUserData({ width, apiBaseUrl }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-          <Toast
-            visible={toast.visible && deleteTarget !== null}
-            message={toast.message}
-            type={toast.type}
-            onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
-          />
         </View>
       </Modal>
 
-      <Toast
-        visible={toast.visible && deleteTarget === null}
-        message={toast.message}
-        type={toast.type}
-        onHide={() => setToast((prev) => ({ ...prev, visible: false }))}
-      />
     </View>
   );
 }

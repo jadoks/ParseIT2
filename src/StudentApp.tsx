@@ -33,7 +33,7 @@ import UploadProgressToast, { UploadToastStage } from './components/UploadProgre
 // ✅ Same Toast component used in Assignments.tsx (Register/SignIn/Community/
 // Dashboard/CourseDetail all share it) so game-completion feedback here looks
 // and behaves the same as everywhere else.
-import Toast from './Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from './Final_Admin_Components/ToastProvider';
 import { useLiveEvents } from './hooks/useLiveEvents';
 import Analytics from './screens/Analytics';
 import Assignments, {
@@ -721,19 +721,8 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
   // toast shown while a grade file upload is in flight.
   const [uploadToastStage, setUploadToastStage] = useState<UploadToastStage>(null);
   const [uploadToastProgress, setUploadToastProgress] = useState(0);
-  // ✅ Toast state — same shape/usage as Assignments.tsx, used for the
-  // game-based-assignment completion/final-score feedback below.
-  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({
-    visible: false,
-    message: '',
-    type: 'success',
-  });
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  };
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast } = useToast();
   const [isLeaveConfirmModalVisible, setLeaveConfirmModalVisible] = useState(false);
   const [courseToLeave, setCourseToLeave] = useState<any>(null);
   const [isLeavingCourse, setIsLeavingCourse] = useState(false);
@@ -3489,25 +3478,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           stage={uploadToastStage}
           progress={uploadToastProgress}
         />
-        {/* Toast — portal-based, matches Register/SignIn/Community/Dashboard/
-            CourseDetail/Assignments so game-completion feedback looks and
-            behaves the same everywhere. */}
-        <Modal
-          visible={toast.visible}
-          transparent
-          animationType="fade"
-          onRequestClose={hideToast}
-          statusBarTranslucent
-        >
-          <View style={styles.toastPortal} pointerEvents="box-none">
-            <Toast dismissOnOutsideTouch
-              visible={toast.visible}
-              message={toast.message}
-              type={toast.type}
-              onHide={hideToast}
-            />
-          </View>
-        </Modal>
         <Modal 
           animationType="fade" 
           transparent 
@@ -3676,12 +3646,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 }
 
 const styles = StyleSheet.create({
-  // ✅ Toast portal — matches Register/SignIn/Community/Dashboard/CourseDetail/
-  // Assignments; lets touches pass through to whatever's behind, except the
-  // toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
   safeArea: { flex: 1, backgroundColor: '#fff' },
   safeAreaFullscreen: { backgroundColor: '#000' },
   safeAreaMobileFullscreen: { backgroundColor: '#fff' },

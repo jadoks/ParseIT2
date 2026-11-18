@@ -22,7 +22,7 @@ import AddClassModal, {
 } from "./AddClassModal";
 import ManageSectionsModal from "./ManageSectionsModal";
 import { useSectionConfig } from "./programHelpers";
-import Toast from "./Toast";
+import { useToast } from "./ToastProvider";
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
 const toTitleCase = (value?: string | null): string =>
@@ -259,17 +259,9 @@ export default function ManageClass({
     onAutoOpenHandled?.();
   }, [autoOpenAddModal]);
 
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: "success" | "error" | "info";
-  }>({ visible: false, message: "", type: "success" });
-
-  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => showSharedToast(message, type);
 
   // Path-only fetcher used by the program picker and section config.
   const programFetcher = useCallback(
@@ -1536,12 +1528,6 @@ export default function ManageClass({
         </View>
       </Modal>
 
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
-      />
     </View>
   );
 }

@@ -4,20 +4,19 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
 // ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
-import Toast from '../../Final_Admin_Components/Toast';
+import { useToast } from '../../Final_Admin_Components/ToastProvider';
 // Shared responsive tokens (breakpoints, font scale, spacing) — also used by quiz-masters.
 import { ResponsiveInfo, useResponsive } from './gameResponsive';
 
@@ -253,18 +252,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     return null;
   };
 
-  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
-
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast } = useToast();
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [score, setScore] = useState(0);
@@ -1458,23 +1447,6 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         </KeyboardAvoidingView>
       )}
 
-      {/* Toast — portal-based so it renders above the game/summary screens */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -2083,10 +2055,6 @@ const createStyles = (r: ResponsiveInfo) => {
       color: '#4CAF50',
       fontWeight: WEIGHT_EMPHASIS,
       flexWrap: 'wrap',
-    },
-    // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
-    toastPortal: {
-      ...StyleSheet.absoluteFillObject,
     },
   });
 };

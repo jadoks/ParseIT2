@@ -25,7 +25,8 @@ import * as Sharing from 'expo-sharing';
 import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher screens)
 // instead of native Alert dialogs.
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
 const toTitleCase = (value?: string | null): string =>
@@ -292,18 +293,12 @@ const TeacherSubmissionsSection = ({
   const pagePadding = isSmallPhone ? 12 : isMobile ? 14 : isTablet ? 20 : 24;
   const mobileTopSpace = isMobile ? insets.top : 0;
 
-  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   // Add this state at the component level
   const [freshUrlsCache, setFreshUrlsCache] = useState<Record<string, { url: string; timestamp: number }>>({});
@@ -2257,23 +2252,6 @@ const handleDownloadPreview = async () => {
         </View>
       </Modal>
 
-      {/* Toast — portal-based so it renders above all other Modals */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -2714,8 +2692,4 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF",
   },
   previewLoadingText: { fontFamily: FONT_BODY, color: "#666", fontSize: 14, fontWeight: "600" },
-  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });

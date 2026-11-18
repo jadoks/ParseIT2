@@ -35,7 +35,8 @@ const toTitleCase = (value?: string | null): string =>
 // screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
 // bespoke ToastProvider/context that used to live here, so feedback looks
 // and behaves consistently everywhere.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
 
@@ -885,20 +886,11 @@ export default function HonorsScreen({
   // opened from the (?) icon beside the "Deans List" title.
   const [showFlowModal, setShowFlowModal] = useState(false);
 
-  // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard,
-  // ClassesScreen, so this screen's feedback looks and behaves identically.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
 
   // Thin wrapper so every existing call site below can keep passing a
@@ -2704,24 +2696,6 @@ export default function HonorsScreen({
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Toast — portal-based, matches SignIn/Community/Dashboard/ClassesScreen
-          so feedback here looks and behaves the same as everywhere else. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -3914,11 +3888,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ✅ Toast portal — matches SignIn/Community/Dashboard/ClassesScreen; lets
-  // touches pass through to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 
   // ─── Deans List flow explainer (full-screen modal) ────────────────────────
   flowModalContainer: {

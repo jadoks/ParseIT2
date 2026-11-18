@@ -24,7 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // ✅ Reuses the same Toast component used across the app (Register/SignIn/
 // Community/Dashboard/ClassesScreen/CourseDetail) — swapped in below for the
 // Play Game feedback instead of the native Alert.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 import PdfJsViewer from '../components/PdfJsViewer'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -812,30 +812,21 @@ const Assignments = ({
   // highest score fell back) rather than picked by the student.
   const [autoFinalizedGameAssignments, setAutoFinalizedGameAssignments] = useState<Record<string, boolean>>({});
 
-  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
-  // Used for Play Game feedback (past due / no attempts) instead of Alert.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
 
   // Backend error messages can run long and verbose — the toast only has
-  // room for ~2 short lines, so trim anything past that instead of letting
+  // room for ~3 short lines, so trim anything past that instead of letting
   // it get visually cut off mid-sentence with no indication there's more.
   const MAX_TOAST_MESSAGE_LENGTH = 60;
   const shortenForToast = (message?: string | null, fallback = 'Something went wrong.') => {
     const text = (message || fallback).trim() || fallback;
     if (text.length <= MAX_TOAST_MESSAGE_LENGTH) return text;
     return `${text.slice(0, MAX_TOAST_MESSAGE_LENGTH - 1).trimEnd()}…`;
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
   };
 
   // ✅ NEW: Refresh state — drives pull-to-refresh UI on the list + detail
@@ -2938,25 +2929,6 @@ const Assignments = ({
         </SafeAreaView>
       </Modal>
 
-      {/* Toast — portal-based, matches Register/SignIn/Community/Dashboard/
-          CourseDetail so Play Game feedback looks and behaves the same
-          everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
 
     </ScrollView>
   );
@@ -3553,11 +3525,6 @@ const styles = StyleSheet.create({
   },
   previewLoadingText: { fontFamily: FONT_BODY, marginTop: 12, color: '#666', fontSize: 14 },
 
-  // ✅ Toast portal — matches Register/SignIn/Community/Dashboard/CourseDetail;
-  // lets touches pass through to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });
 
 export default Assignments;

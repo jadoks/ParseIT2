@@ -21,7 +21,7 @@ import {
 // Teacher screens, Community, Dashboard, ClassesScreen, SignIn) instead of
 // a native Alert. Alert.alert() is a no-op on React Native Web, which is
 // why validation errors in this modal previously never showed anything.
-import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+import { useToast } from "../Final_Admin_Components/ToastProvider"; // adjust path if your folder layout differs
 import { CreateMode, CreateModeToggle, SelectionSummary } from "./ClassCreateModeParts";
 import ProgramClassPicker, { useProgramPicker } from "./ProgramClassPicker";
 import { DEFAULT_SECTION_CONFIG, Fetcher, SectionConfig, toFormBlocks } from "./programHelpers";
@@ -622,20 +622,9 @@ export default function AddClassModal({
   const [isLocalSubmitting, setIsLocalSubmitting] = useState(false);
   const isBusy = isSubmitting || isLocalSubmitting;
 
-  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: "", type: "error" });
-
-  const showToast = (message: string, type: ToastType = "error") => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  };
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
+  const showToast = (message: string, type: ToastType = "error") => showSharedToast(message, type);
 
   // ── Teacher program → auto-fill (admin picks a teacher first) ──────────────
   const programExistingClasses = useMemo(
@@ -1678,25 +1667,6 @@ export default function AddClassModal({
         </View>
       </Modal>
 
-      {/* Toast — portal-based, matches Register/Community/Dashboard/
-          ClassesScreen/SignIn so validation feedback looks and behaves
-          the same everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </>
   );
 }
@@ -1760,9 +1730,6 @@ const styles = StyleSheet.create({
   teacherName: { fontSize: 14, fontWeight: "700", color: "#2B1111" },
   teacherMeta: { fontSize: 12, color: "#8A6F6F", marginTop: 2 },
   teacherChange: { fontSize: 13, fontWeight: "700", color: "#8B0000" },
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.45)",

@@ -28,7 +28,8 @@ import {
 
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen /
 // TeacherDashboard, instead of relying on native Alert popups.
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
@@ -270,12 +271,8 @@ useEffect(() => {
   const [postDropdownState, setPostDropdownState] = useState<PostDropdownState>(null);
   const [answerDropdownState, setAnswerDropdownState] = useState<AnswerDropdownState>(null);
 
-  // ✅ Toast state — replaces any native Alert usage with the shared Toast UI.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
@@ -297,10 +294,8 @@ useEffect(() => {
   const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   // 🔥 NEW — tracks whether ANY modal/dropdown/confirmation is currently
   // open. Kept in a ref (not state) so the polling interval below can read
@@ -1305,23 +1300,6 @@ useEffect(() => {
         </View>
       </Modal>
 
-      {/* Toast — portal-based so it renders above all other Modals (Answers/Edit/Delete) */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -1827,10 +1805,6 @@ inputPlaceholder: { fontFamily: FONT_BODY,
     lineHeight: 20,
   },
 
-  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });
 
 export default Community;

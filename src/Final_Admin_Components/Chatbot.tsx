@@ -18,7 +18,7 @@ import {
 // ✅ Reuses the same Toast component used across the app (Register/Admin/
 // Teacher screens, Community, Dashboard, ClassesScreen, SignIn) instead of
 // a native Alert, so feedback looks and behaves consistently.
-import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+import { useToast } from "../Final_Admin_Components/ToastProvider"; // adjust path if your folder layout differs
 
 type ToastType = "success" | "error" | "info";
 
@@ -168,33 +168,16 @@ export default function Chatbot({
   const [isResponseFocused, setIsResponseFocused] = useState(false);
   const [isTriggerFocused, setIsTriggerFocused] = useState(false);
 
-  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: "", type: "success" });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
-  // Some feedback calls (e.g. successful save) should close the modal only
-  // after the user has seen the toast, since the toast portal lives inside
-  // this component and would disappear if we closed immediately.
-  const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
-
+  // Some feedback calls run a follow-up (e.g. close the modal) once the toast closes.
+  // The shared provider runs it for us and auto-dismisses those toasts so the flow never gets stuck.
   const showToast = (
     message: string,
     type: ToastType = "info",
     onHide?: () => void
-  ) => {
-    setToast({ visible: true, message, type });
-    setToastOnHide(() => onHide || null);
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-    const callback = toastOnHide;
-    setToastOnHide(null);
-    if (callback) callback();
-  };
+  ) => showSharedToast(message, type, onHide);
 
   const handleClose = () => {
     if (saving || uploadingFile) return;
@@ -587,33 +570,11 @@ export default function Chatbot({
         </View>
       </View>
 
-      {/* Toast — portal-based, matches Register/Community/Dashboard/
-          ClassesScreen/SignIn so feedback looks and behaves the same
-          everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.45)",

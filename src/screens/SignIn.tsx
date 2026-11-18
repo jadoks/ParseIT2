@@ -27,7 +27,7 @@ import AuthWaveHeader from './Authwaveheader'; // small-screen wave header (same
 // screens, Community, Dashboard, ClassesScreen) instead of the bespoke
 // "feedback" modal that used to live here, so login/reset feedback looks
 // and behaves consistently everywhere.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 
 type UserRole = 'student' | 'teacher' | 'admin';
 type ForgotStep = 1 | 2 | 3;
@@ -194,17 +194,8 @@ const SignIn = ({
   const [isNewPasswordFocused, setIsNewPasswordFocused] = useState(false);
   const [isConfirmNewPasswordFocused, setIsConfirmNewPasswordFocused] = useState(false);
 
-  // ✅ Toast state — same shape/usage as Community, Dashboard, ClassesScreen.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
-
-  // Some of the old feedback calls advanced the flow only after the user
-  // acknowledged the message (see the password-reset success case below).
-  // Toast auto-dismisses, so we run that follow-up when it hides instead.
-  const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast } = useToast();
 
   // ── Login lockout state ─────────────────────────────────────────────────
   const [failedAttempts, setFailedAttempts] = useState(lockoutStore.failedAttempts);
@@ -384,22 +375,6 @@ const SignIn = ({
 
   const otpValue = verificationPin.join('');
   const isPinValid = /^\d{4}$/.test(otpValue);
-
-  const showToast = (
-    message: string,
-    type: ToastType = 'success',
-    onHide?: () => void
-  ) => {
-    setToast({ visible: true, message, type });
-    setToastOnHide(() => onHide || null);
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-    const callback = toastOnHide;
-    setToastOnHide(null);
-    if (callback) callback();
-  };
 
   // Thin wrapper so every existing call site below can keep passing a
   // title alongside the message — the toast just folds them into one line.
@@ -1686,24 +1661,6 @@ const SignIn = ({
         </View>
       </Modal>
 
-      {/* Toast — portal-based, matches Community/Dashboard/ClassesScreen so
-          login/reset/setup feedback looks and behaves the same everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </Animated.View>
   );
 };
@@ -2331,11 +2288,6 @@ const styles = StyleSheet.create({
   mSwitchText: { fontFamily: FONT_BODY, fontSize: 14, color: '#6B7280' },
   mSwitchLink: { color: '#8B0000', fontWeight: '700' },
 
-  // ✅ Toast portal — matches Community/Dashboard/ClassesScreen; lets touches
-  // pass through to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });
 
 export default SignIn;

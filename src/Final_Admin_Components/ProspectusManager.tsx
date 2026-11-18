@@ -2,21 +2,21 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  ActivityIndicator,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { apiFetch } from '../services/api';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
-import Toast from './Toast';
+import { useToast } from './ToastProvider';
 
 // Admin-only screen (the server enforces this too): upload, replace, delete and
 // view the program prospectus that students' progress is checked against.
@@ -113,14 +113,9 @@ const ProspectusManager = () => {
   const [confirm, setConfirm] = useState<null | 'replace' | 'delete'>(null);
   const limits = data?.limits ?? DEFAULT_LIMITS;
   const [activeYear, setActiveYear] = useState<number>(1);
-  const [toast, setToast] = useState<{ visible: boolean; message: string; type: ToastType }>({
-    visible: false,
-    message: '',
-    type: 'info',
-  });
-
-  const showToast = (message: string, type: ToastType = 'info') => setToast({ visible: true, message, type });
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
+  const showToast = (message: string, type: ToastType = 'info') => showSharedToast(message, type);
 
   const applyData = (next: ProspectusData) => {
     setData((prev) => ({ ...next, limits: next.limits ?? prev?.limits }));
@@ -508,7 +503,6 @@ const ProspectusManager = () => {
         </View>
       </Modal>
 
-      <Toast visible={toast.visible} message={toast.message} type={toast.type} onHide={hideToast} />
     </View>
   );
 };

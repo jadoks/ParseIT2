@@ -26,7 +26,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as XLSX from 'xlsx';
 import PdfJsViewer from '../components/PdfJsViewer'; // adjust path if your folder layout differs
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider). Aliased because this file also
+// declares its own (now unused) local `useToast` for the old ToastContext.
+import { useToast as useSharedToast } from '../Final_Admin_Components/ToastProvider';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
@@ -2270,11 +2272,7 @@ const TeacherCourseDetail2 = ({
   // `toast.confirm(...)` call sites everywhere below by wrapping the shared
   // <Toast /> component in a small local object with the same shape as the
   // old ToastContext value.
-  const [toastState, setToastState] = useState<{
-    visible: boolean;
-    message: string;
-    type: 'success' | 'error' | 'info';
-  }>({ visible: false, message: '', type: 'success' });
+  const { showToast: showSharedToast } = useSharedToast();
 
   const [confirmation, setConfirmation] = useState<{
     visible: boolean;
@@ -2283,10 +2281,6 @@ const TeacherCourseDetail2 = ({
     onConfirm: () => void;
     onCancel?: () => void;
   } | null>(null);
-
-  const hideToast = () => {
-    setToastState((prev) => ({ ...prev, visible: false }));
-  };
 
   // Keep toasts short: drop generic titles, cap the length.
   const formatToastText = (title: string, message?: string) => {
@@ -2309,11 +2303,7 @@ const TeacherCourseDetail2 = ({
       // The shared Toast component supports success/error/info, so a
       // "warning" is shown using the error styling.
       const mappedType: 'success' | 'error' | 'info' = type === 'warning' ? 'error' : type;
-      setToastState({
-        visible: true,
-        message: formatToastText(title, message),
-        type: mappedType,
-      });
+      showSharedToast(formatToastText(title, message), mappedType);
     },
     confirm: (
       title: string,
@@ -7793,22 +7783,6 @@ useEffect(() => {
   // is currently showing.
   const renderToastAndConfirmation = () => (
     <>
-      <Modal
-        visible={toastState.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toastState.visible}
-            message={toastState.message}
-            type={toastState.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
       <ConfirmationModal
         visible={!!confirmation?.visible}
         title={confirmation?.title || ''}
@@ -12277,11 +12251,6 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 90,
     justifyContent: 'center',
-  },
-  // Toast portal — matches the pattern used in SignIn.tsx; lets touches
-  // pass through to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
   },
   // ── Course Template (school-wide header/footer) ──
   templateHeaderImage: {

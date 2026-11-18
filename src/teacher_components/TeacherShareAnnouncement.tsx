@@ -18,7 +18,8 @@ import {
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
 // Adjust this relative path to match where Toast.tsx actually lives
 // relative to this file (e.g. "../Final_Admin_Components/Toast").
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 export type ShareAnnouncementClassItem = {
@@ -827,18 +828,12 @@ export default function ShareAnnouncement({
   const [deleteTarget, setDeleteTarget] = useState<TeacherAnnouncementItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ✅ Toast state (same shape/pattern as Admin's ManageStudent screen)
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const teacherName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
@@ -1848,12 +1843,6 @@ export default function ShareAnnouncement({
         </View>
       </Modal>
 
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
-      />
     </View>
   );
 }

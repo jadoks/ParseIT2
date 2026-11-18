@@ -28,7 +28,7 @@ import AuthWaveHeader from './Authwaveheader'; // small-screen wave header (same
 // screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
 // bespoke "feedback" modal that used to live here, so registration
 // feedback looks and behaves consistently everywhere.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1034,17 +1034,8 @@ export default function Register({
   const [policyView, setPolicyView] = useState<PolicyView>('terms');
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
 
-  // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard, ClassesScreen.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
-
-  // Some feedback calls advance the flow only after the user acknowledges
-  // the message (see the registration success case below). Toast
-  // auto-dismisses, so we run that follow-up when it hides instead.
-  const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast } = useToast();
 
   // Whether Confirm Password currently matches Password. Drives the inline
   // match indicator under that field below. Only shown once the user has
@@ -1158,22 +1149,6 @@ export default function Register({
   const sanitizeNameInput = (value: string) => value.replace(/[^A-Za-z\s]/g, '');
 
   const isValidName = (value: string) => NAME_REGEX.test(value.trim());
-
-  const showToast = (
-    message: string,
-    type: ToastType = 'success',
-    onHide?: () => void
-  ) => {
-    setToast({ visible: true, message, type });
-    setToastOnHide(() => onHide || null);
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-    const callback = toastOnHide;
-    setToastOnHide(null);
-    if (callback) callback();
-  };
 
   // Thin wrapper so every existing call site below can keep passing a
   // title alongside the message — the toast just folds them into one line.
@@ -1851,24 +1826,6 @@ export default function Register({
         onClose={() => setPolicyModalVisible(false)}
       />
 
-      {/* Toast — portal-based, matches Community/Dashboard/ClassesScreen/SignIn
-          so registration feedback looks and behaves the same everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </Animated.View>
   );
 }
@@ -2310,9 +2267,4 @@ const styles = StyleSheet.create({
   mSwitchText: { fontFamily: FONT_BODY, fontSize: 14, color: '#6B7280' },
   mSwitchLink: { color: '#8B0000', fontWeight: '700' },
 
-  // ✅ Toast portal — matches Community/Dashboard/ClassesScreen/SignIn; lets
-  // touches pass through to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });

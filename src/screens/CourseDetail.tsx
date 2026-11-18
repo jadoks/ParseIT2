@@ -46,7 +46,7 @@ import {
 // ✅ Reuses the same Toast component used across the app (SignIn, Community,
 // Dashboard, ClassesScreen) instead of native Alert.alert, so feedback here
 // looks and behaves consistently everywhere.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 import PdfJsViewer from '../components/PdfJsViewer'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -1486,29 +1486,21 @@ const CourseDetail = ({
   // inline indicator can show inside the modal without the big spinner.
   const [isRefreshingOpenedAssignment, setIsRefreshingOpenedAssignment] = useState(false);
 
-  // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard, ClassesScreen.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
 
   // Backend error messages can run long and verbose — the toast only has
-  // room for ~2 short lines, so trim anything past that instead of letting
+  // room for ~3 short lines, so trim anything past that instead of letting
   // it get visually cut off mid-sentence with no indication there's more.
   const MAX_TOAST_MESSAGE_LENGTH = 60;
   const shortenForToast = (message?: string | null, fallback = 'Something went wrong.') => {
     const text = (message || fallback).trim() || fallback;
     if (text.length <= MAX_TOAST_MESSAGE_LENGTH) return text;
     return `${text.slice(0, MAX_TOAST_MESSAGE_LENGTH - 1).trimEnd()}…`;
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
   };
 
   // Thin wrapper matching SignIn.tsx's showFeedback signature, so every
@@ -5016,23 +5008,6 @@ const fetchModules = useCallback(async (silent = false) => {
         </SafeAreaView>
       </Modal>
 
-      {/* ✅ Toast — same portal-based pattern as SignIn/Community/Dashboard/ClassesScreen */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </ScrollView>
   );
 };
@@ -6370,11 +6345,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  // ✅ Toast portal — matches SignIn/Community/Dashboard/ClassesScreen; lets
-  // touches pass through to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
   },
 
   // ── Course Template (school-wide header/footer) ──

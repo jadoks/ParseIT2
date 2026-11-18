@@ -20,6 +20,11 @@ export type ToastConfig = {
   // ms; if omitted, defaults by type — errors stay up longer (5500ms) so
   // there's time to actually read them, success/info dismiss sooner (4000ms).
   duration?: number;
+  // When true (the default) the toast NEVER auto-closes. It stays on screen
+  // while the user scrolls, focuses fields or navigates, and only closes when
+  // they swipe it up or tap the X. Pass `persistent={false}` to get the old
+  // timed auto-dismiss (see `duration`).
+  persistent?: boolean;
   // Close when the user taps/clicks anywhere outside the toast. Default false.
   // Turn this on ONLY where <Toast> is rendered inside a full-screen transparent
   // <Modal> portal (the `toastPortal` pattern): a Modal captures every touch
@@ -63,6 +68,7 @@ export default function Toast({
   message,
   type = "success",
   duration,
+  persistent = true,
   dismissOnOutsideTouch,
   onHide,
 }: ToastConfig) {
@@ -82,6 +88,10 @@ export default function Toast({
   onHideRef.current = onHide;
   const durationRef = useRef(resolvedDuration);
   durationRef.current = resolvedDuration;
+  // PanResponder callbacks are created once, so they read this ref instead
+  // of the prop.
+  const persistentRef = useRef(persistent);
+  persistentRef.current = persistent;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -127,7 +137,7 @@ export default function Toast({
         Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
       ]).start();
 
-      startTimer(durationRef.current);
+      if (!persistentRef.current) startTimer(durationRef.current);
     }
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,19 +159,20 @@ export default function Toast({
           hide();
         } else {
           Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
-          startTimer(RESUME_DURATION);
+          if (!persistentRef.current) startTimer(RESUME_DURATION);
         }
       },
       onPanResponderTerminate: () => {
         Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
-        startTimer(RESUME_DURATION);
+        if (!persistentRef.current) startTimer(RESUME_DURATION);
       },
     })
   ).current;
 
-  // Web only: pause the timer while hovering over the toast.
+  // Web only: pause the timer while hovering over the toast. Not needed when
+  // the toast is persistent (there is no timer to pause).
   useEffect(() => {
-    if (!visible || Platform.OS !== "web") return;
+    if (!visible || Platform.OS !== "web" || persistent) return;
     const node = toastRef.current;
     const onEnter = () => clearTimer();
     const onLeave = () => startTimer(RESUME_DURATION);
@@ -171,7 +182,7 @@ export default function Toast({
       node?.removeEventListener?.("mouseenter", onEnter);
       node?.removeEventListener?.("mouseleave", onLeave);
     };
-  }, [visible, clearTimer, startTimer]);
+  }, [visible, persistent, clearTimer, startTimer]);
 
   if (!visible) return null;
 
@@ -207,24 +218,22 @@ export default function Toast({
           },
         ]}
       >
-        {/* Tapping anywhere on the toast closes it. */}
-        <Pressable
-          onPress={hide}
-          style={styles.content}
-          accessibilityLabel={`${message}. Tap to dismiss.`}
-        >
+        {/* Only the X button (or a swipe up) closes the toast. */}
+        <View style={styles.content} accessibilityLabel={message}>
           <Ionicons name={palette.icon} size={22} color={palette.iconColor} />
-          <Text style={styles.message} numberOfLines={2}>
+          <Text style={styles.message} numberOfLines={3}>
             {message}
           </Text>
-          <View
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          <Pressable
+            onPress={hide}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Close notification"
+            style={styles.closeBtn}
           >
             <Ionicons name="close" size={18} color="#8A6F6F" />
-          </View>
-        </Pressable>
+          </Pressable>
+        </View>
       </Animated.View>
       </View>
     </>
@@ -248,13 +257,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
-    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null),
   },
   content: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  closeBtn: {
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null),
   },
   message: {
     flex: 1,

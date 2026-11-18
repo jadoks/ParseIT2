@@ -27,6 +27,7 @@ import {
   View
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
@@ -396,7 +397,6 @@ const Messenger = ({
   const flatListRef = useRef<FlatList<Message>>(null);
   const infoButtonRef = useRef<View>(null);
   const messageRefs = useRef<Record<string, View | null>>({});
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isTinyPhone = width < 360;
   const isMobile = width < 768;
@@ -419,22 +419,11 @@ const Messenger = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
 
-  // Toast State
-  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
-    visible: false,
-    message: '',
-    type: 'success',
-  });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
-    toastTimeoutRef.current = setTimeout(() => {
-      setToast((prev) => ({ ...prev, visible: false }));
-      toastTimeoutRef.current = null;
-    }, 3000);
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
 
   const handleCopyStudentId = (studentId: string) => {
@@ -2109,32 +2098,6 @@ const Messenger = ({
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Toast Render
-  // ---------------------------------------------------------------------------
-  const renderToast = () => {
-    if (!toast.visible) return null;
-    return (
-      <View style={styles.toastContainer} pointerEvents="none">
-        <View
-          style={[
-            styles.toastBox,
-            toast.type === 'success' ? styles.toastSuccess : styles.toastError,
-          ]}
-        >
-          <MaterialCommunityIcons
-            name={toast.type === 'success' ? 'check-circle' : 'alert-circle'}
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.toastText} numberOfLines={2}>
-            {toast.message}
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
-  // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
   const renderConversationList = () => {
@@ -3785,14 +3748,12 @@ const Messenger = ({
           >
             {renderChatPane()}
           </KeyboardAvoidingView>
-          {renderToast()}
         </View>
       );
     }
     return (
       <View style={[styles.mobileScreen]}>
         <View style={styles.mobileContent}>{renderConversationList()}</View>
-        {renderToast()}
       </View>
     );
   }
@@ -3803,7 +3764,6 @@ const Messenger = ({
         {renderConversationList()}
         {renderChatPane()}
       </View>
-      {renderToast()}
     </SafeAreaView>
   );
 };
@@ -4479,42 +4439,6 @@ const styles = StyleSheet.create({
   pendingFileSize: { fontFamily: FONT_BODY, fontSize: 11, color: '#666' },
   removeFileButton: { padding: 4 },
   
-  // Toast Styles
-  toastContainer: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 9999,
-    paddingHorizontal: 20,
-  },
-  toastBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-    maxWidth: '90%',
-    gap: 10,
-  },
-  toastSuccess: {
-    backgroundColor: '#22a355',
-  },
-  toastError: {
-    backgroundColor: '#d32f2f',
-  },
-  toastText: { fontFamily: FONT_BODY,
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-  },
 });
 
 export default Messenger;

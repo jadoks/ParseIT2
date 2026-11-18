@@ -20,7 +20,7 @@ import { Announcement } from '../components/AnnouncementModal';
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community), instead of the ad-hoc joinFeedback banner that used
 // to live here. Keeps toast styling/behavior consistent app-wide.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 export interface DashboardMaterial {
@@ -150,12 +150,8 @@ const Dashboard = ({
   const [showAllCourses, setShowAllCourses] = useState(false);
   const [isJoiningClass, setIsJoiningClass] = useState(false);
 
-  // ✅ Toast state — replaces the old joinFeedbackVisible/Type/Message trio.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
@@ -168,10 +164,8 @@ const Dashboard = ({
   const contentMaxWidth = isLargeScreen ? 1280 : 1100;
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
   };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const handleJoinClass = async () => {
     if (isJoiningClass) return;
@@ -1112,25 +1106,6 @@ const Dashboard = ({
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Toast — portal-based, matches the Community screen implementation
-          so join-class success/error feedback looks and behaves the same
-          way as everywhere else in the app. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </>
   );
 };
@@ -1644,11 +1619,6 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
   },
 
-  // ✅ Toast portal — matches Community; lets touches pass through to
-  // whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });
 
 export default Dashboard;

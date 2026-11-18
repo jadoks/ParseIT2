@@ -18,7 +18,7 @@ import {
 // Admin/Teacher screens, Community, Dashboard, ClassesScreen, SignIn)
 // instead of inline alert-style banners, so feedback looks and behaves
 // consistently.
-import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+import { useToast } from "../Final_Admin_Components/ToastProvider"; // adjust path if your folder layout differs
 
 type ToastType = "success" | "error" | "info";
 
@@ -153,21 +153,9 @@ export default function Settings({
   const [isChangePasswordModalVisible, setIsChangePasswordModalVisible] =
     useState(false);
 
-  // ✅ Toast state — same shape/usage as Chatbot/Register/SignIn/Community/
-  // Dashboard, replacing the old inline alert-style banners.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: "", type: "success" });
-
-  const showToast = (message: string, type: ToastType = "info") => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  };
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
+  const showToast = (message: string, type: ToastType = "info") => showSharedToast(message, type);
 
   // ─── Change Email state ───────────────────────────────────────────────
   const [changeEmailStep, setChangeEmailStep] = useState(1);
@@ -1093,25 +1081,6 @@ export default function Settings({
         </View>
       </Modal>
 
-      {/* Toast — portal-based, matches Chatbot/Register/Community/Dashboard/
-          ClassesScreen/SignIn so feedback looks and behaves the same
-          everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </>
   );
 }
@@ -1448,11 +1417,6 @@ const styles = StyleSheet.create({
     color: "#8B0000",
   },
 
-  // Toast — portal-based, matches Chatbot/Register/Community/Dashboard/
-  // ClassesScreen/SignIn.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 
   modalFooter: {
     paddingHorizontal: 24,

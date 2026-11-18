@@ -2,18 +2,17 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 // ✅ Reuses the same Toast component used across the app instead of native Alert dialogs.
-import Toast from './Final_Admin_Components/Toast';
+import { useToast } from './Final_Admin_Components/ToastProvider';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -182,18 +181,8 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
 const PROFILE_IMAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // every 5 min
 
 export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: Props) {
-  // ✅ Toast state — replaces native Alert usage with the shared Toast UI.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
-
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast } = useToast();
 
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -1585,23 +1574,6 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
         </View>
       )}
 
-      {/* Toast — portal-based so it renders above all other screens/modals */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1676,9 +1648,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#555',
     fontWeight: '500',
-  },
-  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
   },
 });

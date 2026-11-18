@@ -19,7 +19,7 @@ import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/t
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard) for join-class feedback instead of
 // silently succeeding/failing with no feedback at all.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 
 interface ClassesScreenProps {
   courses?: CourseCardCourse[];
@@ -81,18 +81,8 @@ const ClassesScreen = ({
   // it down fixes that at every breakpoint.
   const [gridWidth, setGridWidth] = useState(0);
 
-  // ✅ Toast state — same shape/usage as Community and Dashboard.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
-
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast } = useToast();
 
   // 👇 FILTER COURSES BASED ON SEARCH QUERY
   const filteredCourses = useMemo(() => {
@@ -303,24 +293,6 @@ const ClassesScreen = ({
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Toast — portal-based, matches Community/Dashboard so join-class
-          success/error feedback looks and behaves the same way everywhere. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </>
   );
 };
@@ -371,11 +343,6 @@ const styles = StyleSheet.create({
   confirmButtonDisabled: { backgroundColor: '#C57F7F' },
   confirmButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
 
-  // ✅ Toast portal — matches Community/Dashboard; lets touches pass through
-  // to whatever's behind, except the toast itself.
-  toastPortal: {
-    ...StyleSheet.absoluteFillObject,
-  },
 });
 
 export default ClassesScreen;

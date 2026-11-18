@@ -41,12 +41,8 @@ import {
   setCachedUserImageUrl,
 } from '../services/userImageUrlCache';
 
-// ✅ Same Toast component used by Admin Settings (and Chatbot/Register/
-// Community/Dashboard/ClassesScreen/SignIn) — reused here so Student
-// Settings' PIN/email/password feedback looks and behaves identically to
-// Admin's, instead of native Alert dialogs. Adjust this path if your
-// folder layout differs.
-import Toast from '../Final_Admin_Components/Toast';
+// ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+import { useToast } from '../Final_Admin_Components/ToastProvider';
 
 // Sections are managed by the Admin (Manage Sections) and served by
 // GET /section-config, so the grade-upload form no longer hardcodes them.
@@ -614,21 +610,9 @@ const DrawerMenu = ({
   const [isGradeConfirmVisible, setGradeConfirmVisible] = useState(false);
   const [gradeConfirmChecked, setGradeConfirmChecked] = useState(false);
 
-  // ✅ Toast state — same shape/usage as Admin Settings, replacing Alert.alert
-  // for the Change Email / Change Password flows below.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: ToastType;
-  }>({ visible: false, message: '', type: 'success' });
-
-  const showToast = (message: string, type: ToastType = 'info') => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  };
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
+  const showToast = (message: string, type: ToastType = 'info') => showSharedToast(message, type);
 
   // ─── Change Email state (mirrors Settings.tsx's Admin flow) ───────────
   const [changeEmailStep, setChangeEmailStep] = useState(1);
@@ -1946,25 +1930,6 @@ const DrawerMenu = ({
         </View>
       </Modal>
 
-      {/* Toast — same portal-based component used by Admin Settings (and
-          Chatbot/Register/Community/Dashboard/ClassesScreen/SignIn), so
-          Student Settings feedback looks and behaves identically. */}
-      <Modal
-        visible={toast.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={hideToast}
-        statusBarTranslucent
-      >
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast
-            visible={toast.visible}
-            message={toast.message}
-            type={toast.type}
-            onHide={hideToast}
-          />
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -2206,9 +2171,6 @@ const styles = StyleSheet.create({
   },
   resendLinkWrap: { marginTop: 14, alignItems: 'center' },
   resendLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8B0000' },
-  // Toast — portal-based, matches Admin Settings/Chatbot/Register/Community/
-  // Dashboard/ClassesScreen/SignIn.
-  toastPortal: { ...StyleSheet.absoluteFillObject },
   modalFooter: {
     paddingHorizontal: 24,
     paddingTop: 16,

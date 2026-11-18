@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 // ✅ Same shared Toast component used across Admin/Teacher/Assignments — used
 // instead of the native Alert (which does nothing on web).
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { useToast } from '../Final_Admin_Components/ToastProvider'; // adjust path if your folder layout differs
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import { QuizQuestion } from './games/quiz-masters';
 
@@ -167,15 +167,10 @@ const Game = ({
   const remainingGenerations = Math.max(0, maxGenerationsPerDay - generationsUsedToday);
   const hasReachedDailyLimit = generationsUsedToday >= maxGenerationsPerDay;
 
-  // ✅ Toast state — same shape/usage as Assignments / TeacherCourseDetail.
-  const [toast, setToast] = useState<{
-    visible: boolean;
-    message: string;
-    type: 'success' | 'error' | 'info';
-  }>({ visible: false, message: '', type: 'success' });
+  // ✅ Shared toast — one persistent <Toast> lives in App.tsx (ToastProvider).
+  const { showToast: showSharedToast } = useToast();
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') =>
-    setToast({ visible: true, message: message.length > 60 ? `${message.slice(0, 59)}…` : message, type });
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+    showSharedToast(message.length > 60 ? `${message.slice(0, 59)}…` : message, type);
 
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
@@ -776,12 +771,6 @@ const Game = ({
         </View>
       </Modal>
 
-      {/* Shared toast, rendered in its own transparent Modal so it shows above the full-screen "Start a New Quiz" modal too. */}
-      <Modal visible={toast.visible} transparent animationType="fade" onRequestClose={hideToast} statusBarTranslucent>
-        <View style={styles.toastPortal} pointerEvents="box-none">
-          <Toast dismissOnOutsideTouch visible={toast.visible} message={toast.message} type={toast.type} onHide={hideToast} />
-        </View>
-      </Modal>
     </ScrollView>
   );
 };
@@ -789,7 +778,6 @@ const Game = ({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB' },
-  toastPortal: { ...StyleSheet.absoluteFillObject },
   contentContainer: { padding: 24, paddingBottom: 40 },
 
   // 🔥 NEW: outer white card wrapping the "Games" title/subtitle, the
