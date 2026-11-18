@@ -55,6 +55,9 @@ const SWIPE_VELOCITY = 0.5;
 
 const HIDDEN_Y = -80;
 
+// JS-driven animations (useNativeDriver: false). The toast is tiny, and the native
+// driver can leave a re-mounted Animated.View stuck invisible on Android.
+
 const TOAST_STYLES: Record<
   ToastType,
   { bg: string; border: string; iconColor: string; icon: keyof typeof Ionicons.glyphMap }
@@ -107,8 +110,8 @@ export default function Toast({
     hidingRef.current = true;
     clearTimer();
     Animated.parallel([
-      Animated.timing(translateY, { toValue: HIDDEN_Y, duration: 200, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: HIDDEN_Y, duration: 200, useNativeDriver: false }),
+      Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: false }),
     ]).start(({ finished }) => {
       hidingRef.current = false;
       if (finished) onHideRef.current();
@@ -132,11 +135,11 @@ export default function Toast({
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
-          useNativeDriver: true,
+          useNativeDriver: false,
           speed: 16,
           bounciness: 8,
         }),
-        Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: false }),
       ]).start();
 
       if (!persistentRef.current) startTimer(durationRef.current);
@@ -160,12 +163,12 @@ export default function Toast({
         if (g.dy < -SWIPE_DISTANCE || g.vy < -SWIPE_VELOCITY) {
           hide();
         } else {
-          Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: false }).start();
           if (!persistentRef.current) startTimer(RESUME_DURATION);
         }
       },
       onPanResponderTerminate: () => {
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
+        Animated.spring(translateY, { toValue: 0, useNativeDriver: false }).start();
         if (!persistentRef.current) startTimer(RESUME_DURATION);
       },
     })
@@ -202,9 +205,10 @@ export default function Toast({
           importantForAccessibility="no"
         />
       )}
-      <View pointerEvents="box-none" style={styles.container}>
+      <View pointerEvents="box-none" collapsable={false} style={styles.container}>
       <Animated.View
         ref={toastRef}
+        collapsable={false}
         {...panResponder.panHandlers}
         accessible
         accessibilityRole="alert"
@@ -216,7 +220,11 @@ export default function Toast({
             borderColor: palette.border,
             transform: [{ translateY }],
             opacity,
-            maxWidth: isMobile ? width - 32 : 420,
+            // Native needs a definite width: the message Text is flex: 1, and inside a
+            // shrink-wrapped box it collapses to 0 (icon + X, no text). Web can size to content.
+            ...(Platform.OS === "web"
+              ? { maxWidth: isMobile ? width - 32 : 420 }
+              : { width: Math.min(width - 32, 420) }),
           },
         ]}
       >

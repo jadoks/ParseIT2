@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <View style={styles.root}>
         {children}
         {/* Touch-through overlay: only the toast itself receives touches. */}
-        <View style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.overlay} pointerEvents="box-none" collapsable={false}>
           <Toast
             visible={toast.visible}
             message={toast.message}
