@@ -121,7 +121,7 @@ const PRIVACY_SECTIONS = [
   {
     title: '2. Information We Collect',
     body:
-      'Depending on your role, we may collect personal details (name, student or employee ID, email, birthdate, photo, role), academic information (enrolled classes, Module Lessons progress, assignment submissions, quiz results, grades), system information (device, login activity, IP address, app version, crash and usage logs), and AI interaction data such as prompts and questions submitted to the AI Assistant.',
+      'Depending on your role, we may collect personal details (name, student or employee ID, email, birthdate, photo, role), academic information (enrolled classes, Module Lessons progress, assignment submissions, quiz results, grades), system information (device, login activity, IP address, app version, crash and usage logs), and AI interaction data such as prompts, questions, recent conversation history, and files or images submitted to the AI Assistant or AI Tutor.',
   },
   {
     title: '3. How We Use It',
@@ -136,20 +136,25 @@ const PRIVACY_SECTIONS = [
   {
     title: '5. Data Sharing',
     body:
-      "ParseIT Hub does not sell your personal information. It's only shared with authorized teachers and administrators, when required by law, or when necessary to operate the platform's services.",
+      "ParseIT Hub does not sell your personal information. It's only shared with authorized teachers and administrators, when required by law, or when necessary to operate the platform's services, including processing by our AI service provider, Google (Gemini), as described in Section 6.",
   },
   {
-    title: '6. Your Rights',
+    title: '6. AI Services (Google Gemini)',
+    body:
+      'ParseIT Hub uses Google Gemini, a third-party AI service, to power the AI Assistant and AI Tutor. When you use the AI Assistant, your messages, recent conversation history, and any files or images you upload are sent to Google to generate a response. When you use the AI Tutor, we also send a summary of your lesson progress and scores, results of follow-up activities, and related course and assignment materials. We do not send your name, student ID, email, birthdate, or photo. Please do not upload files containing sensitive personal information. Google may process this data on servers outside the Philippines.',
+  },
+  {
+    title: '7. Your Rights',
     body:
       'You may access your personal information, request corrections, request deletion of eligible data (subject to institutional policy), request a copy of your data where applicable, and report privacy concerns.',
   },
   {
-    title: '7. Changes to This Policy',
+    title: '8. Changes to This Policy',
     body:
       "This policy may be updated from time to time. You'll be notified of significant changes through the application, and continued use after changes are made means you accept the updated terms.",
   },
   {
-    title: '8. Contact',
+    title: '9. Contact',
     body:
       'Questions about this Privacy Policy can be directed to the ParseIT Hub administrators or the BSIT Department of Cebu Technological University – Argao Campus.',
   },

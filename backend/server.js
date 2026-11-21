@@ -18625,7 +18625,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         message,
         mode = "assistant",
         history = [],
-        studentId = null,
+        // SECURITY: any studentId sent by the client is ignored. The caller's
+        // identity is resolved from the verified session below.
+        studentId: _clientStudentId = null,
         courseId = null,
         assignmentId = null,
         topic = null,
@@ -18639,6 +18641,17 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       if (!message && !fileBase64) {
         return res.status(400).json({ error: "Message or file is required." });
       }
+
+      // Resolve who is actually calling. Only students get personalised tutor
+      // context, and only their OWN progress can ever be loaded.
+      const callerProfile = await findUserProfileByAuthUid(req.user?.uid);
+      if (!callerProfile) {
+        return res.status(403).json({ error: "User profile not found." });
+      }
+      const studentId =
+        callerProfile.role === "student"
+          ? String(callerProfile.data?.studentId || callerProfile.id || "").trim() || null
+          : null;
 
       const normalizedMode = mode === "tutor" ? "tutor" : "assistant";
       const normalizedHistory = buildGeminiHistory(history);
@@ -18666,10 +18679,11 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           getRecentStudentActivities(studentId, 8),
         ]);
 
+        // The student ID is used only for the database lookups above; it is
+        // deliberately NOT included in the text sent to the AI provider.
         tutorProfileContext = buildTutorProfileContext({
           progress,
           activities,
-          studentId,
         });
 
         if (assignmentId) {
@@ -19110,7 +19124,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
   // ====================== END AI CHAT HISTORY ROUTES ======================
 
-  app.post("/ai/chat", handleAIChat);
+  app.post("/ai/chat", requireAuth, handleAIChat);
 
   function buildFilePrompt({
     fileName,
@@ -19141,7 +19155,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   }
 
   // keep your old frontend working
-  app.post("/ai/gemini", handleAIChat);
+  app.post("/ai/gemini", requireAuth, handleAIChat);
 
 
   function serializeTimestamp(value) {
