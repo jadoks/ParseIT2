@@ -50,6 +50,7 @@ type SectionCardProps = {
   children: React.ReactNode;
   widthValue?: DimensionValue;
   onInfoPress?: () => void;
+  compact?: boolean;
 };
 
 type ProgressBarProps = {
@@ -268,9 +269,16 @@ function SectionCard({
   children,
   widthValue = "100%",
   onInfoPress,
+  compact = false,
 }: SectionCardProps) {
   return (
-    <View style={[styles.sectionCard, { width: widthValue }]}>
+    <View
+      style={[
+        styles.sectionCard,
+        compact && styles.sectionCardCompact,
+        { width: widthValue },
+      ]}
+    >
       <View style={styles.sectionCardHeader}>
         <View
           style={[
@@ -278,11 +286,11 @@ function SectionCard({
             widthValue === "100%" && styles.sectionCardHeaderLeftWide,
           ]}
         >
-          <View style={styles.iconBox}>{icon}</View>
+          <View style={[styles.iconBox, compact && styles.iconBoxCompact]}>{icon}</View>
 
           <View style={styles.sectionCardHeaderTextWrap}>
             <View style={styles.sectionCardTitleRow}>
-              <Text style={[styles.sectionCardTitle, { marginBottom: 0, flexShrink: 1 }]}>{title}</Text>
+              <Text style={[styles.sectionCardTitle, compact && styles.sectionCardTitleCompact, { marginBottom: 0, flexShrink: 1 }]}>{title}</Text>
               {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
             </View>
             <Text style={styles.sectionCardSubtitle}>{subtitle}</Text>
@@ -421,11 +429,9 @@ function AcademicTrendChart({
   const isSmall = width < 768;
   const isVerySmall = width < 480;
 
-  // Calculate available width considering parent paddings
-  // SectionCard padding: 20 * 2 = 40
-  // trendChartShell padding: 12 * 2 = 24
-  // Total horizontal padding = 64
-  const availableWidth = Math.max(250, width - 64);
+  // Available width = container - SectionCard (padding + border) - trendChartShell (padding + border)
+  // Desktop: (20*2 + 2) + (12*2 + 2) = 68   |   Compact/mobile: (16*2 + 2) + (12*2 + 2) = 60
+  const availableWidth = Math.max(200, width - (isSmall ? 60 : 68));
   const chartWidth = availableWidth;
   
   const chartHeight = isSmall ? 250 : 280;
@@ -804,7 +810,9 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     ? "48.5%"
     : "23.5%";
 
-  const halfWidth: DimensionValue = isMobile ? "100%" : "48.7%";
+  // Two-column cards need roughly 900px; below that (phones + small tablets) stack to one column
+  const isCompactLayout = responsiveWidth < 900;
+  const halfWidth: DimensionValue = isCompactLayout ? "100%" : "48.7%";
 
   const loadAdminAnalytics = async (opts?: { silent?: boolean }) => {
     const resolvedApiBaseUrl = apiBaseUrl || "http://localhost:5000";
@@ -1162,7 +1170,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           </View>
 
           <Pressable
-            style={styles.refreshButton}
+            style={[styles.refreshButton, isMobile && styles.refreshButtonMobile]}
             onPress={() => loadAdminAnalytics()}
             disabled={isLoading}
           >
@@ -1248,6 +1256,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
       <View style={styles.grid}>
         <View style={styles.fullWidthAnalyticsRow}>
         <SectionCard
+          compact={isMobile}
           widthValue="100%"
           title="Department Overview"
           subtitle="Institution-wide assignment performance summary"
@@ -1301,6 +1310,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 
         <View style={styles.fullWidthAnalyticsRow}>
         <SectionCard
+          compact={isMobile}
           widthValue="100%"
           title="Semester Performance Trend"
           onInfoPress={() => openInfo("trend")}
@@ -1352,6 +1362,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         </View>
 
         <SectionCard
+
+          compact={isMobile}
           widthValue={halfWidth}
           title="Section Comparison"
           onInfoPress={() => openInfo("sectionComparison")}
@@ -1378,6 +1390,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         </SectionCard>
 
         <SectionCard
+
+          compact={isMobile}
           widthValue={halfWidth}
           title="Year-Level Comparison"
           onInfoPress={() => openInfo("yearComparison")}
@@ -1400,6 +1414,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         </SectionCard>
 
         <SectionCard
+
+          compact={isMobile}
           widthValue={halfWidth}
           title="Subject Difficulty Trend"
           onInfoPress={() => openInfo("subjectDifficulty")}
@@ -1427,6 +1443,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         </SectionCard>
 
         <SectionCard
+
+          compact={isMobile}
           widthValue={halfWidth}
           title="Intervention Suggestions"
           onInfoPress={() => openInfo("suggestions")}
@@ -1442,6 +1460,8 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         </SectionCard>
 
         <SectionCard
+
+          compact={isMobile}
           widthValue="100%"
           title="Assignment Risk Population"
           onInfoPress={() => openInfo("riskPopulation")}
@@ -1490,6 +1510,7 @@ const styles = StyleSheet.create({
     minHeight: 46, paddingHorizontal: 18, borderRadius: 14, backgroundColor: "#8B0000",
     flexDirection: "row", alignItems: "center", justifyContent: "center",
   },
+  refreshButtonMobile: { alignSelf: "stretch" },
   refreshButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800", marginLeft: 8 },
   errorBanner: {
     borderRadius: 16, borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FEF2F2",
@@ -1518,23 +1539,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#EBD4D4",
     padding: 20, marginBottom: 18, minWidth: 0,
   },
+  sectionCardCompact: { padding: 16, borderRadius: 20 },
+  sectionCardTitleCompact: { fontSize: 16 },
   sectionCardHeader: { marginBottom: 18 },
   sectionCardHeaderLeft: { flexDirection: "row", alignItems: "center" },
   sectionCardHeaderLeftWide: { flexWrap: "wrap" },
-  sectionCardHeaderTextWrap: { flex: 1 },
+  sectionCardHeaderTextWrap: { flex: 1, minWidth: 0 },
   sectionCardTitle: { fontSize: 18, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
   sectionCardSubtitle: { fontSize: 14, color: "#8A6F6F", lineHeight: 20 },
   iconBox: {
     width: 56, height: 56, borderRadius: 18, backgroundColor: "#F1E0E0",
     alignItems: "center", justifyContent: "center", marginRight: 14,
   },
+  iconBoxCompact: { width: 44, height: 44, borderRadius: 14, marginRight: 12 },
   statRow: {
     width: "100%", minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: "#F3E6E6",
-    backgroundColor: "#FAF5F5", paddingHorizontal: 14, marginBottom: 10,
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "#FAF5F5", paddingHorizontal: 14, paddingVertical: 8, marginBottom: 10,
+    flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 6,
   },
   statRowLabel: { flex: 1, fontSize: 14, color: "#5F3B3B", fontWeight: "600", paddingRight: 12 },
-  statRowValue: { fontSize: 14, color: "#2B1111", fontWeight: "800" },
+  statRowValue: { fontSize: 14, color: "#2B1111", fontWeight: "800", flexShrink: 0, marginLeft: "auto" },
   statRowValueDanger: { color: "#DC2626" },
   statRowValueSuccess: { color: "#059669" },
   statRowValueWarning: { color: "#D97706" },
@@ -1551,26 +1575,31 @@ const styles = StyleSheet.create({
   suggestionTitle: { fontSize: 14, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
   suggestionText: { fontSize: 14, lineHeight: 21, color: "#7A4A4A" },
   riskGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 12 },
-  riskGridMobile: { flexDirection: "column", gap: 10 },
+  riskGridMobile: { flexDirection: "column", flexWrap: "nowrap", justifyContent: "flex-start", gap: 10 },
   riskCard: {
-    flexGrow: 1, flexBasis: "48%", maxWidth: "49%", minWidth: 280, borderRadius: 18,
+    flexGrow: 1, flexShrink: 1, flexBasis: "48%", maxWidth: "49%", minWidth: 280, borderRadius: 18,
     borderWidth: 1, borderColor: "#EBD4D4", backgroundColor: "#FFFFFF", padding: 16, marginBottom: 0,
   },
-  riskCardMobile: { width: "100%", maxWidth: "100%", minWidth: 0, padding: 14 },
+  // In a column layout flexBasis is measured vertically, so it must be reset to "auto" here
+  riskCardMobile: {
+    width: "100%", maxWidth: "100%", minWidth: 0, padding: 14,
+    flexGrow: 0, flexShrink: 0, flexBasis: "auto",
+  },
   riskCardHigh: { backgroundColor: "#FFF7F7", borderColor: "#FCA5A5" },
   riskTopRow: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
     marginBottom: 10, gap: 10,
   },
-  riskTopRowMobile: { flexDirection: "column", alignItems: "stretch" },
-  riskTextWrap: { flex: 1, minWidth: 0, paddingRight: 0 },
-  riskTextWrapMobile: { width: "100%" },
-  riskName: { fontSize: 15, fontWeight: "800", color: "#2B1111", marginBottom: 4 },
+  riskTopRowMobile: { flexDirection: "column", alignItems: "stretch", gap: 8 },
+  riskTextWrap: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, paddingRight: 0 },
+  // flex:1 here would collapse the name/tags to zero height inside a column
+  riskTextWrapMobile: { width: "100%", flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
+  riskName: { fontSize: 15, fontWeight: "800", color: "#2B1111", marginBottom: 4, flexShrink: 1 },
   riskSection: { fontSize: 13, color: "#8A6F6F", fontWeight: "600" },
   riskTagContainer: { flexDirection: "row", flexWrap: "wrap", marginTop: 6, gap: 6 },
   riskTag: {
     backgroundColor: "#F7EDED", borderWidth: 1, borderColor: "#EBD4D4", borderRadius: 999,
-    paddingHorizontal: 10, paddingVertical: 5, maxWidth: "100%",
+    paddingHorizontal: 10, paddingVertical: 5, maxWidth: "100%", flexShrink: 1,
   },
   riskTagText: { fontSize: 12, fontWeight: "700", color: "#7A4A4A", flexShrink: 1 },
   riskBadge: {
@@ -1590,13 +1619,13 @@ const styles = StyleSheet.create({
   departmentOverviewGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 },
   departmentOverviewGridMobile: { flexDirection: "column", gap: 0 },
   departmentOverviewItem: { flexGrow: 1, flexBasis: "31%", minWidth: 180, marginBottom: 0 },
-  departmentOverviewItemMobile: { width: "100%", minWidth: 0, flexBasis: "auto", marginBottom: 0 },
+  departmentOverviewItemMobile: { width: "100%", minWidth: 0, flexGrow: 0, flexBasis: "auto", marginBottom: 0 },
   trendChartShell: {
     borderRadius: 16, borderWidth: 1, borderColor: "#EBD4D4", backgroundColor: "#FAF5F5",
     padding: 12, marginBottom: 12,
   },
-  trendChartHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10, alignItems: "flex-start" },
-  trendChartHeaderLeft: { flex: 1, marginRight: 10, flexShrink: 1 }, // Added to prevent title overlap
+  trendChartHeader: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 10, alignItems: "flex-start", gap: 8 },
+  trendChartHeaderLeft: { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0, marginRight: 0 }, // Added to prevent title overlap
   trendChartTitle: { fontSize: 14, fontWeight: "900", color: "#2B1111" },
   trendChartSubtitle: { fontSize: 11, color: "#8A6F6F" },
   trendChartScrollGuard: { alignItems: "center", justifyContent: "center" },
@@ -1611,7 +1640,7 @@ const styles = StyleSheet.create({
     alignItems: "stretch", gap: 10,
   },
   trendMetricGridInline: {
-    flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", // Removed minWidth: 360 to allow wrapping
+    flexGrow: 1, flexShrink: 1, flexBasis: 280, minWidth: 0, flexDirection: "row", flexWrap: "wrap",
     justifyContent: "space-between", gap: 10,
   },
   trendEmptyState: { alignItems: "center", justifyContent: "center", padding: 20 },
@@ -1641,8 +1670,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "#EBD4D4", padding: 16,
   },
   filterRowMobile: { flexDirection: "column" },
-  filterGroup: { flex: 1, minWidth: 250 },
-  filterGroupMobile: { width: "100%" },
+  filterGroup: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 250 },
+  filterGroupMobile: { width: "100%", minWidth: 0, flexGrow: 0, flexShrink: 0, flexBasis: "auto" },
   filterLabel: { fontSize: 13, fontWeight: "800", color: "#5F3B3B", marginBottom: 8 },
   
   dropdownButton: {
@@ -1679,7 +1708,7 @@ const styles = StyleSheet.create({
   infoButton: { padding: 2, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   summaryLabelRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: 10 },
   sectionCardTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
-  statRowLabelWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 12 },
+  statRowLabelWrap: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 120, flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 12 },
   trendMetricLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 },
   infoOverlay: { flex: 1, backgroundColor: "rgba(43, 17, 17, 0.45)", justifyContent: "center", alignItems: "center", padding: 16 },
   infoSheet: { width: "100%", maxWidth: 560, maxHeight: "85%", backgroundColor: "#FFFFFF", borderRadius: 22, padding: 18 },
