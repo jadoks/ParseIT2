@@ -1016,6 +1016,12 @@ const SignIn = ({
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>ID Number</Text>
         <View style={[styles.inputWrapper, isIdFocused && styles.inputWrapperFocused]}>
+          <Icon
+            name="person-outline"
+            size={19}
+            color={isIdFocused ? '#8B0000' : '#9CA3AF'}
+            style={{ marginRight: 10 }}
+          />
           <TextInput
             style={styles.inputWithIcon}
             placeholder="Enter your numeric ID"
@@ -1036,6 +1042,12 @@ const SignIn = ({
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Password</Text>
         <View style={[styles.passwordContainer, isPasswordFocused && styles.passwordContainerFocused]}>
+          <Icon
+            name="lock-closed-outline"
+            size={19}
+            color={isPasswordFocused ? '#8B0000' : '#9CA3AF'}
+            style={{ marginRight: 10 }}
+          />
           <TextInput
             style={styles.passwordInput}
             placeholder="Enter your password"
@@ -1105,6 +1117,12 @@ const SignIn = ({
         <View style={styles.mField}>
           <Text style={styles.mLabel}>ID Number</Text>
           <View style={[styles.mInputWrap, isIdFocused && styles.mInputWrapFocused]}>
+            <Icon
+              name="person-outline"
+              size={19}
+              color={isIdFocused ? '#8B0000' : '#9CA3AF'}
+              style={{ marginRight: 10 }}
+            />
             <TextInput
               style={styles.mInput}
               placeholder="Enter your numeric ID"
@@ -1122,6 +1140,12 @@ const SignIn = ({
         <View style={styles.mField}>
           <Text style={styles.mLabel}>Password</Text>
           <View style={[styles.mInputWrap, isPasswordFocused && styles.mInputWrapFocused]}>
+            <Icon
+              name="lock-closed-outline"
+              size={19}
+              color={isPasswordFocused ? '#8B0000' : '#9CA3AF'}
+              style={{ marginRight: 10 }}
+            />
             <TextInput
               style={styles.mInput}
               placeholder="Enter your password"
@@ -1861,6 +1885,11 @@ const styles = StyleSheet.create({
   inputWrapperFocused: {
     borderColor: '#8B0000',
     borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#8B0000',
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
   },
   inputWithIcon: { fontFamily: FONT_BODY, 
     flex: 1,
@@ -1883,6 +1912,11 @@ const styles = StyleSheet.create({
   passwordContainerFocused: {
     borderColor: '#8B0000',
     borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#8B0000',
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
   },
   passwordInput: { fontFamily: FONT_BODY, 
     flex: 1,
@@ -2241,6 +2275,10 @@ const styles = StyleSheet.create({
   mInputWrapFocused: {
     borderColor: '#8B0000',
     backgroundColor: '#FFFFFF',
+    shadowColor: '#8B0000',
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
   },
   mInput: {
     fontFamily: FONT_BODY,
@@ -2274,7 +2312,7 @@ const styles = StyleSheet.create({
   },
   // "Not ready yet" look (grey) — mirrors the disabled Confirm button in the reference.
   mPrimaryButtonIdle: {
-    backgroundColor: '#8A919E',
+    backgroundColor: '#B98585',
     shadowOpacity: 0,
     elevation: 0,
   },

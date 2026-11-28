@@ -31,6 +31,8 @@ const STAGE_COPY: Record<
   },
 };
 
+const STAGE_ORDER: Exclude<UploadToastStage, null>[] = ['uploading', 'verifying', 'processing'];
+
 export default function UploadProgressToast({ visible, stage, progress }: UploadProgressToastProps) {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -69,7 +71,7 @@ export default function UploadProgressToast({ visible, stage, progress }: Upload
       <View style={styles.card}>
         <View style={styles.row}>
           <View style={styles.iconWrap}>
-            <MaterialCommunityIcons name={copy.icon} size={22} color="#D32F2F" />
+            <MaterialCommunityIcons name={copy.icon} size={22} color="#8B0000" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.title} numberOfLines={1}>
@@ -80,6 +82,21 @@ export default function UploadProgressToast({ visible, stage, progress }: Upload
             </Text>
           </View>
           {stage === 'uploading' && <Text style={styles.percentText}>{Math.round(progress)}%</Text>}
+        </View>
+
+        {/* Three steps: upload, identity check, processing. The first bar fills
+            with the real upload progress; the others light up as each step starts. */}
+        <View style={styles.steps}>
+          {STAGE_ORDER.map((name, index) => {
+            const current = STAGE_ORDER.indexOf((stage || 'uploading') as any);
+            const fill =
+              index < current ? 100 : index === current ? (name === 'uploading' ? Math.max(6, Math.min(100, progress)) : 100) : 0;
+            return (
+              <View key={name} style={styles.stepTrack}>
+                <View style={[styles.stepFill, { width: `${fill}%` }]} />
+              </View>
+            );
+          })}
         </View>
       </View>
     </Animated.View>
@@ -100,14 +117,33 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#EBD4D4',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
+    shadowColor: '#4A0000',
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.16,
-    shadowRadius: 14,
+    shadowRadius: 16,
     elevation: 12,
+  },
+  steps: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 12,
+  },
+  stepTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#F3E6E6',
+    overflow: 'hidden',
+  },
+  stepFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#8B0000',
   },
   row: {
     flexDirection: 'row',
@@ -118,7 +154,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#FDECEA',
+    backgroundColor: '#F7EDED',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -135,7 +171,7 @@ const styles = StyleSheet.create({
   percentText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#D32F2F',
+    color: '#8B0000',
     marginLeft: 6,
   },
 });

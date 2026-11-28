@@ -78,6 +78,21 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
 
   const canPlayAgain = attemptsRemaining > 0;
 
+  // The attempt with the highest score (ties go to the later attempt), so the
+  // student can see which one is worth submitting. Only shown when there is a choice.
+  const bestId = useMemo(() => {
+    let bestId: string | null = null;
+    let bestRatio = -1;
+    for (const a of sortedAttempts) {
+      const ratio = a.totalQuestions > 0 ? a.rawScore / a.totalQuestions : 0;
+      if (ratio >= bestRatio) {
+        bestId = a.id;
+        bestRatio = ratio;
+      }
+    }
+    return bestId;
+  }, [sortedAttempts]);
+
   const handleSubmit = async () => {
     if (!pickedId || isSubmitting) return;
     setIsSubmitting(true);
@@ -149,6 +164,13 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
           const percent = attempt.totalQuestions > 0
             ? Math.round((attempt.rawScore / attempt.totalQuestions) * 100)
             : 0;
+          const tone =
+            percent >= 75
+              ? { bg: '#E3F4EA', fg: '#1E8E4E' }
+              : percent >= 50
+                ? { bg: '#FFF3D6', fg: '#8A6D00' }
+                : { bg: '#FCE8E8', fg: '#C62828' };
+          const isBest = sortedAttempts.length > 1 && bestId === attempt.id;
 
           return (
             <TouchableOpacity
@@ -163,6 +185,12 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
                 </View>
                 <View>
                   <Text style={styles.attemptLabel}>Attempt {attempt.attemptNumber}</Text>
+                  {isBest && (
+                    <View style={styles.bestRow}>
+                      <Ionicons name="star" size={12} color="#B7791F" />
+                      <Text style={styles.bestTag}>Highest score</Text>
+                    </View>
+                  )}
                   {isCurrentlyFinal && (
                     <Text style={styles.currentFinalTag}>
                       {selectedAutomatically ? 'Auto-submitted as your final score' : 'Currently your final score'}
@@ -174,7 +202,9 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
                 <Text style={styles.attemptScore}>
                   {attempt.rawScore}/{attempt.totalQuestions}
                 </Text>
-                <Text style={styles.attemptPercent}>{percent}%</Text>
+                <View style={[styles.percentPill, { backgroundColor: tone.bg }]}>
+                  <Text style={[styles.percentText, { color: tone.fg }]}>{percent}%</Text>
+                </View>
               </View>
             </TouchableOpacity>
           );
@@ -252,7 +282,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFF',
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 2,
     borderColor: '#EEE',
     padding: 16,
@@ -276,6 +306,10 @@ const styles = StyleSheet.create({
   attemptCardRight: { alignItems: 'flex-end' },
   attemptScore: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#222' },
   attemptPercent: { fontFamily: FONT_BODY, fontSize: 13, color: '#777', fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
+  percentPill: { marginTop: 4, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
+  percentText: { fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS },
+  bestRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  bestTag: { fontFamily: FONT_BODY, fontSize: 12, color: '#B7791F', fontWeight: WEIGHT_EMPHASIS },
   playAgainButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -313,6 +347,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 16,
     backgroundColor: '#8B0000',
+    shadowColor: '#8B0000',
+    shadowOpacity: 0.22,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 4,
   },
   submitButtonDisabled: { backgroundColor: '#C57F7F' },
   submitButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },

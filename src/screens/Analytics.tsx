@@ -9,7 +9,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { buildStudentAnalytics } from '../analytics/analyticsService';
 import {
@@ -19,6 +18,7 @@ import {
   TrendDirection,
 } from '../analytics/types';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
+import { AnimatedBarChart, AnimatedDonutChart, AnimatedLineChart } from './AnimatedCharts';
 import { AssignmentCourse } from './Assignments';
 
 interface AnalyticsProps {
@@ -48,24 +48,6 @@ const COLORS = {
   warning: '#F59E0B',
   danger: '#DC2626',
   info: '#2563EB',
-};
-
-const chartConfig = {
-  backgroundGradientFrom: '#FFFFFF',
-  backgroundGradientTo: '#FFFFFF',
-  decimalPlaces: 0,
-  color: (opacity = 1) => `rgba(139,0,0, ${opacity})`,
-  labelColor: (opacity = 1) => `rgba(17, 24, 39, ${opacity})`,
-  fillShadowGradient: '#8B0000',
-  fillShadowGradientOpacity: 1,
-  barPercentage: 0.62,
-  propsForBackgroundLines: {
-    stroke: '#E5E7EB',
-    strokeDasharray: '',
-  },
-  propsForLabels: {
-    fontSize: 10,
-  },
 };
 
 const getRiskColor = (risk: RiskLevel) => {
@@ -208,85 +190,6 @@ const MetricCard = ({
   </View>
 );
 
-const FloatingBarLabels = ({
-  data,
-  chartWidth,
-  chartHeight,
-  isTablet,
-  isDesktop,
-}: {
-  data: number[];
-  chartWidth: number;
-  chartHeight: number;
-  isTablet: boolean;
-  isDesktop: boolean;
-}) => {
-  const itemCount = Math.max(data.length, 1);
-  const horizontalInset = isDesktop ? 34 : isTablet ? 28 : 22;
-  const plotTopInset = isDesktop ? 22 : isTablet ? 20 : 18;
-  const plotBottomInset = isDesktop ? 42 : isTablet ? 38 : 34;
-  const plotWidth = chartWidth - horizontalInset * 2;
-  const plotHeight = chartHeight - plotTopInset - plotBottomInset;
-  const slotWidth = plotWidth / itemCount;
-
-  return (
-    <View pointerEvents="none" style={[styles.floatingOverlay, { width: chartWidth, height: chartHeight }]}>
-      {data.map((value: number, index: number) => {
-        const clamped = Math.max(0, Math.min(100, Number(value) || 0));
-        const x = horizontalInset + index * slotWidth + slotWidth / 2;
-        const y = plotTopInset + (1 - clamped / 100) * plotHeight;
-        return (
-          <View key={`bar-label-${index}`} style={[styles.anchorLabelWrap, { left: x, top: Math.max(2, y - 24) }]}>
-            <Text style={styles.floatingLabelText}>{clamped}%</Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-};
-
-const FloatingLineLabels = ({
-  data,
-  labels,
-  chartWidth,
-  chartHeight,
-  isTablet,
-  isDesktop,
-}: {
-  data: number[];
-  labels: string[];
-  chartWidth: number;
-  chartHeight: number;
-  isTablet: boolean;
-  isDesktop: boolean;
-}) => {
-  const itemCount = Math.max(data.length, 1);
-  const horizontalInset = isDesktop ? 34 : isTablet ? 28 : 22;
-  const plotTopInset = isDesktop ? 22 : isTablet ? 20 : 18;
-  const plotBottomInset = isDesktop ? 42 : isTablet ? 38 : 34;
-  const plotWidth = chartWidth - horizontalInset * 2;
-  const plotHeight = chartHeight - plotTopInset - plotBottomInset;
-  const slotWidth = plotWidth / itemCount;
-
-  return (
-    <View pointerEvents="none" style={[styles.floatingOverlay, { width: chartWidth, height: chartHeight }]}>
-      {data.map((value: number, index: number) => {
-        const clamped = Math.max(0, Math.min(100, Number(value) || 0));
-        const courseCode = labels[index] || `Item ${index + 1}`;
-        const x = horizontalInset + index * slotWidth + slotWidth / 2;
-        const y = plotTopInset + (1 - clamped / 100) * plotHeight;
-        return (
-          <View key={`line-label-${index}`} style={[styles.anchorLabelWrapWide, { left: x, top: Math.max(2, y - 28) }]}>
-            <Text style={styles.floatingLabelText}>
-              {courseCode.length > 12 ? `${courseCode.slice(0, 12)}…` : courseCode} ({clamped}%)
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-};
-
 // Display helper: "jade lisondra" -> "Jade Lisondra"
 const toTitleCase = (value?: string | null): string =>
   String(value ?? '')
@@ -380,6 +283,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
   const chartHeight = isDesktop ? 300 : isTablet ? 270 : 220;
   const pieChartWidth = isMobile ? 220 : chartInnerWidth;
   const pieChartHeight = isMobile ? 190 : isDesktop ? 250 : 220;
+  const donutSize = isMobile ? 190 : isDesktop ? 230 : 210;
   const piePaddingLeft = isMobile ? '40' : isDesktop ? '24' : isTablet ? '18' : '10';
 
   const subjectValues = subjectBarData.datasets[0]?.data ?? [];
@@ -766,20 +670,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           <View style={styles.chartContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator bounces contentContainerStyle={styles.chartScrollContent}>
               <View style={{ width: subjectChartWidth, height: chartHeight }}>
-                <BarChart
-                  data={subjectBarData}
-                  width={subjectChartWidth}
-                  height={chartHeight}
-                  fromZero
-                  yAxisLabel=""
-                  yAxisSuffix=""
-                  withHorizontalLabels={false}
-                  withVerticalLabels
-                  chartConfig={chartConfig}
-                  style={styles.chartStyle}
-                  segments={5}
-                />
-                <FloatingBarLabels data={subjectValues} chartWidth={subjectChartWidth} chartHeight={chartHeight} isTablet={isTablet} isDesktop={isDesktop} />
+                <AnimatedBarChart data={subjectValues} labels={subjectBarData.labels} width={subjectChartWidth} height={chartHeight} />
               </View>
             </ScrollView>
           </View>
@@ -790,28 +681,13 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           <SectionTitle title="Grade Distribution" onInfoPress={() => openInfo('gradeDistribution')} />
           <Text style={styles.sectionCaption}>Breakdown of your grades across all assignments</Text>
           <View style={styles.chartContainerCentered}>
-            <PieChart
+            <AnimatedDonutChart
               data={gradeDistributionPieData}
-              width={pieChartWidth}
-              height={pieChartHeight}
-              chartConfig={chartConfig}
-              accessor="population"
-              backgroundColor="transparent"
-              paddingLeft={piePaddingLeft}
-              absolute={!isMobile}
-              hasLegend={!isMobile}
+              size={donutSize}
+              centerValue={analytics.totalGradedAssignments}
+              centerLabel="graded"
             />
           </View>
-          {isMobile && (
-            <View style={styles.mobileLegendWrap}>
-              {gradeDistributionPieData.map((item: { name: string; population: number; color: string }) => (
-                <View key={item.name} style={styles.mobileLegendItem}>
-                  <View style={[styles.mobileLegendDot, { backgroundColor: item.color }]} />
-                  <Text style={styles.mobileLegendText}>{item.population} {item.name}</Text>
-                </View>
-              ))}
-            </View>
-          )}
           <Text style={styles.chartFooterText}>Total graded assignments: {analytics.totalGradedAssignments}</Text>
         </View>
 
@@ -822,21 +698,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
           <View style={styles.chartContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator bounces contentContainerStyle={styles.chartScrollContent}>
               <View style={{ width: trendChartWidth, height: chartHeight }}>
-                <LineChart
-                  data={trendLineData}
-                  width={trendChartWidth}
-                  height={chartHeight}
-                  fromZero
-                  yAxisLabel=""
-                  yAxisSuffix=""
-                  withHorizontalLabels={false}
-                  withVerticalLabels
-                  chartConfig={chartConfig}
-                  bezier
-                  style={styles.chartStyle}
-                  segments={5}
-                />
-                <FloatingLineLabels data={trendValues} labels={trendFullLabels} chartWidth={trendChartWidth} chartHeight={chartHeight} isTablet={isTablet} isDesktop={isDesktop} />
+                <AnimatedLineChart data={trendValues} labels={trendFullLabels} width={trendChartWidth} height={chartHeight} />
               </View>
             </ScrollView>
           </View>

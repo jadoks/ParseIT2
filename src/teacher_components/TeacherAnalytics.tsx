@@ -1,5 +1,7 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -11,10 +13,10 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { LineChart } from "react-native-chart-kit";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
 import { getScorePercent, normalizeAssignmentStatus } from "../analytics/metrics";
+import { AnimatedLineChart } from "../screens/AnimatedCharts";
 import { AssignmentCourse } from "../screens/Assignments";
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -307,6 +309,42 @@ const SectionCard = ({
   </View>
 );
 
+// Numbers in the metric cards count up from 0 when the screen opens. Values such as
+// "78%" keep their suffix; anything that isn't a number is shown as-is.
+const CountUpText = ({ value, style }: { value: string | number; style?: StyleProp<any> }) => {
+  const match = String(value).match(/^(-?\d+(?:\.\d+)?)(\D*)$/);
+  const target = match ? Number(match[1]) : null;
+  const suffix = match ? match[2] : '';
+  const decimals = match && match[1].includes('.') ? match[1].split('.')[1].length : 0;
+  const [shown, setShown] = useState(0);
+
+  useEffect(() => {
+    if (target === null) return;
+    setShown(0);
+    const anim = new Animated.Value(0);
+    const id = anim.addListener(({ value: v }) => setShown(v));
+    const run = Animated.timing(anim, {
+      toValue: target,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    run.start();
+    return () => {
+      run.stop();
+      anim.removeListener(id);
+    };
+  }, [target]);
+
+  if (target === null) return <Text style={style}>{value}</Text>;
+  return (
+    <Text style={style}>
+      {shown.toFixed(decimals)}
+      {suffix}
+    </Text>
+  );
+};
+
 const MetricCard = ({
   title,
   value,
@@ -331,7 +369,7 @@ const MetricCard = ({
       </View>
       {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
     </View>
-    <Text style={styles.metricValue}>{value}</Text>
+    <CountUpText style={styles.metricValue} value={value} />
     <Text style={styles.metricTitle}>{title}</Text>
     <Text style={styles.metricHelper}>{helper}</Text>
   </View>
@@ -351,6 +389,20 @@ const HorizontalBar = ({
   rightText?: string;
 }) => {
   const widthPercent = formatPercentWidth(value, maxValue);
+  const grow = useRef(new Animated.Value(0)).current;
+
+  // The bar fills from the left each time the screen opens or the value changes.
+  useEffect(() => {
+    grow.setValue(0);
+    const run = Animated.timing(grow, {
+      toValue: 1,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    run.start();
+    return () => run.stop();
+  }, [widthPercent, grow]);
 
   return (
     <View style={styles.barRow}>
@@ -361,10 +413,13 @@ const HorizontalBar = ({
         <Text style={styles.barRightValue}>{rightText ?? value}</Text>
       </View>
       <View style={styles.barTrack}>
-        <View
+        <Animated.View
           style={[
             styles.barFill,
-            { width: widthPercent, backgroundColor: color },
+            {
+              width: grow.interpolate({ inputRange: [0, 1], outputRange: ["0%", widthPercent] }),
+              backgroundColor: color,
+            },
           ]}
         />
       </View>
@@ -1818,32 +1873,18 @@ export default function TeacherAnalytics({
           }
         >
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <LineChart
-              data={chartData}
-              width={chartWidth}
-              height={chartHeight}
-              yAxisSuffix="%"
-              yAxisInterval={1}
-              chartConfig={{
-                backgroundColor: palette.surface,
-                backgroundGradientFrom: palette.surface,
-                backgroundGradientTo: palette.surface,
-                decimalPlaces: 0,
-                color: (opacity = 1) => `rgba(37, 99, 235, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(51, 78, 104, ${opacity})`,
-                propsForDots: {
-                  r: "5",
-                  strokeWidth: "2",
-                  stroke: palette.blue,
-                },
-                propsForBackgroundLines: {
-                  strokeDasharray: "4 6",
-                  stroke: "#E6EEF8",
-                },
-              }}
-              bezier
-              style={styles.lineChart}
-            />
+            <View style={styles.lineChart}>
+              <AnimatedLineChart
+                data={chartData.datasets[0].data}
+                labels={chartData.labels}
+                width={chartWidth}
+                height={chartHeight}
+                color={palette.blue}
+                ink={palette.textStrong}
+                muted={palette.textMuted}
+                grid="#E6EEF8"
+              />
+            </View>
           </ScrollView>
         </SectionCard>
 

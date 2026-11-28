@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Text, TouchableOpacity, View } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // Native PDF viewer that works in Expo Go (no native modules besides
 // react-native-webview, which the app already uses).
@@ -143,20 +144,27 @@ export default function PdfJsViewer({ url, height, fileName }: Props) {
 
   if (error || !WebView) {
     return (
-      <View style={{ flex: 1, height, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#F0F0F0' }}>
-        <Text style={{ color: '#666', textAlign: 'center', marginBottom: 12 }}>
+      <View style={{ flex: 1, height, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#FAF7F7' }}>
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#F1E0E0', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+          <MaterialCommunityIcons name="file-alert-outline" size={30} color="#8B0000" />
+        </View>
+        <Text style={{ color: '#2B1111', fontWeight: '800', fontSize: 16, marginBottom: 6 }}>
+          Can't show this document
+        </Text>
+        <Text style={{ color: '#6B4A4A', textAlign: 'center', marginBottom: 16, lineHeight: 20, maxWidth: 320 }}>
           {error || 'Install react-native-webview to preview PDFs.'}
         </Text>
         {!!WebView && (
           <TouchableOpacity
             onPress={() => setAttempt((a) => a + 1)}
-            style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#8B0000', borderRadius: 6, marginBottom: 8 }}
+            activeOpacity={0.88}
+            style={{ paddingHorizontal: 22, paddingVertical: 11, backgroundColor: '#8B0000', borderRadius: 14, marginBottom: 8 }}
           >
-            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Try Again</Text>
+            <Text style={{ color: '#FFF', fontWeight: '800' }}>Try again</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={openExternally} style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
-          <Text style={{ color: '#8B0000', fontWeight: 'bold' }}>
+          <Text style={{ color: '#8B0000', fontWeight: '700' }}>
             {fileName ? `Open ${fileName} in browser` : 'Open in browser'}
           </Text>
         </TouchableOpacity>

@@ -24,6 +24,21 @@ export type NotificationType =
   // 👇 ADDED: teacher published a new class announcement
   | 'announcement';
 
+// Each notification type gets its own tint, so the list is easy to scan.
+const TONES: Record<string, { fg: string; bg: string }> = {
+  assignment: { fg: '#8B0000', bg: '#FBEAEA' },
+  announcement: { fg: '#8B0000', bg: '#FBEAEA' },
+  material: { fg: '#2457C5', bg: '#E6EEFB' },
+  'community-answer': { fg: '#6D28D9', bg: '#EEE8FB' },
+  'support-activity': { fg: '#B7791F', bg: '#FFF3D6' },
+  'game-assignment': { fg: '#1E8E4E', bg: '#E3F4EA' },
+  'module-lesson': { fg: '#0E7490', bg: '#E0F4F8' },
+  'assignment-comment': { fg: '#C2410C', bg: '#FDEBDD' },
+};
+const DEFAULT_TONE = { fg: '#8B0000', bg: '#FBEAEA' };
+const READ_TONE = { fg: '#9CA3AF', bg: '#F3F4F6' };
+const toneFor = (type: string, read: boolean) => (read ? READ_TONE : TONES[type] || DEFAULT_TONE);
+
 export type NotificationItem = {
   id: string;
   type: NotificationType;
@@ -126,9 +141,7 @@ const Notification: React.FC<NotificationScreenProps> = ({
     }
   };
 
-  const getNotificationIcon = (type: NotificationType, read: boolean) => {
-    const color = read ? '#666' : '#8B0000';
-
+  const getNotificationIcon = (type: NotificationType, color: string) => {
     switch (type) {
       case 'assignment':
         return (
@@ -221,16 +234,19 @@ const Notification: React.FC<NotificationScreenProps> = ({
       }}
       style={[styles.card, !item.read && styles.unreadCard]}
     >
-      <View style={styles.iconWrapper}>
-        {getNotificationIcon(item.type, item.read)}
+      <View style={[styles.iconWrapper, { backgroundColor: toneFor(item.type, item.read).bg }]}>
+        {getNotificationIcon(item.type, toneFor(item.type, item.read).fg)}
       </View>
 
       <View style={styles.content}>
         <View style={styles.row}>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, item.read && styles.titleRead]} numberOfLines={1}>
             {item.title}
           </Text>
-          <Text style={styles.time}>{item.time}</Text>
+          <View style={styles.timeWrap}>
+            <Text style={styles.time}>{item.time}</Text>
+            {!item.read && <View style={styles.unreadDot} />}
+          </View>
         </View>
 
         <Text
@@ -339,11 +355,13 @@ const Notification: React.FC<NotificationScreenProps> = ({
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="bell-check-outline"
-              size={48}
-              color="#999"
-            />
+            <View style={styles.emptyDisc}>
+              <MaterialCommunityIcons
+                name="bell-check-outline"
+                size={34}
+                color="#8B0000"
+              />
+            </View>
             <Text style={styles.emptyTitle}>No notifications</Text>
             <Text style={styles.emptyText}>You’re all caught up.</Text>
           </View>
@@ -431,7 +449,7 @@ const styles = StyleSheet.create({
     color: '#111',
   },
 
-  headerSubtitle: { fontFamily: FONT_TITLE,
+  headerSubtitle: { fontFamily: FONT_BODY,
     marginTop: 2,
     fontSize: 13,
     color: '#666',
@@ -524,23 +542,51 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#FAFAFA',
-    marginBottom: 12,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
 
   unreadCard: {
-    backgroundColor: '#FAF5F5',
+    backgroundColor: '#FFF9F9',
     borderColor: '#EBD4D4',
   },
 
   iconWrapper: {
     marginRight: 12,
-    paddingTop: 2,
-    width: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 13,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  timeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#8B0000',
+  },
+
+  titleRead: {
+    color: '#555',
+  },
+
+  emptyDisc: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#F7EDED',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   content: {

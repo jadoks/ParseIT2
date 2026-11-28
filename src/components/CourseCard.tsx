@@ -128,6 +128,15 @@ const toTitleCase = (value?: string | null): string =>
     .toLowerCase()
     .replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (_m, sep, ch) => sep + ch.toUpperCase());
 
+// "Jade Lisondra" -> "JL" (instructor avatar)
+const getInitials = (value?: string | null): string => {
+  const parts = String(value ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const first = parts[0][0] || '';
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (first + last).toUpperCase();
+};
+
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
@@ -441,18 +450,39 @@ const CourseCard: React.FC<CourseCardProps> = ({
           />
           <View style={styles.overlay} />
           <View style={styles.bannerTextContainer}>
-            <Text style={styles.bannerTitle}>{course.name}</Text>
-            {course.section ? (
-              <Text style={styles.sectionLabel}>{course.section}</Text>
-            ) : null}
-            <Text style={styles.bannerMeta}>
-              {course.semester} ({course.schoolYear})
-            </Text>
-            <Text style={styles.bannerInstructor}>{toTitleCase(course.instructor)}</Text>
+            <Text style={styles.bannerTitle} numberOfLines={2}>{course.name}</Text>
           </View>
         </View>
 
         <View style={styles.cardBody}>
+          <View style={styles.instructorRow}>
+            <View style={styles.instructorAvatar}>
+              <Text style={styles.instructorAvatarText}>{getInitials(course.instructor)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.instructorName} numberOfLines={1}>
+                {toTitleCase(course.instructor) || 'Instructor not set'}
+              </Text>
+              <Text style={styles.instructorLabel}>Instructor</Text>
+            </View>
+          </View>
+
+          <View style={styles.pillRow}>
+            {course.section ? (
+              <View style={styles.pill}>
+                <MaterialCommunityIcons name="school-outline" size={14} color="#8B0000" />
+                <Text style={styles.pillText} numberOfLines={1}>{course.section}</Text>
+              </View>
+            ) : null}
+            <View style={styles.pill}>
+              <MaterialCommunityIcons name="calendar-month-outline" size={14} color="#8B0000" />
+              <Text style={styles.pillText} numberOfLines={1}>
+                {course.semester} · S.Y. {course.schoolYear}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.insightPanel}>
           {analytics.recommendedAssignment ? (
             <>
               <View style={styles.metaBlock}>
@@ -474,16 +504,17 @@ const CourseCard: React.FC<CourseCardProps> = ({
               <Text style={styles.metaValue}>No pending support activity</Text>
             </View>
           )}
+          </View>
 
           <View style={styles.metaBlockRow}>
-            <View style={styles.metaBlockHalf}>
+            <View style={[styles.metaBlockHalf, styles.statTile]}>
               <Text style={styles.metaLabel}>Average</Text>
               <Text style={styles.metaValue}>
                 {analytics.averageScore !== null ? `${analytics.averageScore}%` : 'N/A'}
               </Text>
             </View>
 
-            <View style={styles.metaBlockHalf}>
+            <View style={[styles.metaBlockHalf, styles.statTile]}>
               <Text style={styles.metaLabel}>Course Resources</Text>
               <Text style={styles.metaValue}>{course.materials.length}</Text>
             </View>
@@ -578,14 +609,16 @@ const CourseCard: React.FC<CourseCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: 24,
     overflow: 'hidden',
-    elevation: 4,
-    shadowColor: '#000',
+    elevation: 3,
+    shadowColor: '#2B1111',
     shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
+    borderWidth: 1,
+    borderColor: '#ECE6E6',
     borderBottomWidth: 4,
     // ✅ NEW: explicit stretch (RNW default can be inconsistent) so every
     // card in a grid row takes on the height of its tallest sibling.
@@ -601,7 +634,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.34)',
   },
   bannerTextContainer: {
     position: 'absolute',
@@ -609,11 +642,52 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
   },
-  bannerTitle: { fontFamily: FONT_TITLE,
+  bannerTitle: {
+    fontFamily: FONT_TITLE,
     color: '#fff',
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: WEIGHT_TITLE,
-    marginBottom: 4,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  instructorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  instructorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  instructorAvatarText: { fontFamily: FONT_BODY, color: '#8B0000', fontSize: 13, fontWeight: '800' },
+  instructorName: { fontFamily: FONT_BODY, fontSize: 15, color: '#202124', fontWeight: '700' },
+  instructorLabel: { fontFamily: FONT_BODY, fontSize: 11.5, color: '#9AA0A6', fontWeight: '600', marginTop: 1 },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 30,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    backgroundColor: '#FAF5F5',
+    borderWidth: 1,
+    borderColor: '#EBD4D4',
+    maxWidth: '100%',
+  },
+  pillText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#6B0000', flexShrink: 1 },
+  insightPanel: {
+    backgroundColor: '#FAF7F7',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  statTile: {
+    backgroundColor: '#FAF7F7',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   sectionLabel: { fontFamily: FONT_BODY,
     color: 'rgba(255, 255, 255, 0.8)',

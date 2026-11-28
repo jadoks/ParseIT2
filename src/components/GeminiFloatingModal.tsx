@@ -805,6 +805,9 @@ export default function GeminiFloatingModal({
           >
             {/* HEADER */}
             <View style={styles.header}>
+              <View style={styles.headerAvatar}>
+                <MaterialCommunityIcons name="robot-happy-outline" size={22} color="#8B0000" />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>ParseIT Assistant</Text>
                 <Text style={styles.subtitle}>{subtitle}</Text>
@@ -841,9 +844,18 @@ export default function GeminiFloatingModal({
             {/* ✅ Daily Usage Indicator */}
             {usageLoaded && (
               <View style={styles.usageBar}>
-                <Text style={styles.usageBarText} numberOfLines={1}>
-                  Chats {remainingChatPrompts}/{DAILY_CHAT_LIMIT} · Generations {remainingGenerations}/{DAILY_GENERATION_LIMIT} · Uploads {remainingUploads}/{DAILY_UPLOAD_LIMIT} left today
-                </Text>
+                <View style={styles.usageChip}>
+                  <MaterialCommunityIcons name="message-text-outline" size={12} color="#8B0000" />
+                  <Text style={styles.usageChipText}>Chats {remainingChatPrompts}/{DAILY_CHAT_LIMIT}</Text>
+                </View>
+                <View style={styles.usageChip}>
+                  <MaterialCommunityIcons name="auto-fix" size={12} color="#8B0000" />
+                  <Text style={styles.usageChipText}>Generations {remainingGenerations}/{DAILY_GENERATION_LIMIT}</Text>
+                </View>
+                <View style={styles.usageChip}>
+                  <MaterialCommunityIcons name="paperclip" size={12} color="#8B0000" />
+                  <Text style={styles.usageChipText}>Uploads {remainingUploads}/{DAILY_UPLOAD_LIMIT}</Text>
+                </View>
               </View>
             )}
 
@@ -901,8 +913,9 @@ export default function GeminiFloatingModal({
                       <MaterialCommunityIcons name="robot-outline" size={14} color="#8B0000" />
                       <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
                     </View>
-                    <View style={[styles.messageBubble, styles.botBubble]}>
-                      <ActivityIndicator color="#8B0000" />
+                    <View style={[styles.messageBubble, styles.botBubble, styles.thinkingBubble]}>
+                      <ActivityIndicator size="small" color="#8B0000" />
+                      <Text style={styles.thinkingText}>Thinking...</Text>
                     </View>
                   </View>
                 )}
@@ -1019,6 +1032,15 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F3F4F6", 
     backgroundColor: "#FFFFFF" 
   },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#F7EDED",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
   title: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: "800", color: "#8B0000" },
   subtitle: { fontFamily: FONT_BODY, marginTop: 4, fontSize: 12, color: "#6B7280", fontWeight: "500" },
   
@@ -1039,9 +1061,24 @@ const styles = StyleSheet.create({
 
   usageBar: {
     marginHorizontal: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 6,
   },
+  usageChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#FAF5F5",
+    borderWidth: 1,
+    borderColor: "#EBD4D4",
+  },
+  usageChipText: { fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: "700", color: "#6B0000" },
   usageBarText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "600", color: "#9CA3AF", textAlign: "center" },
   
   messages: { padding: 16, paddingBottom: 20, flexGrow: 1 },
@@ -1062,6 +1099,8 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 
   },
   userBubble: { alignSelf: "flex-end", backgroundColor: "#8B0000", borderRadius: 18, borderTopRightRadius: 4 },
+  thinkingBubble: { flexDirection: "row", alignItems: "center", gap: 10 },
+  thinkingText: { fontFamily: FONT_BODY, fontSize: 13, color: "#8A6F6F", fontWeight: "600" },
   
   botText: { fontFamily: FONT_BODY, color: "#1F2937", fontSize: 14, lineHeight: 22, fontWeight: "400" },
   userText: { fontFamily: FONT_BODY, color: "#FFFFFF", fontSize: 14, lineHeight: 22, fontWeight: "400" },

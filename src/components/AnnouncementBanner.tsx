@@ -176,7 +176,7 @@ const AnnouncementBanner = ({
   if (isLoading) {
     return (
       <View style={[styles.bannerContainer, styles.loadingBanner, { height: bannerHeight }]}>
-        <ActivityIndicator size="large" color="#D32F2F" />
+        <ActivityIndicator size="large" color="#8B0000" />
         <Text style={styles.loadingText}>Loading announcements...</Text>
       </View>
     );
@@ -186,6 +186,9 @@ const AnnouncementBanner = ({
   if (!hasAnnouncements) {
     return (
       <View style={[styles.bannerContainer, styles.emptyBanner, { height: bannerHeight }]}>
+        <View style={styles.emptyDisc}>
+          <Ionicons name="megaphone-outline" size={28} color="#8B0000" />
+        </View>
         <Text style={styles.emptyTitle}>No announcements yet</Text>
         <Text style={styles.emptyMessage}>
           New announcements will appear here once available.
@@ -403,12 +406,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp('2'),
   },
   announceMeta: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.88)',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    marginBottom: 6,
+    color: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    maxWidth: '100%',
+    marginBottom: 8,
     textAlign: 'center',
   },
   announceTitle: {
@@ -470,6 +477,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    backgroundColor: '#FAF5F5',
+    borderWidth: 1,
+    borderColor: '#EBD4D4',
+  },
+  emptyDisc: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F1E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   emptyTitle: {
     fontSize: 18,

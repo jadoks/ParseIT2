@@ -151,7 +151,14 @@ const ClassesScreen = ({
           <View style={styles.classesCard}>
           <View style={styles.headerRow}>
             <View style={styles.headerTextWrap}>
-              <Text style={styles.pageTitle}>My Classes</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.pageTitle}>My Classes</Text>
+                {courses.length > 0 && (
+                  <View style={styles.countPill}>
+                    <Text style={styles.countPillText}>{courses.length}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.pageSubtitle}>
                 Access all your enrolled courses in one place.
               </Text>
@@ -193,7 +200,13 @@ const ClassesScreen = ({
             ) : (
               /* 👇 EMPTY STATE WHEN NO CLASSES MATCH SEARCH */
               <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="magnify" size={48} color="#CCC" />
+                <View style={styles.emptyDisc}>
+                  <MaterialCommunityIcons
+                    name={searchQuery.trim() ? 'magnify' : 'school-outline'}
+                    size={34}
+                    color="#8B0000"
+                  />
+                </View>
                 <Text style={styles.emptyTitle}>
                   {searchQuery.trim()
                     ? `No classes match "${searchQuery}"`
@@ -310,10 +323,19 @@ const styles = StyleSheet.create({
     borderColor: '#E3E5E9',
     borderRadius: 28,
     padding: 20,
+    shadowColor: '#2B1111',
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
   },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
   headerTextWrap: { flex: 1 },
-  pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE, color: '#111', marginBottom: 6 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  countPill: { minWidth: 28, height: 26, paddingHorizontal: 9, borderRadius: 13, backgroundColor: '#F7EDED', alignItems: 'center', justifyContent: 'center' },
+  countPillText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#8B0000' },
+  emptyDisc: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#F7EDED', alignItems: 'center', justifyContent: 'center' },
+  pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE, color: '#111' },
   pageSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#666' },
   joinClassButton: { backgroundColor: '#8B0000', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   joinClassButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },

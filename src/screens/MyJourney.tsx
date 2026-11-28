@@ -43,7 +43,7 @@ const MyJourney = ({ currentStudent, studentName, apiBaseUrl }: MyJourneyProps) 
       <View style={[styles.pageHeaderCard, isMobile && styles.pageHeaderCardMobile]}>
         <View style={styles.pageHeaderAccent} />
         <View style={styles.pageHeaderContent}>
-          <Text style={styles.pageEyebrow}>Academic Record</Text>
+          <Text style={styles.pageEyebrow}>Academic record</Text>
           <Text style={styles.pageTitle}>My Journey</Text>
           <Text style={styles.pageSubtitle}>
             Track your curriculum progress and grades, based on your uploaded grade file.
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
   pageHeaderAccent: { height: 8, backgroundColor: '#8B0000' },
   pageHeaderContent: { paddingHorizontal: 22, paddingVertical: 20 },
   pageHeaderCardMobile: { borderRadius: 18, marginBottom: 14 },
-  pageEyebrow: { fontSize: 12, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8B0000', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 6 },
+  pageEyebrow: { fontSize: 12, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8B0000', backgroundColor: '#F7EDED', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden', marginBottom: 10 },
   pageTitle: { fontSize: 30, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#111827', marginBottom: 6 },
   pageSubtitle: { fontSize: 14, color: '#6B7280', lineHeight: 21, fontFamily: FONT_BODY },
 });
