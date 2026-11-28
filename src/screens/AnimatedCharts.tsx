@@ -13,6 +13,7 @@ import Svg, {
     Text as SvgText,
 } from 'react-native-svg';
 import { FONT_BODY } from '../theme/typography';
+import { useInView } from './ScrollReveal';
 
 // Animated charts for the student Analytics screen.
 //
@@ -28,11 +29,12 @@ const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 const clampScore = (n: unknown) => Math.max(0, Math.min(100, Number(n) || 0));
 const shorten = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
-// 0 -> 1 over `duration` ms. Restarts whenever `signature` changes (new data).
-function useReveal(signature: string, duration = 1000, delay = 150) {
+// 0 -> 1 over `duration` ms once `enabled`. Restarts whenever `signature` changes (new data).
+function useReveal(signature: string, duration = 1000, delay = 150, enabled = true) {
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     setProgress(0);
+    if (!enabled) return; // waits until the chart scrolls into view
     const value = new Animated.Value(0);
     const id = value.addListener(({ value: v }) => setProgress(v));
     const animation = Animated.timing(value, {
@@ -47,7 +49,7 @@ function useReveal(signature: string, duration = 1000, delay = 150) {
       animation.stop();
       value.removeListener(id);
     };
-  }, [signature, duration, delay]);
+  }, [signature, duration, delay, enabled]);
   return progress;
 }
 
@@ -60,7 +62,8 @@ const MUTED = '#6B7280';
 type BarProps = { data: number[]; labels: string[]; width: number; height: number };
 
 export const AnimatedBarChart = ({ data, labels, width, height }: BarProps) => {
-  const p = useReveal(JSON.stringify(data));
+  const { ref, inView, onLayout } = useInView();
+  const p = useReveal(JSON.stringify(data), 1000, 150, inView);
   const padX = 22;
   const padTop = 26;
   const padBottom = 34;
@@ -72,6 +75,7 @@ export const AnimatedBarChart = ({ data, labels, width, height }: BarProps) => {
   const stagger = 0.4; // bars start one after another
 
   return (
+    <View ref={ref} onLayout={onLayout} collapsable={false}>
     <Svg width={width} height={height}>
       <Defs>
         <LinearGradient id="aBarGrad" x1="0" y1="0" x2="0" y2="1">
@@ -122,6 +126,7 @@ export const AnimatedBarChart = ({ data, labels, width, height }: BarProps) => {
         );
       })}
     </Svg>
+    </View>
   );
 };
 
@@ -150,7 +155,8 @@ export const AnimatedLineChart = ({
   muted = MUTED,
   grid = '#EEE5E5',
 }: LineProps) => {
-  const p = useReveal(JSON.stringify(data), 1400);
+  const { ref, inView, onLayout } = useInView();
+  const p = useReveal(JSON.stringify(data), 1400, 150, inView);
   const areaId = `aLineArea${color.replace('#', '')}`;
   const clipId = `aLineClip${color.replace('#', '')}`;
   const padX = 22;
@@ -187,6 +193,7 @@ export const AnimatedLineChart = ({
   const revealX = padX + (plotW + 8) * p;
 
   return (
+    <View ref={ref} onLayout={onLayout} collapsable={false}>
     <Svg width={width} height={height}>
       <Defs>
         <LinearGradient id={areaId} x1="0" y1="0" x2="0" y2="1">
@@ -240,16 +247,26 @@ export const AnimatedLineChart = ({
         );
       })}
     </Svg>
+    </View>
   );
 };
 
 // ───────────────────────────── Donut chart ─────────────────────────────
 
 type Slice = { name: string; population: number; color: string };
-type DonutProps = { data: Slice[]; size: number; centerValue: number; centerLabel: string };
+type DonutProps = {
+  data: Slice[];
+  size: number;
+  centerValue: number;
+  centerLabel: string;
+  // The student screen uses a grey "No Data" placeholder slice that should stay out of the legend.
+  // A real "No Data" category (teacher risk levels) sets this to true to list it.
+  showNoDataLegend?: boolean;
+};
 
-export const AnimatedDonutChart = ({ data, size, centerValue, centerLabel }: DonutProps) => {
-  const p = useReveal(JSON.stringify(data), 1200);
+export const AnimatedDonutChart = ({ data, size, centerValue, centerLabel, showNoDataLegend = false }: DonutProps) => {
+  const { ref, inView, onLayout } = useInView();
+  const p = useReveal(JSON.stringify(data), 1200, 150, inView);
   const stroke = Math.round(size * 0.17);
   const radius = (size - stroke) / 2;
   const c = size / 2;
@@ -265,10 +282,10 @@ export const AnimatedDonutChart = ({ data, size, centerValue, centerLabel }: Don
     return { ...d, length, start };
   });
 
-  const legend = data.filter((d) => d.name !== 'No Data');
+  const legend = data.filter((d) => showNoDataLegend || d.name !== 'No Data');
 
   return (
-    <View style={styles.donutWrap}>
+    <View ref={ref} onLayout={onLayout} collapsable={false} style={styles.donutWrap}>
       <Svg width={size} height={size}>
         <Circle cx={c} cy={c} r={radius} stroke="#F3E9E9" strokeWidth={stroke} fill="none" />
         {slices.map((s) => {
@@ -328,7 +345,84 @@ export const AnimatedDonutChart = ({ data, size, centerValue, centerLabel }: Don
   );
 };
 
+// ───────────────────────────── Ring gauge ─────────────────────────────
+// One score (0-100) as a ring. Good for a short list of items, for example the
+// lowest performing topics: the ring sweeps and the number counts up.
+
+type GaugeProps = {
+  value: number;
+  color: string;
+  label: string;
+  sublabel?: string;
+  size?: number;
+  width?: number;
+  track?: string;
+  ink?: string;
+  muted?: string;
+};
+
+export const AnimatedRingGauge = ({
+  value,
+  color,
+  label,
+  sublabel,
+  size = 92,
+  width = 112,
+  track = '#F3E9E9',
+  ink = INK,
+  muted = MUTED,
+}: GaugeProps) => {
+  const { ref, inView, onLayout } = useInView();
+  const p = useReveal(String(value), 1100, 150, inView);
+  const stroke = Math.round(size * 0.13);
+  const radius = (size - stroke) / 2;
+  const c = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const score = clampScore(value);
+  const drawn = circumference * (score / 100) * p;
+
+  return (
+    <View ref={ref} onLayout={onLayout} collapsable={false} style={[styles.gaugeWrap, { width }]}>
+      <Svg width={size} height={size}>
+        <Circle cx={c} cy={c} r={radius} stroke={track} strokeWidth={stroke} fill="none" />
+        {drawn > 0.5 && (
+          <Circle
+            cx={c}
+            cy={c}
+            r={radius}
+            stroke={color}
+            strokeWidth={stroke}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${drawn} ${circumference}`}
+            rotation="-90"
+            origin={`${c}, ${c}`}
+          />
+        )}
+        <SvgText
+          x={c}
+          y={c + size * 0.09}
+          fontSize={size * 0.26}
+          fontWeight="800"
+          fontFamily={FONT_BODY}
+          fill={ink}
+          textAnchor="middle"
+        >
+          {Math.round(score * p)}%
+        </SvgText>
+      </Svg>
+      <Text style={[styles.gaugeLabel, { color: ink }]} numberOfLines={2}>
+        {label}
+      </Text>
+      {!!sublabel && <Text style={[styles.gaugeSub, { color: muted }]}>{sublabel}</Text>}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
+  gaugeWrap: { alignItems: 'center' },
+  gaugeLabel: { fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: '700', textAlign: 'center', marginTop: 8 },
+  gaugeSub: { fontFamily: FONT_BODY, fontSize: 11, textAlign: 'center', marginTop: 2 },
   donutWrap: { alignItems: 'center', justifyContent: 'center', width: '100%' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 },
   legendItem: {

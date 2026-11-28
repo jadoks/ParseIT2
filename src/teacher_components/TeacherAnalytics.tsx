@@ -16,8 +16,9 @@ import {
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
 import { getScorePercent, normalizeAssignmentStatus } from "../analytics/metrics";
-import { AnimatedLineChart } from "../screens/AnimatedCharts";
+import { AnimatedDonutChart, AnimatedLineChart, AnimatedRingGauge } from "../screens/AnimatedCharts";
 import { AssignmentCourse } from "../screens/Assignments";
+import { CountUpText, ScrollRevealProvider, useInView, useScrollReveal } from "../screens/ScrollReveal";
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // Display helper: "jade lisondra" -> "Jade Lisondra"
@@ -309,42 +310,6 @@ const SectionCard = ({
   </View>
 );
 
-// Numbers in the metric cards count up from 0 when the screen opens. Values such as
-// "78%" keep their suffix; anything that isn't a number is shown as-is.
-const CountUpText = ({ value, style }: { value: string | number; style?: StyleProp<any> }) => {
-  const match = String(value).match(/^(-?\d+(?:\.\d+)?)(\D*)$/);
-  const target = match ? Number(match[1]) : null;
-  const suffix = match ? match[2] : '';
-  const decimals = match && match[1].includes('.') ? match[1].split('.')[1].length : 0;
-  const [shown, setShown] = useState(0);
-
-  useEffect(() => {
-    if (target === null) return;
-    setShown(0);
-    const anim = new Animated.Value(0);
-    const id = anim.addListener(({ value: v }) => setShown(v));
-    const run = Animated.timing(anim, {
-      toValue: target,
-      duration: 900,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    });
-    run.start();
-    return () => {
-      run.stop();
-      anim.removeListener(id);
-    };
-  }, [target]);
-
-  if (target === null) return <Text style={style}>{value}</Text>;
-  return (
-    <Text style={style}>
-      {shown.toFixed(decimals)}
-      {suffix}
-    </Text>
-  );
-};
-
 const MetricCard = ({
   title,
   value,
@@ -390,10 +355,12 @@ const HorizontalBar = ({
 }) => {
   const widthPercent = formatPercentWidth(value, maxValue);
   const grow = useRef(new Animated.Value(0)).current;
+  const { ref: trackRef, inView, onLayout: onTrackLayout } = useInView();
 
-  // The bar fills from the left each time the screen opens or the value changes.
+  // The bar fills from the left once it scrolls into view (and again if the value changes).
   useEffect(() => {
     grow.setValue(0);
+    if (!inView) return;
     const run = Animated.timing(grow, {
       toValue: 1,
       duration: 900,
@@ -402,7 +369,7 @@ const HorizontalBar = ({
     });
     run.start();
     return () => run.stop();
-  }, [widthPercent, grow]);
+  }, [widthPercent, grow, inView]);
 
   return (
     <View style={styles.barRow}>
@@ -412,7 +379,7 @@ const HorizontalBar = ({
         </Text>
         <Text style={styles.barRightValue}>{rightText ?? value}</Text>
       </View>
-      <View style={styles.barTrack}>
+      <View ref={trackRef} onLayout={onTrackLayout} collapsable={false} style={styles.barTrack}>
         <Animated.View
           style={[
             styles.barFill,
@@ -523,6 +490,8 @@ export default function TeacherAnalytics({
     width: number;
   } | null>(null);
   const { width } = useWindowDimensions();
+  // Charts, numbers and bars animate when they scroll into view.
+  const reveal = useScrollReveal();
   const isSmallScreen = width < 600;
   const isTabletScreen = width >= 600 && width < 1024;
   // Matches Assignments.tsx's filter dropdown breakpoint: below this, use
@@ -560,6 +529,7 @@ export default function TeacherAnalytics({
     ? Math.max(width - pagePadding * 2 - 40, 320)
     : Math.min(width - pagePadding * 2 - 64, 980);
   const chartHeight = isSmallScreen ? 210 : 240;
+  const donutSize = isSmallScreen ? 170 : 150;
   const responsiveSectionStyle = isSmallScreen
     ? styles.sectionCardFull
     : styles.sectionCardHalf;
@@ -1618,9 +1588,12 @@ export default function TeacherAnalytics({
         </Modal>
       )}
 
+      <ScrollRevealProvider value={reveal.controller}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.content, { padding: pagePadding }]}
+        onScroll={reveal.onScroll}
+        scrollEventThrottle={32}
       >
         <View style={[styles.heroCard, responsiveHeroStyle]}>
           <View style={styles.heroLeft}>
@@ -1926,27 +1899,27 @@ export default function TeacherAnalytics({
             onInfoPress={() => setActiveInfo("classOverview")}
             subtitle="Assignment grade distribution and assignment risk levels."
           >
-            {riskBuckets.map((item) => (
-              <HorizontalBar
-                key={item.label}
-                label={item.label}
-                value={item.value}
-                maxValue={summary.totalStudents || 1}
-                color={item.color}
-                rightText={`${item.value} student${item.value === 1 ? "" : "s"}`}
-              />
-            ))}
-            <View style={styles.chartDivider} />
-            {gradeBuckets.map((item) => (
-              <HorizontalBar
-                key={item.label}
-                label={item.label}
-                value={item.value}
-                maxValue={summary.totalStudents || 1}
-                color={item.color}
-                rightText={`${item.value}`}
-              />
-            ))}
+            <View style={styles.donutRow}>
+              <View style={styles.donutCol}>
+                <Text style={styles.donutCaption}>Assignment risk</Text>
+                <AnimatedDonutChart
+                  data={riskBuckets.map((item) => ({ name: item.label, population: item.value, color: item.color }))}
+                  size={donutSize}
+                  centerValue={summary.totalStudents}
+                  centerLabel="students"
+                  showNoDataLegend
+                />
+              </View>
+              <View style={styles.donutCol}>
+                <Text style={styles.donutCaption}>Grade distribution</Text>
+                <AnimatedDonutChart
+                  data={gradeBuckets.map((item) => ({ name: item.label, population: item.value, color: item.color }))}
+                  size={donutSize}
+                  centerValue={gradeBuckets.reduce((sum, item) => sum + item.value, 0)}
+                  centerLabel="graded"
+                />
+              </View>
+            </View>
           </SectionCard>
 
           <SectionCard
@@ -1984,20 +1957,20 @@ export default function TeacherAnalytics({
             {weakTopics.length === 0 ? (
               <Text style={styles.emptyText}>No assignment topic data available yet.</Text>
             ) : (
-              weakTopics.map((topic) => (
-                <View key={topic.topic} style={styles.topicRow}>
-                  <HorizontalBar
-                    label={topic.topic}
+              <View style={styles.gaugeGrid}>
+                {weakTopics.map((topic) => (
+                  <AnimatedRingGauge
+                    key={topic.topic}
                     value={topic.average}
-                    maxValue={maxTopicAverage}
                     color={topic.average < 75 ? palette.red : palette.orange}
-                    rightText={`${topic.average}%`}
+                    track="#EEF2F7"
+                    ink={palette.textStrong}
+                    muted={palette.textMuted}
+                    label={topic.topic}
+                    sublabel={`Graded ${topic.gradedCount} • Pending ${topic.pendingCount}`}
                   />
-                  <Text style={styles.topicMeta}>
-                    Graded: {topic.gradedCount} • Pending: {topic.pendingCount}
-                  </Text>
-                </View>
-              ))
+                ))}
+              </View>
             )}
           </SectionCard>
 
@@ -2226,6 +2199,7 @@ export default function TeacherAnalytics({
           )}
         </SectionCard>
       </ScrollView>
+      </ScrollRevealProvider>
     </>
   );
 }
@@ -2613,6 +2587,16 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   topicRow: { marginBottom: 8 },
+  donutRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-around", gap: 20 },
+  donutCol: { alignItems: "center", maxWidth: 260 },
+  donutCaption: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: palette.text,
+    marginBottom: 10,
+  },
+  gaugeGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 18 },
   topicMeta: { fontFamily: FONT_BODY,
     marginTop: -6,
     marginBottom: 10,

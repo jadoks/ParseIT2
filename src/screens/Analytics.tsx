@@ -20,6 +20,7 @@ import {
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import { AnimatedBarChart, AnimatedDonutChart, AnimatedLineChart } from './AnimatedCharts';
 import { AssignmentCourse } from './Assignments';
+import { CountUpText, ScrollRevealProvider, useScrollReveal } from './ScrollReveal';
 
 interface AnalyticsProps {
   courses: AssignmentCourse[];
@@ -174,7 +175,7 @@ const MetricCard = ({
       {onInfoPress ? <InfoButton onPress={onInfoPress} /> : null}
     </View>
     <View style={styles.metricRow}>
-      <Text style={styles.metricValue}>{value}</Text>
+      <CountUpText style={styles.metricValue} value={value} />
       {trend !== undefined && (
         <Text
           style={[
@@ -204,6 +205,8 @@ const Analytics: React.FC<AnalyticsProps> = ({
   completedActivityScores = {},
 }) => {
   const { width } = useWindowDimensions();
+  // Charts, numbers and bars animate when they scroll into view.
+  const reveal = useScrollReveal();
   const [showAllSubjects, setShowAllSubjects] = useState(false);
   // Which "?" explanation is open (null = closed). `subject` is set for the per-subject icons.
   const [activeInfo, setActiveInfo] = useState<{ key: InfoKey; subject?: SubjectAnalyticsSummary } | null>(null);
@@ -587,7 +590,13 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
         </Pressable>
       </Modal>
 
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollRevealProvider value={reveal.controller}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      onScroll={reveal.onScroll}
+      scrollEventThrottle={32}
+    >
       {/* Hero Section */}
       <View style={styles.heroCard}>
         <View style={{ flex: 1 }}>
@@ -921,6 +930,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
         ))}
       </View>
     </ScrollView>
+    </ScrollRevealProvider>
     </>
   );
 };
